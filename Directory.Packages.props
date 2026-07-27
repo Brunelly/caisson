@@ -39,6 +39,11 @@
       AOT-friendly (NFR4), unlike the concrete Microsoft.Extensions.DependencyInjection package.
     -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <!--
+      Interfaces-only logging package for the concrete drivers (Caisson.Drivers.MikroTik): ILogger +
+      NullLogger only, no logging provider/host — AOT-safe like the DI abstractions above (AC6/NFR6).
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
   </ItemGroup>
 
 </Project>
