@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Read-only driver abstraction layer (switches + BMCs). NO EF Core / Npgsql references — see
+    ADR 0001 (layering) and ADR 0006 (this project). Depends only on Caisson.Domain so the
+    abstraction stays shareable with the future NativeAOT appliance agent.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drivers.Abstractions</RootNamespace>
+    <AssemblyName>Caisson.Drivers.Abstractions</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+</Project>

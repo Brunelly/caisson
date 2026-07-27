@@ -24,6 +24,21 @@
     <PackageVersion Include="FluentAssertions" Version="6.12.1" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="3.10.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <!--
+      DI extension points for Caisson.Drivers.Abstractions.Tests only, to exercise the
+      registry via a real ServiceCollection. The concrete container is a test-only
+      dependency; the abstraction project itself references only the interfaces package
+      below.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Interfaces-only DI package for Caisson.Drivers.Abstractions: reflection/codegen-free and
+      AOT-friendly (NFR4), unlike the concrete Microsoft.Extensions.DependencyInjection package.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
   </ItemGroup>
 
 </Project>

@@ -25,11 +25,20 @@ The control-plane persistence layer is a normal ASP.NET Core / EF Core applicati
 appliance agent is a *separate future component*; we favour AOT-friendly patterns in `Caisson.Domain`
 (so its types can be reused) but do not constrain the Infrastructure layer to AOT.
 
-### Driver / HAL abstraction — to come
-Device drivers (CHR/RouterOS, Redfish/IPMI) and the hardware-abstraction layer that feeds discovery
-are **out of scope for this story** and arrive later. M0 persists observations only; there is no
-discovery logic, no device I/O, and no API host here yet. Health/query endpoints are noted for a later
-story.
+### Driver / HAL abstraction
+`Caisson.Drivers.Abstractions` defines the read-only discovery driver contracts —
+`ISwitchDiscoveryDriver` and `IBmcDiscoveryDriver`, both living in the `ReadOnly` namespace as an
+explicit, compile-time-visible safety boundary: no method there may write, configure, or power-cycle
+a device, enforced by a reflection guard test that fails the build if a mutation-verb method ever
+appears. Driver calls return a structured `DriverResult<T>` (success/failure + optional per-item
+`DriverDiagnostic`s reusing `Caisson.Domain.Enums.ReasonCode`) instead of throwing for expected
+failures, and drivers are resolved by `DriverDescriptor` (vendor/model/connection kind) through a
+non-reflective, DI-populated registry. See
+[ADR 0006](docs/adr/0006-readonly-driver-abstraction-and-registry.md) and
+[docs/adding-a-driver.md](docs/adding-a-driver.md). This story is **abstraction-only**: concrete
+MikroTik RouterOS and Redfish/IPMI implementations are future stories (#4/#5). M0 still persists
+observations only; there is no discovery pipeline or API host wired up yet — those, along with
+health/query endpoints, are noted for a later story.
 
 ### Simulation-first testing
 Discovery will be validated against simulators (CHR + a Redfish simulator) with repeatable test data
