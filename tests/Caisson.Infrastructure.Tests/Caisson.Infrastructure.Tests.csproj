@@ -18,6 +18,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
