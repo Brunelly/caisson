@@ -32,6 +32,14 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
         _logger = logger;
     }
 
+    /// <summary>
+    /// Test seam: binds a pre-connected, already-authenticated <paramref name="stream"/> so the
+    /// command path can be exercised without a socket. Not used in production.
+    /// </summary>
+    internal RouterOsApiClient(RouterOsConnectionSettings settings, ILogger logger, Stream stream)
+        : this(settings, logger)
+        => _stream = stream;
+
     /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {

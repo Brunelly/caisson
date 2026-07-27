@@ -22,4 +22,10 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Test seams: internal wire-protocol helpers and the stream-injecting client ctor. -->
+    <InternalsVisibleTo Include="Caisson.Drivers.MikroTik.Tests" />
+    <InternalsVisibleTo Include="Caisson.Drivers.MikroTik.IntegrationTests" />
+  </ItemGroup>
+
 </Project>
