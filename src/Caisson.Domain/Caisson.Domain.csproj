@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Persistence-ignorant observed-state model. NO EF Core / Npgsql references — see ADR 0001.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Domain</RootNamespace>
+    <AssemblyName>Caisson.Domain</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+</Project>

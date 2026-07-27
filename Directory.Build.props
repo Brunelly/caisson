@@ -1,0 +1,24 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in the Caisson solution.
+    Keeps the control-plane code warning-clean and consistent. This layer is
+    standard .NET / EF Core (NOT NativeAOT) — see CLAUDE.md.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Quality gates: analyzers on, warnings are errors on build. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Caisson.Infrastructure.Tests</RootNamespace>
+    <AssemblyName>Caisson.Infrastructure.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+</Project>

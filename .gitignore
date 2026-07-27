@@ -1,0 +1,40 @@
+## .NET build output — CRITICAL anti-bloat safeguard: never commit these.
+bin/
+obj/
+artifacts/
+**/TestResults/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+## Restored local tools (dotnet-ef etc.) live under here; do not commit binaries.
+.config/.dotnet/
+.dotnet/
+
+## IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+## Test / coverage artifacts
+coverage/
+*.coverage
+*.trx
+[Cc]overage*.json
+[Cc]overage*.xml
+*.opencover.xml
+
+## NuGet
+*.nupkg
+.nuget/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Logs
+*.log
