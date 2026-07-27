@@ -36,4 +36,8 @@ dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.underscore_prefix.capitalization = camel_case
 dotnet_naming_style.underscore_prefix.required_prefix = _
 
+# SwitchPort.TaggedVlans is intentionally an array property mapped 1:1 to a PostgreSQL
+# integer[] column (observed tagged-VLAN list). Returning an array here is deliberate.
+dotnet_diagnostic.CA1819.severity = none
+
 # xUnit1004 etc. left at default; CA rules on via analyzers.
