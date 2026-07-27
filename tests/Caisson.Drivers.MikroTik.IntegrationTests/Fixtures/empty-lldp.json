@@ -1,0 +1,29 @@
+{
+  "legacyLogin": false,
+  "commands": {
+    "/system/resource/print": {
+      "rows": [{ "version": "7.14.2", "board-name": "CHR", "platform": "MikroTik" }]
+    },
+    "/system/routerboard/print": {
+      "rows": [{ "routerboard": "false" }]
+    },
+    "/interface/print": {
+      "rows": [{ "name": "ether1", "running": "true", "disabled": "false" }]
+    },
+    "/interface/bridge/port/print": {
+      "rows": [{ "interface": "ether1", "pvid": "1" }]
+    },
+    "/interface/bridge/vlan/print": {
+      "rows": []
+    },
+    "/ip/neighbor/print": {
+      "rows": []
+    },
+    "/interface/bridge/host/print": {
+      "rows": []
+    },
+    "/interface/vlan/print": {
+      "rows": []
+    }
+  }
+}

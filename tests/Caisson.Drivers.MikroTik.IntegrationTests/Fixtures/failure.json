@@ -1,0 +1,32 @@
+{
+  "legacyLogin": false,
+  "commands": {
+    "/system/resource/print": {
+      "rows": [{ "version": "7.10.2", "board-name": "CCR2004", "platform": "MikroTik" }]
+    },
+    "/system/routerboard/print": {
+      "rows": [{ "routerboard": "true", "model": "CCR2004-1G-12S+2XS", "serial-number": "HET081ABCDE" }]
+    },
+    "/interface/print": {
+      "rows": [
+        { "name": "ether1", "running": "true", "disabled": "false" },
+        { "name": "ether2", "running": "true", "disabled": "false" }
+      ]
+    },
+    "/interface/bridge/port/print": {
+      "rows": [{ "interface": "ether1", "pvid": "10" }]
+    },
+    "/interface/bridge/vlan/print": {
+      "rows": [{ "vlan-ids": "10,20", "tagged": "ether1" }]
+    },
+    "/ip/neighbor/print": {
+      "trap": "no such command prefix"
+    },
+    "/interface/bridge/host/print": {
+      "rows": [{ "mac-address": "AA:BB:CC:DD:EE:01", "on-interface": "ether1" }]
+    },
+    "/interface/vlan/print": {
+      "rows": []
+    }
+  }
+}

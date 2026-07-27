@@ -73,6 +73,22 @@ jobs:
       - name: Driver abstraction unit tests
         run: dotnet test tests/Caisson.Drivers.Abstractions.Tests --no-build -c Release
 
+      - name: MikroTik driver unit tests
+        run: dotnet test tests/Caisson.Drivers.MikroTik.Tests --no-build -c Release
+
+      # In-process RouterOS API simulator — no service container needed, deterministic and hardware-free.
+      # Set CAISSON_CHR_HOST to point the same suite at a real CHR instead.
+      - name: MikroTik driver integration tests (simulator)
+        run: dotnet test tests/Caisson.Drivers.MikroTik.IntegrationTests --no-build -c Release --logger "trx;LogFileName=mikrotik-integration.trx"
+
+      - name: Upload MikroTik test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mikrotik-test-logs
+          path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
+          if-no-files-found: ignore
+
       # Explicit migration apply + rollback gate against the service container,
       # independent of the Testcontainers-based fixture.
       - name: Migration apply/rollback gate
