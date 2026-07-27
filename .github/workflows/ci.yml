@@ -70,6 +70,9 @@ jobs:
       - name: Domain unit tests
         run: dotnet test tests/Caisson.Domain.Tests --no-build -c Release
 
+      - name: Driver abstraction unit tests
+        run: dotnet test tests/Caisson.Drivers.Abstractions.Tests --no-build -c Release
+
       # Explicit migration apply + rollback gate against the service container,
       # independent of the Testcontainers-based fixture.
       - name: Migration apply/rollback gate

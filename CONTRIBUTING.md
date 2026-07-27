@@ -20,6 +20,7 @@ dotnet tool restore
 dotnet build                              # warnings are errors
 dotnet format --verify-no-changes         # style / formatting gate
 dotnet test tests/Caisson.Domain.Tests    # fast, no database
+dotnet test tests/Caisson.Drivers.Abstractions.Tests   # fast, no database
 dotnet test tests/Caisson.Infrastructure.Tests   # needs Postgres (see below)
 ```
 
