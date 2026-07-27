@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # Ephemeral PostgreSQL for the migration gate and integration tests (NFR3).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: caisson
+          POSTGRES_PASSWORD: caisson
+          POSTGRES_DB: caisson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U caisson"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Design-time factory (dotnet ef) and integration-test fixture both read these.
+      CAISSON_DB: "Host=localhost;Port=5432;Database=caisson;Username=caisson;Password=caisson"
+      CAISSON_TEST_DB: "Host=localhost;Port=5432;Database=caisson;Username=caisson;Password=caisson"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore local tools (dotnet-ef)
+        run: dotnet tool restore
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build (warnings as errors)
+        run: dotnet build --no-restore -c Release -warnaserror
+
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes
+
+      - name: Domain unit tests
+        run: dotnet test tests/Caisson.Domain.Tests --no-build -c Release
+
+      # Explicit migration apply + rollback gate against the service container,
+      # independent of the Testcontainers-based fixture.
+      - name: Migration apply/rollback gate
+        run: |
+          dotnet ef database update   --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
+          dotnet ef database update 0 --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
+
+      - name: Infrastructure integration tests
+        run: dotnet test tests/Caisson.Infrastructure.Tests --no-build -c Release
