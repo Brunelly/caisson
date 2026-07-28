@@ -10,6 +10,7 @@ import { TopologyDetailsPanelComponent } from './details/topology-details-panel.
 import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyLegendComponent } from './legend/topology-legend.component';
 import { TopologySignalRService } from './live/topology-signalr.service';
+import { findNodeById } from './model/topology-graph-model';
 import type { TopologyGraphEdge, TopologyGraphNode } from './model/topology-graph-model';
 import { TopologySearchComponent } from './search/topology-search.component';
 import { TopologyStateService } from './state/topology-state.service';
@@ -175,9 +176,16 @@ export class TopologyPageComponent {
     this.state.selectEntity(node);
   }
 
+  /** AC3 requires a details panel for an edge, not just a node: an edge has no standalone identity,
+   * so selecting one opens its target's panel (the more specific/downstream endpoint — the NIC for a
+   * server-NIC edge, the port for a NIC-port edge, the VLAN for a port-VLAN edge) and pans/zooms there. */
   protected onEdgeSelected(edge: TopologyGraphEdge): void {
-    // Edges have no independent details view yet; selecting one focuses its source node instead.
-    this.graphRef()?.panZoomToNode(edge.source);
+    const graph = this.state.graph();
+    const target = graph ? findNodeById(graph, edge.target) : null;
+    if (target) {
+      this.state.selectEntity(target);
+    }
+    this.graphRef()?.panZoomToNode(edge.target);
   }
 
   /** Selecting a search result opens its drill-down and pans/zooms the graph to it (AC2). */
