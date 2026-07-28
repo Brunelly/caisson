@@ -26,6 +26,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Live topology updates (story #9, ADR 0014): Redis pub/sub + SignalR Redis backplane + health. -->
+    <PackageVersion Include="StackExchange.Redis" Version="2.8.16" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="8.0.8" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.8" />
@@ -36,6 +43,9 @@
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
     <PackageVersion Include="FluentAssertions" Version="6.12.1" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="3.10.0" />
+    <!-- Live-updates tests (story #9): containerized Redis fan-out + a real .NET SignalR client. -->
+    <PackageVersion Include="Testcontainers.Redis" Version="3.10.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.8" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
     <!--
       DI extension points for Caisson.Drivers.Abstractions.Tests only, to exercise the

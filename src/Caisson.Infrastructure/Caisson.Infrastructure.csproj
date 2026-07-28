@@ -25,6 +25,12 @@
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
+    <!--
+      Live topology updates (story #9, ADR 0014): the fail-open Redis publisher lives here — Infrastructure
+      is the lowest layer both Orchestration and Api reference, so the real-time seam ships without either
+      of them naming Redis. SignalR/backplane wiring stays in Caisson.Api.
+    -->
+    <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
 
 </Project>
