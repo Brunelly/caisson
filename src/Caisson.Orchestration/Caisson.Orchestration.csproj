@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Discovery orchestration (story #8, ADR 0013). This is the ONE layer allowed to reference the
+    Caisson.Drivers.* assemblies: it invokes the read-only discovery drivers, feeds their output through
+    the pure correlation engine, and persists the result via the story-7 ingestion service. Caisson.Api
+    references only this project, and because Assembly.GetReferencedAssemblies() is non-transitive the
+    Api_references_no_driver_assembly guard stays green (the API never *names* a driver type).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Orchestration</RootNamespace>
+    <AssemblyName>Caisson.Orchestration</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <ProjectReference Include="..\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.MikroTik\Caisson.Drivers.MikroTik.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Redfish\Caisson.Drivers.Redfish.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Caisson.Orchestration.Tests" />
+  </ItemGroup>
+
+</Project>

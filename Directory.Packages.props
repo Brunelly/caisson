@@ -57,6 +57,12 @@
       NullLogger only, no logging provider/host — AOT-safe like the DI abstractions above (AC6/NFR6).
     -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <!--
+      Hosting/options for the discovery orchestration layer (story #8, ADR 0013): BackgroundService for
+      the job runner + scheduler, and IOptions binding for the config-bound rack definitions.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

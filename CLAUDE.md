@@ -37,8 +37,9 @@ non-reflective, DI-populated registry. See
 [ADR 0006](docs/adr/0006-readonly-driver-abstraction-and-registry.md) and
 [docs/adding-a-driver.md](docs/adding-a-driver.md). This story is **abstraction-only**: concrete
 MikroTik RouterOS and Redfish/IPMI implementations are future stories (#4/#5). M0 still persists
-observations only; the discovery **pipeline/orchestrator** is a future story (#8). The read-only
-control-plane **API host** and the correlation→persistence bridge now exist (story #7, below).
+observations only; the discovery **pipeline/orchestrator** now exists in `Caisson.Orchestration`
+(story #8, below). The read-only control-plane **API host** and the correlation→persistence bridge
+exist (story #7, below).
 
 ### Simulation-first testing
 Discovery will be validated against simulators (CHR + a Redfish simulator) with repeatable test data
@@ -100,6 +101,21 @@ JWT/Entra OIDC with a config-driven group/role → canonical-role mapping (Admin
 ServiceAccount); anonymous → 401, authenticated-without-a-role → 403. Correlation-id middleware honours
 /generates `X-Correlation-Id`, echoes it, and enriches every Serilog line; ProblemDetails for 400/404;
 `/health/live` and `/health/ready` (DB probe); OpenAPI/Swagger. See ADR 0012.
+
+### Discovery orchestration (drivers → correlation → persistence)
+`Caisson.Orchestration` is the **one layer allowed to reference `Caisson.Drivers.*`**: it drives a
+rack's read-only discovery, feeds the output through the pure correlation engine, and persists via the
+story-7 ingestion service. `Caisson.Api` references only `Caisson.Orchestration`; because
+`Assembly.GetReferencedAssemblies()` is non-transitive, the API still names no driver assembly and the
+`Api_references_no_driver_assembly` guard is unchanged. Discovery runs are modelled as durable,
+resumable, idempotent `DiscoveryJob`s (mutable, **not** append-only) with per-step `DiscoveryJobStep`
+rows; a `DiscoveryJobRunner` `BackgroundService` claims work atomically (`FOR UPDATE SKIP LOCKED`),
+retries transient driver failures with bounded backoff, heartbeats each step, and resumes crashed jobs.
+A partial-unique index enforces one active job per rack (409 on overlap), a second backs idempotent
+replay (202). A `DiscoveryScheduler` enqueues fixed-interval-plus-jitter runs through the **same**
+`IDiscoveryJobService`. The rack definition is config-bound (`Discovery:Racks`) with opaque credential
+refs — no secrets. Role-gated non-GET APIs (trigger/cancel/schedule) live only on the discovery
+controllers. See ADR 0013.
 
 ### EF Core + Npgsql, code-first migrations, snake_case
 PostgreSQL via Npgsql; schema is code-first through EF Core migrations. Column/table names are
