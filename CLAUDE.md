@@ -37,8 +37,8 @@ non-reflective, DI-populated registry. See
 [ADR 0006](docs/adr/0006-readonly-driver-abstraction-and-registry.md) and
 [docs/adding-a-driver.md](docs/adding-a-driver.md). This story is **abstraction-only**: concrete
 MikroTik RouterOS and Redfish/IPMI implementations are future stories (#4/#5). M0 still persists
-observations only; there is no discovery pipeline or API host wired up yet — those, along with
-health/query endpoints, are noted for a later story.
+observations only; the discovery **pipeline/orchestrator** is a future story (#8). The read-only
+control-plane **API host** and the correlation→persistence bridge now exist (story #7, below).
 
 ### Simulation-first testing
 Discovery will be validated against simulators (CHR + a Redfish simulator) with repeatable test data
@@ -79,6 +79,27 @@ disambiguation. It is deterministic (stable ordering/scores) and side-effect fre
 `AddTopologyCorrelation()`. Confidence bands are High ≥ 0.8 / Medium 0.5–0.79 / Low < 0.5. See
 [ADR 0010](docs/adr/0010-topology-correlation-engine.md) and
 [docs/topology-correlation.md](docs/topology-correlation.md).
+
+### Correlation → persistence bridge, per-entity diffs, and audit trail
+Story #7 persists each discovery run as an immutable, versioned `TopologySnapshot` (monotonic per-rack
+`Version`, `TriggerType`, run timing) together with durable per-entity diffs (`TopologyEntityDiff`,
+computed by stable key between consecutive snapshots) and a tamper-evident audit trail
+(`TopologyAuditEvent`). The bridge lives in `Caisson.Infrastructure` (`Persistence/Ingestion`,
+`Persistence/Queries`, `Persistence/Shaping`) — a `ProjectReference` to the pure `Caisson.Correlation`,
+not a separate application project. The mapper/differ/graph-projector/cursor codec are pure and DB-free;
+the `TopologySnapshotIngestionService` is the only DbContext-touching piece and does a single atomic
+`SaveChangesAsync` (NFR3). Both new entities implement `IAppendOnly`: the `DbContext` guard blocks
+update **and** delete, and a DB trigger on `topology_audit_event` enforces it against raw SQL (NFR4).
+Canonical stable keys are defined once in `Caisson.Domain.Topology.Diffing.StableKeys`. See ADR 0011.
+
+### Read-only control-plane API host
+`Caisson.Api` (ASP.NET Core, `Microsoft.NET.Sdk.Web`) is the M0 control plane: strictly **read-only**,
+GET-only topology/audit query endpoints under `/api/racks/{rackId}/topology/...`. It references only
+`Caisson.Infrastructure` (never any `Caisson.Drivers.*`, enforced by a guard test — NFR1). RBAC uses
+JWT/Entra OIDC with a config-driven group/role → canonical-role mapping (Admin/Operator/ReadOnly/
+ServiceAccount); anonymous → 401, authenticated-without-a-role → 403. Correlation-id middleware honours
+/generates `X-Correlation-Id`, echoes it, and enriches every Serilog line; ProblemDetails for 400/404;
+`/health/live` and `/health/ready` (DB probe); OpenAPI/Swagger. See ADR 0012.
 
 ### EF Core + Npgsql, code-first migrations, snake_case
 PostgreSQL via Npgsql; schema is code-first through EF Core migrations. Column/table names are
