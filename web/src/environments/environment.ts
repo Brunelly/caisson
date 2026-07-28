@@ -7,7 +7,7 @@ export const environment = {
   oidc: {
     authority: 'https://login.microsoftonline.com/<tenant-id>/v2.0',
     clientId: '<dev-spa-client-id>',
-    redirectUri: 'http://localhost:4200/auth-callback',
+    redirectUri: 'http://localhost:4200/',
     postLogoutRedirectUri: 'http://localhost:4200/',
     scope: 'openid profile offline_access api://<api-app-id>/Topology.Read',
   },
