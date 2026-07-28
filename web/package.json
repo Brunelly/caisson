@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
+    "build:e2e": "ng build --configuration e2e",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",

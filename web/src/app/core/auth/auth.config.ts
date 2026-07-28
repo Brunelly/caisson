@@ -32,6 +32,13 @@ export class InMemoryStorage implements AbstractSecurityStorage {
   }
 }
 
+// Story #11: the e2e-smoke build configuration (`ng build --configuration e2e`) replaces this ENTIRE
+// FILE with auth.config.e2e.ts via angular.json's fileReplacements, mirroring how the `production`
+// configuration replaces environment.ts/app.routes.ts (ADR 0016 already established — and rejected the
+// alternative — that a runtime `if (environment.someFlag)` branch here is NOT reliably tree-shaken out
+// of the production bundle by the bundler, so the bypass code must live in a file that is simply never
+// compiled into that bundle at all, not one that is compiled in but supposedly never executed).
+
 export function provideCaissonAuth() {
   return makeEnvironmentProviders([
     provideAuth(

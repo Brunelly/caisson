@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Story #11: a repo-native console seeder for the CI Angular e2e smoke. Boots the in-process
+    simulators + real drivers + AddCaissonOrchestration against $CAISSON_DB, migrates, seeds one rack,
+    drives a discovery job to Succeeded through the real orchestration path, and prints
+    E2E_RACK_ID/E2E_SEARCH_TERM/E2E_SEARCH_LABEL_PART so the live API can serve the already-persisted
+    snapshot read-only — the API never needs to reach the simulators. Chosen over calling the external
+    mcp-tooling-caisson runner because mcp-tooling must never be referenced from this repo.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Caisson.VirtualRack.Seeder</RootNamespace>
+    <AssemblyName>Caisson.VirtualRack.Seeder</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Simulators\Caisson.Drivers.Simulators.csproj" />
+    <ProjectReference Include="..\Caisson.VirtualRack.Fixtures\Caisson.VirtualRack.Fixtures.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>
