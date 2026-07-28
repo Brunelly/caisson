@@ -74,3 +74,19 @@ v6↔v7 parsing, an env-backed `ISwitchCredentialResolver` for `CredentialsRef`,
 simulator-backed integration suite. See [docs/routeros-discovery.md](routeros-discovery.md) for its
 data sources, least-privilege RouterOS permissions, and how to run its tests (simulator or real CHR),
 and [ADR 0008](adr/0008-mikrotik-routeros-readonly-driver.md) for the design decisions.
+
+## 7. A second worked example: the Redfish / IPMI BMC driver
+
+`Caisson.Drivers.Redfish` is the first production **BMC** driver and shows the same steps for an
+`IBmcDiscoveryDriver`: a BCL-only `HttpClient` Redfish client with a code-level read-only **path**
+allowlist (`RedfishReadPaths` — GET-only, no `/Actions/` or `/Settings`), source-generated
+`System.Text.Json` DTOs (reflection-free/AOT-safe), and a **per-method IPMI fallback** behind the
+testable `IIpmiCommandRunner` seam guarded by a read-only `ipmitool` command allowlist. It reuses the
+RouterOS three-way TLS policy, an env-backed `IBmcCredentialResolver`, and a `("HPE", null, Redfish,
+"1.0.0")` descriptor resolved version-agnostically through `IBmcDriverRegistry`. It also demonstrates
+conveying data-source provenance (Redfish vs IPMI) through diagnostics/metrics/logs rather than widening
+the shared result records, and the one shared-abstraction change it required — `BmcNetworkInterfaceInfo.Mac`
+becoming nullable so a MAC-less NIC can be reported rather than dropped. See
+[docs/redfish-discovery.md](redfish-discovery.md) for its data sources, least-privilege iLO permissions,
+TLS/credential env vars, and how to run its tests (in-process HTTPS simulator or real iLO), and
+[ADR 0009](adr/0009-redfish-ipmi-readonly-bmc-driver.md) for the design decisions.

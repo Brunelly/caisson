@@ -1,0 +1,7 @@
+Set in Progress         : Set Complete
+Auth Type Support       : MD5
+IP Address Source       : Static Address
+IP Address              : 10.4.7.20
+Subnet Mask             : 255.255.255.0
+MAC Address             : 00:1a:2b:3c:4d:99
+Default Gateway IP      : 10.4.7.1

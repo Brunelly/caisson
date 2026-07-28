@@ -1,0 +1,29 @@
+{
+  "authFail": false,
+  "paths": {
+    "/redfish/v1": {
+      "@odata.id": "/redfish/v1",
+      "Systems": { "@odata.id": "/redfish/v1/Systems" }
+    },
+    "/redfish/v1/Systems": {
+      "Members@odata.count": 1,
+      "Members": [ { "@odata.id": "/redfish/v1/Systems/1" } ]
+    },
+    "/redfish/v1/Systems/1": {
+      "@odata.id": "/redfish/v1/Systems/1",
+      "Id": "1",
+      "UUID": "38373035-3831-4247-3830-353531384752",
+      "SerialNumber": "CZ3629abcd",
+      "Model": "ProLiant DL380 Gen10",
+      "Manufacturer": "HPE",
+      "HostName": "esx-node-07",
+      "BiosVersion": "U30 v2.60",
+      "EthernetInterfaces": { "@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces" }
+    },
+    "/redfish/v1/Systems/1/EthernetInterfaces": {
+      "@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces",
+      "Members@odata.count": 0,
+      "Members": []
+    }
+  }
+}

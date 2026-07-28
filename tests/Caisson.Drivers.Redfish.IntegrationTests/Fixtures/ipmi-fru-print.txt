@@ -1,0 +1,9 @@
+FRU Device Description : Builtin FRU Device (ID 0)
+ Chassis Type          : Rack Mount Chassis
+ Chassis Serial        : CZ3629abcd
+ Board Mfg             : HPE
+ Board Product         : ProLiant DL380 Gen10
+ Board Serial          : CZ3629abcd
+ Product Manufacturer  : HPE
+ Product Name          : ProLiant DL380 Gen10
+ Product Serial        : CZ3629abcd

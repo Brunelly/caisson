@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    HP iLO / Redfish read-only BMC discovery driver with an IPMI fallback (story #5). A structural and
+    security twin of Caisson.Drivers.MikroTik (ADR 0008/0009): AOT-compatible, no EF Core/Npgsql, and no
+    third-party Redfish/IPMI/HTTP NuGet — the Redfish client is an internal BCL-only System.Net.Http
+    implementation and the IPMI fallback shells out to ipmitool through a testable command-runner seam.
+    References Caisson.Domain for MacAddressValue and Caisson.Drivers.Abstractions for the driver contracts.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drivers.Redfish</RootNamespace>
+    <AssemblyName>Caisson.Drivers.Redfish</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Test seams: internal transport helpers, the client's TLS callback, and the factory's env-lookup ctor. -->
+    <InternalsVisibleTo Include="Caisson.Drivers.Redfish.Tests" />
+    <InternalsVisibleTo Include="Caisson.Drivers.Redfish.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

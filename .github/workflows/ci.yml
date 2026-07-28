@@ -89,6 +89,22 @@ jobs:
           path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
           if-no-files-found: ignore
 
+      - name: Redfish driver unit tests
+        run: dotnet test tests/Caisson.Drivers.Redfish.Tests --no-build -c Release
+
+      # In-process HTTPS Redfish simulator + stubbed ipmitool fixtures — no service container, deterministic
+      # and hardware-free. Set CAISSON_ILO_HOST / CAISSON_IPMI_HOST to point the same suite at real hardware.
+      - name: Redfish driver integration tests (simulator)
+        run: dotnet test tests/Caisson.Drivers.Redfish.IntegrationTests --no-build -c Release --logger "trx;LogFileName=redfish-integration.trx"
+
+      - name: Upload Redfish test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redfish-test-logs
+          path: tests/Caisson.Drivers.Redfish.IntegrationTests/TestResults/*.trx
+          if-no-files-found: ignore
+
       # Explicit migration apply + rollback gate against the service container,
       # independent of the Testcontainers-based fixture.
       - name: Migration apply/rollback gate

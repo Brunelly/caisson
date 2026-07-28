@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drivers.Redfish.Tests</RootNamespace>
+    <AssemblyName>Caisson.Drivers.Redfish.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Redfish\Caisson.Drivers.Redfish.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+</Project>

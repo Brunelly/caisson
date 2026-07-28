@@ -36,4 +36,11 @@ public enum ReasonCode
 
     /// <summary>The source data could not be parsed.</summary>
     ParseError,
+
+    /// <summary>
+    /// The data for this item was obtained from a fallback source rather than the primary one (e.g. read
+    /// via IPMI because Redfish was unavailable or returned insufficient data). Records provenance so
+    /// downstream correlation can weight or audit the evidence.
+    /// </summary>
+    FallbackSource,
 }
