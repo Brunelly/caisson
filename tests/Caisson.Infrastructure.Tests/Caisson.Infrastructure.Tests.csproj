@@ -10,6 +10,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <!-- Story-7 bridge tests build correlation inputs/results and driver info records directly. -->
+    <ProjectReference Include="..\..\src\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

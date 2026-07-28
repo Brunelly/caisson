@@ -8,6 +8,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+    <!--
+      The persistence bridge maps the pure correlation result + observed input into the domain graph
+      (story #7, ADR 0011). No layering rule forbids Infrastructure depending on the pure Correlation
+      engine; Correlation stays EF-free.
+    -->
+    <ProjectReference Include="..\Caisson.Correlation\Caisson.Correlation.csproj" />
   </ItemGroup>
 
   <ItemGroup>
