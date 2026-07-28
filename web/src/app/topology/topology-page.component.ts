@@ -3,10 +3,12 @@
 // and the discovery-job status. Graph/search/legend/details-panel child components are wired in here by
 // later story #10 steps; this page owns only rackId resolution, loading/error state and the header.
 import { DatePipe } from '@angular/common';
-import { Component, effect, inject, viewChild } from '@angular/core';
+import { Component, DestroyRef, effect, inject, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { TopologyDetailsPanelComponent } from './details/topology-details-panel.component';
 import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyLegendComponent } from './legend/topology-legend.component';
+import { TopologySignalRService } from './live/topology-signalr.service';
 import type { TopologyGraphEdge, TopologyGraphNode } from './model/topology-graph-model';
 import { TopologySearchComponent } from './search/topology-search.component';
 import { TopologyStateService } from './state/topology-state.service';
@@ -40,8 +42,18 @@ import { TopologyStateService } from './state/topology-state.service';
           <app-topology-search (resultSelected)="onSearchResultSelected($event)" />
         </header>
 
+        @if (state.connectionStatus() === 'stale' || state.connectionStatus() === 'disconnected') {
+          <p class="connection-banner" role="status">
+            {{
+              state.connectionStatus() === 'stale'
+                ? 'Live updates are stale'
+                : 'Live updates disconnected'
+            }}
+            — showing the last known snapshot.
+          </p>
+        }
+
         <div class="topology-shell">
-          <!-- app-topology-details-panel is composed here by a later story #10 step. -->
           <app-topology-graph
             #graph
             [graph]="state.graph()"
@@ -49,6 +61,7 @@ import { TopologyStateService } from './state/topology-state.service';
             (edgeSelected)="onEdgeSelected($event)"
           />
           <app-topology-legend />
+          <app-topology-details-panel />
         </div>
       }
     </section>
@@ -89,25 +102,58 @@ import { TopologyStateService } from './state/topology-state.service';
         font-size: 0.875rem;
       }
 
+      .connection-banner {
+        margin: 0;
+        padding: 0.5rem 1rem;
+        background: var(--color-status-ambiguous-bg);
+        color: var(--color-status-ambiguous);
+        font-size: 0.8125rem;
+      }
+
       .topology-shell {
         flex: 1;
         min-height: 0;
+        display: flex;
+        position: relative;
+      }
+
+      .topology-shell app-topology-graph {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .topology-shell app-topology-legend {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
       }
     `,
   ],
-  imports: [DatePipe, TopologyGraphComponent, TopologyLegendComponent, TopologySearchComponent],
+  imports: [
+    DatePipe,
+    TopologyGraphComponent,
+    TopologyLegendComponent,
+    TopologySearchComponent,
+    TopologyDetailsPanelComponent,
+  ],
 })
 export class TopologyPageComponent {
   protected readonly state = inject(TopologyStateService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly signalR = inject(TopologySignalRService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly graphRef = viewChild<TopologyGraphComponent>('graph');
 
   constructor() {
     const rackId = this.route.snapshot.paramMap.get('rackId');
     if (rackId) {
       this.state.loadRackTopology(rackId);
+      this.signalR.connect(rackId);
     }
+
+    this.destroyRef.onDestroy(() => this.signalR.disconnect());
 
     // AC6: an unauthorized/forbidden response from the initial load (e.g. a session that lost its
     // rack-level access mid-page) routes to the generic access-denied state, same as the guard.

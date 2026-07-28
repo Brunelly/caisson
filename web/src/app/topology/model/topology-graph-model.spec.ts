@@ -142,6 +142,18 @@ describe('deriveTopologyGraph', () => {
     expect(model.nodes.switches[0].stableKey).toBe('SW-1');
   });
 
+  it('gives ports and VLANs a backend-format stableKey (StableKeys.ForSwitchPort/ForVlan), not the D3 join id', () => {
+    const model = deriveTopologyGraph(fixture());
+    const ether1 = model.nodes.ports.find((p) => p.name === 'ether1')!;
+    // StableKeys.ForSwitchPort is "{switchKey}|{portName}" — the entity-detail API expects this,
+    // not the render-only "port:SW-1/ether1" join id (a real bug caught while wiring the details panel).
+    expect(ether1.stableKey).toBe('SW-1|ether1');
+    expect(ether1.stableKey).not.toBe(ether1.id);
+
+    const vlan10 = model.nodes.vlans.find((v) => v.vlanId === 10)!;
+    expect(vlan10.stableKey).toBe('10');
+  });
+
   it('derives a port node only for best-attachment ports and unmapped ports, not other candidates', () => {
     const model = deriveTopologyGraph(fixture());
     const portNames = model.nodes.ports.map((p) => p.name).sort();

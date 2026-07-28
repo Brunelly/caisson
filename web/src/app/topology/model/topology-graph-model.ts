@@ -72,6 +72,7 @@ export interface PortGraphNode extends BaseGraphNode {
 
 export interface VlanGraphNode extends BaseGraphNode {
   type: 'vlan';
+  stableKey: string;
   vlanId: number;
 }
 
@@ -121,6 +122,17 @@ export function vlanNodeId(vlanId: number): string {
   return `vlan:${vlanId}`;
 }
 
+/** Mirrors Caisson.Domain.Topology.Diffing.StableKeys.ForSwitchPort — the key the entity-detail API
+ * expects, distinct from portNodeId (a render-only D3 join key with a `port:` prefix and `/` separator). */
+export function switchPortStableKey(switchStableKey: string, portName: string): string {
+  return `${switchStableKey}|${portName}`;
+}
+
+/** Mirrors Caisson.Domain.Topology.Diffing.StableKeys.ForVlan. */
+export function vlanStableKey(vlanId: number): string {
+  return vlanId.toString(10);
+}
+
 export function classifyNic(nic: NicNodeDto): MappingState {
   if (!nic.bestAttachment) {
     return 'unmapped';
@@ -159,7 +171,7 @@ export function deriveTopologyGraph(graph: TopologyGraphDto): TopologyGraphModel
       node = {
         id,
         type: 'port',
-        stableKey: id,
+        stableKey: switchPortStableKey(switchStableKey, portName),
         switchId: switchNode.id,
         name: portName,
         state: 'unmapped',
@@ -174,7 +186,13 @@ export function deriveTopologyGraph(graph: TopologyGraphDto): TopologyGraphModel
     const id = vlanNodeId(vlanId);
     let node = vlans.get(vlanId);
     if (!node) {
-      node = { id, type: 'vlan', vlanId, label: `VLAN ${vlanId}` };
+      node = {
+        id,
+        type: 'vlan',
+        stableKey: vlanStableKey(vlanId),
+        vlanId,
+        label: `VLAN ${vlanId}`,
+      };
       vlans.set(vlanId, node);
     }
     return node;

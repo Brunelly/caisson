@@ -19,6 +19,32 @@ export class TelemetryService {
     this.record('http.correlation', correlationId, { url: requestUrl });
   }
 
+  // Story #10 step 6 — SignalR live-update lifecycle events (NFR6). None of these log MAC/host/
+  // credential data; only rack/job ids, versions and status strings.
+  connect(rackId: string): void {
+    this.record('signalr.connect', null, { rackId });
+  }
+
+  disconnect(rackId: string | null): void {
+    this.record('signalr.disconnect', null, { rackId });
+  }
+
+  reconnecting(rackId: string | null): void {
+    this.record('signalr.reconnecting', null, { rackId });
+  }
+
+  reconnected(rackId: string | null): void {
+    this.record('signalr.reconnected', null, { rackId });
+  }
+
+  snapshotApplied(rackId: string, version: number, correlationId: string | null): void {
+    this.record('signalr.snapshot-applied', correlationId, { rackId, version });
+  }
+
+  error(context: string, message: string, correlationId: string | null = null): void {
+    this.record('signalr.error', correlationId, { context, message });
+  }
+
   record(type: string, correlationId: string | null, detail?: TelemetryEvent['detail']): void {
     const event: TelemetryEvent = {
       type,
