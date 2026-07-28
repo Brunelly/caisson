@@ -1,5 +1,6 @@
 using Caisson.Correlation.Input;
 using Caisson.Correlation.Results;
+using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Domain.ValueObjects;
@@ -22,7 +23,13 @@ public sealed record SeededTopology(
 
     /// <summary>The stable key of a seeded server that was modified between v1 and v2.</summary>
     public string ServerStableKey => "uuid-1";
+
+    /// <summary>The discovery rack seeded with a schedule and a completed job (story #8).</summary>
+    public SeededDiscovery Discovery { get; init; } = null!;
 }
+
+/// <summary>The discovery orchestration fixtures seeded for the story-8 API tests.</summary>
+public sealed record SeededDiscovery(Guid RackId, string ExternalKey, Guid CompletedJobId);
 
 /// <summary>Seeds a rack with two snapshots (the second modifies a server) via the real ingestion service.</summary>
 internal static class SeedData
@@ -52,7 +59,42 @@ internal static class SeedData
             second = await service.IngestAsync(Request(rackId, Observed("node-1-renamed"), Correlation(), V2At));
         }
 
-        return new SeededTopology(rackId, first.SnapshotId, first.Version, second.SnapshotId, second.Version);
+        var discovery = await SeedDiscoveryAsync(harness);
+        return new SeededTopology(rackId, first.SnapshotId, first.Version, second.SnapshotId, second.Version)
+        {
+            Discovery = discovery,
+        };
+    }
+
+    /// <summary>Seeds a discovery rack with a disabled schedule and a completed job (story #8).</summary>
+    private static async Task<SeededDiscovery> SeedDiscoveryAsync(PostgresHarness harness)
+    {
+        var rackId = Guid.NewGuid();
+        var externalKey = "seed-discovery-rack";
+        var at = new DateTime(2026, 7, 25, 0, 0, 0, DateTimeKind.Utc);
+
+        await using var context = harness.CreateContext();
+        context.Racks.Add(new Rack(rackId, externalKey, "Discovery Seed Rack", DateTime.UtcNow));
+
+        var job = new DiscoveryJob(
+            Guid.NewGuid(), rackId, TriggerType.OnDemand, "svc-discovery", ActorType.ServiceAccount,
+            Guid.NewGuid(), at);
+        job.SeedSteps(Guid.NewGuid);
+        job.MarkInProgress(at);
+        foreach (var step in job.Steps)
+        {
+            step.BeginAttempt(at);
+            step.Succeed(at.AddSeconds(1), "{\"discovered\":1}");
+        }
+
+        job.Succeed(at.AddSeconds(5));
+        context.DiscoveryJobs.Add(job);
+
+        context.RackDiscoverySchedules.Add(
+            new RackDiscoverySchedule(rackId, enabled: false, intervalSeconds: 900, jitterSeconds: 60));
+
+        await context.SaveChangesAsync();
+        return new SeededDiscovery(rackId, externalKey, job.Id);
     }
 
     private static TopologyIngestionRequest Request(
