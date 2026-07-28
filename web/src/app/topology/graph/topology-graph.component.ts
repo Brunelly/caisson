@@ -14,6 +14,7 @@ import {
   viewChild,
 } from '@angular/core';
 import * as d3 from 'd3';
+import { flattenGraphNodes } from '../model/topology-graph-model';
 import type {
   TopologyEdgeKind,
   TopologyGraphEdge,
@@ -155,7 +156,7 @@ export class TopologyGraphComponent {
       return;
     }
 
-    const allNodes = flattenNodes(graph);
+    const allNodes = flattenGraphNodes(graph);
     computePositions(allNodes).forEach((point, id) => this.positions.set(id, point));
 
     const structuralLinks = graph.nodes.ports.map((port) => ({
@@ -250,16 +251,6 @@ export class TopologyGraphComponent {
 
     nodeSelection.select<SVGTextElement>('text').text((d) => d.label);
   }
-}
-
-function flattenNodes(graph: TopologyGraphModel): TopologyGraphNode[] {
-  return [
-    ...graph.nodes.servers,
-    ...graph.nodes.nics,
-    ...graph.nodes.switches,
-    ...graph.nodes.ports,
-    ...graph.nodes.vlans,
-  ];
 }
 
 function computePositions(nodes: TopologyGraphNode[]): Map<string, Point> {

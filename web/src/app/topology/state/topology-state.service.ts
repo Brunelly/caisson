@@ -9,6 +9,7 @@ import {
   type TopologyGraphModel,
   type TopologyGraphNode,
   deriveTopologyGraph,
+  findNodeById,
 } from '../model/topology-graph-model';
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
@@ -81,9 +82,9 @@ export class TopologyStateService {
       return;
     }
 
-    const stillExists = allNodes(graph).some((n) => n.id === current.id);
-    if (stillExists) {
-      this._selection.set(allNodes(graph).find((n) => n.id === current.id) ?? null);
+    const stillPresent = findNodeById(graph, current.id);
+    if (stillPresent) {
+      this._selection.set(stillPresent);
       this._selectionStaleNotice.set(false);
     } else {
       this._selectionStaleNotice.set(true);
@@ -107,14 +108,4 @@ export class TopologyStateService {
   setDiscoveryStatus(status: DiscoveryStatusDto): void {
     this._discoveryStatus.set(status);
   }
-}
-
-function allNodes(graph: TopologyGraphModel): TopologyGraphNode[] {
-  return [
-    ...graph.nodes.servers,
-    ...graph.nodes.nics,
-    ...graph.nodes.switches,
-    ...graph.nodes.ports,
-    ...graph.nodes.vlans,
-  ];
 }

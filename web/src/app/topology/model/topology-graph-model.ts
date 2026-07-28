@@ -275,3 +275,18 @@ export function deriveTopologyGraph(graph: TopologyGraphDto): TopologyGraphModel
     edges,
   };
 }
+
+/** Every node across all five columns, in a stable (server, nic, switch, port, vlan) order. */
+export function flattenGraphNodes(graph: TopologyGraphModel): TopologyGraphNode[] {
+  return [
+    ...graph.nodes.servers,
+    ...graph.nodes.nics,
+    ...graph.nodes.switches,
+    ...graph.nodes.ports,
+    ...graph.nodes.vlans,
+  ];
+}
+
+export function findNodeById(graph: TopologyGraphModel, id: string): TopologyGraphNode | null {
+  return flattenGraphNodes(graph).find((node) => node.id === id) ?? null;
+}

@@ -8,6 +8,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyLegendComponent } from './legend/topology-legend.component';
 import type { TopologyGraphEdge, TopologyGraphNode } from './model/topology-graph-model';
+import { TopologySearchComponent } from './search/topology-search.component';
 import { TopologyStateService } from './state/topology-state.service';
 
 @Component({
@@ -36,10 +37,11 @@ import { TopologyStateService } from './state/topology-state.service';
               }
             </span>
           }
+          <app-topology-search (resultSelected)="onSearchResultSelected($event)" />
         </header>
 
         <div class="topology-shell">
-          <!-- app-topology-search / app-topology-details-panel are composed here by later story #10 steps. -->
+          <!-- app-topology-details-panel is composed here by a later story #10 step. -->
           <app-topology-graph
             #graph
             [graph]="state.graph()"
@@ -93,7 +95,7 @@ import { TopologyStateService } from './state/topology-state.service';
       }
     `,
   ],
-  imports: [DatePipe, TopologyGraphComponent, TopologyLegendComponent],
+  imports: [DatePipe, TopologyGraphComponent, TopologyLegendComponent, TopologySearchComponent],
 })
 export class TopologyPageComponent {
   protected readonly state = inject(TopologyStateService);
@@ -126,8 +128,9 @@ export class TopologyPageComponent {
     this.graphRef()?.panZoomToNode(edge.source);
   }
 
-  /** Used by search (story #10 step 5) to focus/highlight a selected result in the graph. */
-  focusNode(nodeId: string): void {
-    this.graphRef()?.panZoomToNode(nodeId);
+  /** Selecting a search result opens its drill-down and pans/zooms the graph to it (AC2). */
+  protected onSearchResultSelected(node: TopologyGraphNode): void {
+    this.state.selectEntity(node);
+    this.graphRef()?.panZoomToNode(node.id);
   }
 }
