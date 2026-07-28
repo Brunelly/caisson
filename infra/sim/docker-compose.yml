@@ -1,0 +1,44 @@
+# Story #11 simulation-first virtual-rack harness: local Postgres + Redis only (NFR2/NFR4).
+#
+# The MikroTik/Redfish simulators themselves are NOT containerized here — they run in-process inside
+# the .NET test/seeder host (tests/Caisson.Drivers.Simulators), which is faster, fully deterministic,
+# and already the established CI pattern (see docs/adr/0017-simulation-first-virtual-rack-harness.md
+# for why this is an intentional deviation from a literal "containerize the Redfish simulator" reading).
+#
+# Usage:
+#   docker compose -f infra/sim/docker-compose.yml up -d
+#   docker compose -f infra/sim/docker-compose.yml down -v   # tear down, including the data volumes
+#
+# See infra/sim/.env.example for every environment variable the harness (seeder, integration tests,
+# Caisson.Api) reads, and docs/simulation-harness.md for the full contributor walkthrough.
+name: caisson-sim
+
+services:
+  postgres:
+    image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
+    environment:
+      POSTGRES_USER: caisson
+      POSTGRES_PASSWORD: caisson
+      POSTGRES_DB: caisson
+    ports:
+      - "5432:5432"
+    volumes:
+      - caisson-sim-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caisson"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7@sha256:595cc6f2bb3af6e03347b90deb6123c6aa2c81dea05ce08128de8a174b6ac67b
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caisson-sim-postgres:

@@ -84,3 +84,23 @@ See [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md) for r
 a live `Caisson.Api`, and [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the
 architecture. Never commit `web/node_modules`, `web/dist`, `web/.angular` or `web/coverage` (already
 git-ignored) — never add secrets to `web/src/environments/*.ts`, which is public SPA config only.
+
+## Simulation harness (virtual rack, no physical hardware)
+
+`tests/Caisson.VirtualRack.IntegrationTests` drives the real switch/BMC drivers against in-process
+simulators through the real discovery/correlation/persistence path and asserts the result against a
+known ground truth:
+
+```bash
+dotnet test tests/Caisson.VirtualRack.IntegrationTests -c Release
+```
+
+Needs only Postgres (`CAISSON_TEST_DB`, or Docker via Testcontainers) — it skips, rather than fails,
+when neither is available. See [`docs/simulation-harness.md`](docs/simulation-harness.md) for the full
+local walkthrough (bring-up, seeding, running the API/UI against the seeded rack, expected output, and
+troubleshooting) and [ADR 0017](docs/adr/0017-simulation-first-virtual-rack-harness.md) for the design,
+including the LLDP fidelity guard that applies if you ever wire a real CHR through a host bridge.
+
+Never enable `Testing:EnableTestAuth` (ADR 0018) outside `Development`/`Testing` — the host refuses to
+boot if you do (`TestAuthStartupGuard`) — and never commit it as `true` in any non-Development
+`appsettings` file.

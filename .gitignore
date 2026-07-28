@@ -39,6 +39,12 @@ Thumbs.db
 ## Logs
 *.log
 
+## Local env files (infra/sim/.env.example is the committed, secret-free template — never commit a
+## real .env derived from it).
+.env
+.env.local
+infra/**/.env
+
 ## Angular workspace (web/) — dependency/build/tool artifacts, never committed.
 web/node_modules/
 web/dist/
