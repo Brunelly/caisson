@@ -75,11 +75,18 @@ dotnet ef database update 0         --project src/Caisson.Infrastructure
 dotnet ef migrations add <Name>     --project src/Caisson.Infrastructure
 ```
 
+## Frontend (`web/`)
+
+Story #10 adds the Angular live rack topology map UI under `web/` — see
+[`docs/frontend-getting-started.md`](docs/frontend-getting-started.md) for running it against a live
+API, and [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the architecture.
+
 ## Documentation
 
 - Architecture decisions: [`docs/adr/`](docs/adr/)
 - Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Architecture record for AI/human contributors: [`CLAUDE.md`](CLAUDE.md)
+- Frontend getting started: [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md)
 
 ## License
 

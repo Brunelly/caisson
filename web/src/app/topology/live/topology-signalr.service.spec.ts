@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import type { HubConnection } from '@microsoft/signalr';
 import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +8,7 @@ import type { DiscoveryStatusDto, SnapshotDetailDto } from '../model/topology-co
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
 import { TopologyStateService } from '../state/topology-state.service';
-import { TopologySignalRService } from './topology-signalr.service';
+import { HUB_CONNECTION_FACTORY, TopologySignalRService } from './topology-signalr.service';
 
 type EventHandler = (payload: unknown) => void;
 
@@ -78,31 +79,14 @@ class FakeHubConnection {
 let lastConnection: FakeHubConnection | null = null;
 let nextStartBehavior: 'resolve' | 'reject' = 'resolve';
 
-vi.mock('@microsoft/signalr', () => {
-  class FakeHubConnectionBuilder {
-    withUrl() {
-      return this;
-    }
-    withAutomaticReconnect() {
-      return this;
-    }
-    build() {
-      lastConnection = new FakeHubConnection();
-      lastConnection.startBehavior = nextStartBehavior;
-      return lastConnection;
-    }
-  }
-
-  return {
-    HubConnectionBuilder: FakeHubConnectionBuilder,
-    HubConnectionState: {
-      Disconnected: 'Disconnected',
-      Connecting: 'Connecting',
-      Connected: 'Connected',
-      Reconnecting: 'Reconnecting',
-    },
-  };
-});
+/** DI-overridden in place of the real hub-connection factory (see HUB_CONNECTION_FACTORY) — avoids
+ * mocking the `@microsoft/signalr` module, which under Vitest's shared-worker execution model can leak
+ * across spec files instead of staying scoped to this one. */
+function fakeHubConnectionFactory(): HubConnection {
+  lastConnection = new FakeHubConnection();
+  lastConnection.startBehavior = nextStartBehavior;
+  return lastConnection as unknown as HubConnection;
+}
 
 function snapshotDetail(version: number): SnapshotDetailDto {
   return {
@@ -153,6 +137,7 @@ describe('TopologySignalRService', () => {
 
     TestBed.configureTestingModule({
       providers: [
+        { provide: HUB_CONNECTION_FACTORY, useValue: fakeHubConnectionFactory },
         { provide: OidcSecurityService, useValue: { getAccessToken: () => of('token') } },
         { provide: TopologySnapshotService, useValue: { getLatest } },
         { provide: DiscoveryStatusService, useValue: { getStatus: getDiscoveryStatus } },

@@ -66,3 +66,21 @@ dotnet test tests/Caisson.Infrastructure.Tests
   `IEntityTypeConfiguration<T>` classes.
 - Nullable reference types and implicit usings are enabled solution-wide; keep the build warning-free.
 - Do not add remediation/desired-state fields or any credential/PII fields to the observed-state model.
+
+## Frontend (`web/`) checks
+
+The `angular-build-and-test` CI job runs these; run them before pushing a frontend change:
+
+```bash
+cd web
+npm ci
+npm run lint            # @angular-eslint
+npm run format:check    # Prettier, matching the root .editorconfig
+npm run build
+npm test -- --watch=false   # Vitest/jsdom, headless
+```
+
+See [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md) for running the app against
+a live `Caisson.Api`, and [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the
+architecture. Never commit `web/node_modules`, `web/dist`, `web/.angular` or `web/coverage` (already
+git-ignored) — never add secrets to `web/src/environments/*.ts`, which is public SPA config only.

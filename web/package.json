@@ -9,7 +9,8 @@
     "test": "ng test",
     "lint": "ng lint",
     "format:check": "prettier --check \"src/**/*.{ts,html,scss}\"",
-    "format:write": "prettier --write \"src/**/*.{ts,html,scss}\""
+    "format:write": "prettier --write \"src/**/*.{ts,html,scss}\"",
+    "e2e": "playwright test"
   },
   "private": true,
   "packageManager": "npm@10.9.8",

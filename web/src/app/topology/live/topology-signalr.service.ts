@@ -3,7 +3,7 @@
 // Program.cs), a custom 1s->2s->4s->8s->cap-30s(+jitter) backoff, per-rack subscribe/unsubscribe,
 // idempotent event application (applyIfNewer), a 30s watchdog reset by any inbound message including
 // Heartbeat, and graceful degradation to REST polling when the hub is unavailable.
-import { Injectable, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
 import {
   HubConnection,
   HubConnectionBuilder,
@@ -65,8 +65,27 @@ const WATCHDOG_MS = 30000;
 const POLL_INTERVAL_MS = 15000;
 const INITIAL_CONNECT_RETRY_MS = 30000;
 
+/**
+ * A DI seam for constructing the hub connection. Real usage builds an actual `HubConnection` (the
+ * default factory below); tests override this token with a fake instead of mocking the
+ * `@microsoft/signalr` module — module-mocking one spec file can otherwise leak into others under
+ * Vitest's shared-worker (`isolate: false`) execution model, since all spec files in a run can share
+ * one module registry.
+ */
+export const HUB_CONNECTION_FACTORY = new InjectionToken<
+  (url: string, accessTokenFactory: () => string | Promise<string>) => HubConnection
+>('HUB_CONNECTION_FACTORY', {
+  providedIn: 'root',
+  factory: () => (url, accessTokenFactory) =>
+    new HubConnectionBuilder()
+      .withUrl(url, { accessTokenFactory })
+      .withAutomaticReconnect(new TopologyReconnectPolicy())
+      .build(),
+});
+
 @Injectable({ providedIn: 'root' })
 export class TopologySignalRService {
+  private readonly createConnection = inject(HUB_CONNECTION_FACTORY);
   private readonly oidc = inject(OidcSecurityService);
   private readonly snapshots = inject(TopologySnapshotService);
   private readonly discoveryStatus = inject(DiscoveryStatusService);
@@ -113,12 +132,9 @@ export class TopologySignalRService {
   }
 
   private buildConnection(): HubConnection {
-    const connection = new HubConnectionBuilder()
-      .withUrl(environment.hubUrl, {
-        accessTokenFactory: () => firstValueFrom(this.oidc.getAccessToken()),
-      })
-      .withAutomaticReconnect(new TopologyReconnectPolicy())
-      .build();
+    const connection = this.createConnection(environment.hubUrl, () =>
+      firstValueFrom(this.oidc.getAccessToken()),
+    );
 
     connection.on('SnapshotUpdated', (event: SnapshotUpdatedEvent) =>
       this.onSnapshotUpdated(event),

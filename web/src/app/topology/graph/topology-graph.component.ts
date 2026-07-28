@@ -50,7 +50,10 @@ const EDGE_BADGE_GLYPH: Partial<Record<TopologyGraphEdge['state'], string>> = {
   encapsulation: ViewEncapsulation.None,
   styleUrl: './topology-graph.component.scss',
   template: `
-    <svg #svg class="topology-graph" role="img" aria-label="Rack topology graph">
+    <!-- role="group", not "img": the graph contains individually-focusable node/edge buttons, and
+         role="img" would tell assistive tech to treat this as an atomic, non-interactive image,
+         hiding those descendants (axe: nested-interactive, WCAG 4.1.2). -->
+    <svg #svg class="topology-graph" role="group" aria-label="Rack topology graph">
       <g class="topology-graph__viewport">
         <g class="topology-graph__structural-edges"></g>
         <g class="topology-graph__edges"></g>

@@ -166,3 +166,51 @@ jobs:
           path: |
             web/coverage
           if-no-files-found: ignore
+
+  # Playwright smoke test (Task #55) against a real, already-running, already-seeded Caisson.Api +
+  # Postgres/Redis stack — seeding the rack and driving a discovery job to produce a live snapshot
+  # event is owned by the separate mcp-tooling-caisson harness (never referenced from this repo). This
+  # job stays inert (skipped) until an orchestrating pipeline that stands up that stack sets the
+  # `E2E_ENABLED` repository variable and the E2E_* environment values below; it never runs on a plain
+  # PR build, since there is nothing here to seed a rack against.
+  angular-e2e-smoke:
+    runs-on: ubuntu-latest
+    if: ${{ vars.E2E_ENABLED == 'true' }}
+
+    defaults:
+      run:
+        working-directory: web
+
+    env:
+      E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+      E2E_RACK_ID: ${{ vars.E2E_RACK_ID }}
+      E2E_SEARCH_TERM: ${{ vars.E2E_SEARCH_TERM }}
+      E2E_SEARCH_LABEL_PART: ${{ vars.E2E_SEARCH_LABEL_PART }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e smoke test
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          if-no-files-found: ignore
