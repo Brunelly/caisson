@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Caisson.Orchestration.Tests" />
+    <InternalsVisibleTo Include="Caisson.Infrastructure.Tests" />
   </ItemGroup>
 
 </Project>

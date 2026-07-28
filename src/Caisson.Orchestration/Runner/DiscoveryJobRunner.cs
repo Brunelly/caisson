@@ -117,11 +117,21 @@ public sealed class DiscoveryJobRunner : BackgroundService
         return true;
     }
 
-    private async Task<Guid?> ClaimAsync(CaissonDbContext context, CancellationToken cancellationToken)
+    private Task<Guid?> ClaimAsync(CaissonDbContext context, CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow().UtcDateTime;
         var stale = now.AddSeconds(-_options.Value.HeartbeatStalenessSeconds);
+        return ClaimNextAsync(context, now, stale, cancellationToken);
+    }
 
+    /// <summary>
+    /// Atomically claims the next Queued job — or reclaims an <c>InProgress</c> job whose heartbeat is
+    /// older than <paramref name="stale"/> — via <c>FOR UPDATE SKIP LOCKED</c>. Internal so concurrency
+    /// tests can exercise the claim directly.
+    /// </summary>
+    internal static async Task<Guid?> ClaimNextAsync(
+        CaissonDbContext context, DateTime now, DateTime stale, CancellationToken cancellationToken)
+    {
         const string sql = @"
 UPDATE discovery_job
 SET status = 'InProgress',

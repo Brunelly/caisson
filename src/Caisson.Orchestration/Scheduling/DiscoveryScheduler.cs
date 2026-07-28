@@ -95,8 +95,7 @@ public sealed class DiscoveryScheduler : BackgroundService
                 schedule.RackId, TriggerType.Scheduled, "scheduler", ActorType.System,
                 Guid.NewGuid(), idempotencyKey: null, dryRun: false, cancellationToken);
 
-            var jitter = _jitter.NextJitterSeconds(schedule.JitterSeconds);
-            var nextRun = now.AddSeconds(schedule.IntervalSeconds + jitter);
+            var nextRun = ComputeNextRun(now, schedule, _jitter);
             schedule.RecordAttempt(now, nextRun);
 
             _logger.LogInformation(
@@ -109,6 +108,13 @@ public sealed class DiscoveryScheduler : BackgroundService
             await context.SaveChangesAsync(cancellationToken);
         }
     }
+
+    /// <summary>
+    /// Advances the next-run time by the fixed interval plus jitter (AC3). Internal so tests can assert
+    /// the deterministic <c>now + interval + jitter</c> result with an injected <see cref="IJitterSource"/>.
+    /// </summary>
+    internal static DateTime ComputeNextRun(DateTime now, RackDiscoverySchedule schedule, IJitterSource jitter)
+        => now.AddSeconds(schedule.IntervalSeconds + jitter.NextJitterSeconds(schedule.JitterSeconds));
 
     private static async Task<bool> WaitAsync(PeriodicTimer timer, CancellationToken stoppingToken)
     {

@@ -210,7 +210,8 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
 
     private void Detach(DiscoveryJob job)
     {
-        foreach (var step in job.Steps)
+        // Snapshot the steps: detaching triggers relationship fixup that mutates the job's navigation.
+        foreach (var step in job.Steps.ToList())
         {
             _context.Entry(step).State = EntityState.Detached;
         }
