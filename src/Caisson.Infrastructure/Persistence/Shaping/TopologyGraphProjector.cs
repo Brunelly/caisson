@@ -60,6 +60,7 @@ public static class TopologyGraphProjector
         IReadOnlyDictionary<Guid, (SwitchPort Port, Switch Switch)> portById)
     {
         var attachments = new List<PortAttachment>();
+        string? unmappedReasonCode = null;
         if (candidatesByNic.TryGetValue(nic.Id, out var candidates))
         {
             foreach (var candidate in candidates)
@@ -67,6 +68,10 @@ public static class TopologyGraphProjector
                 if (candidate.SwitchPortId is { } portId && portById.TryGetValue(portId, out var located))
                 {
                     attachments.Add(ProjectAttachment(candidate, located.Port, located.Switch));
+                }
+                else if (candidate.SwitchPortId is null)
+                {
+                    unmappedReasonCode ??= candidate.ReasonCode.ToString();
                 }
             }
         }
@@ -76,7 +81,8 @@ public static class TopologyGraphProjector
             nic.Name,
             nic.MacPrimary.ToDisplay(),
             attachments.Count > 0 ? attachments[0] : null,
-            attachments);
+            attachments,
+            attachments.Count > 0 ? null : unmappedReasonCode);
     }
 
     private static PortAttachment ProjectAttachment(TopologyCandidateMapping candidate, SwitchPort port, Switch @switch)
@@ -115,13 +121,17 @@ public sealed record ServerNode(
     string? BmcUuid,
     IReadOnlyList<NicNode> Nics);
 
-/// <summary>A NIC, its best attachment, and all candidate attachments.</summary>
+/// <summary>
+/// A NIC, its best attachment, and all candidate attachments. <see cref="UnmappedReasonCode"/> is set
+/// only when the NIC has no attachment, from the NIC's null-<c>SwitchPortId</c> candidate row.
+/// </summary>
 public sealed record NicNode(
     string StableKey,
     string Name,
     string Mac,
     PortAttachment? BestAttachment,
-    IReadOnlyList<PortAttachment> Candidates);
+    IReadOnlyList<PortAttachment> Candidates,
+    string? UnmappedReasonCode = null);
 
 /// <summary>A candidate NIC-to-port attachment with confidence, band, reason and VLANs.</summary>
 public sealed record PortAttachment(

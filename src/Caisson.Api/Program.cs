@@ -97,6 +97,18 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthorizationPolicies.DiscoveryTrigger, policy => policy.RequireRole(CaissonRoles.Operators))
     .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin));
 
+// CORS (story #10): the Angular SPA is served from a separate origin. No policy existed before this;
+// allowed origins are config-driven (Cors:AllowedOrigins) and AllowAnyOrigin is never used. Only
+// appsettings.Development.json seeds a default (http://localhost:4200) — a production origin must come
+// from environment/Key Vault configuration, never a hard-coded value here.
+const string AngularClientCorsPolicy = "AngularClient";
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+builder.Services.AddCors(options => options.AddPolicy(AngularClientCorsPolicy, policy => policy
+    .WithOrigins(allowedOrigins)
+    .AllowAnyHeader()
+    .AllowAnyMethod()
+    .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
@@ -142,6 +154,8 @@ if (!app.Environment.IsProduction())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseCors(AngularClientCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
