@@ -19,6 +19,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Infrastructure.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.Abstractions.Tests", "tests\Caisson.Drivers.Abstractions.Tests\Caisson.Drivers.Abstractions.Tests.csproj", "{266F9153-E1E9-4B53-9E13-12D8EF584320}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.MikroTik", "src\Caisson.Drivers.MikroTik\Caisson.Drivers.MikroTik.csproj", "{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.MikroTik.Tests", "tests\Caisson.Drivers.MikroTik.Tests\Caisson.Drivers.MikroTik.Tests.csproj", "{27CBF62B-1E39-487A-8671-37F3378616E8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.MikroTik.IntegrationTests", "tests\Caisson.Drivers.MikroTik.IntegrationTests\Caisson.Drivers.MikroTik.IntegrationTests.csproj", "{5FFBA4C3-CF89-43D5-A397-045CCB2155D9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -52,6 +58,18 @@ Global
 		{266F9153-E1E9-4B53-9E13-12D8EF584320}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{266F9153-E1E9-4B53-9E13-12D8EF584320}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{266F9153-E1E9-4B53-9E13-12D8EF584320}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27CBF62B-1E39-487A-8671-37F3378616E8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27CBF62B-1E39-487A-8671-37F3378616E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27CBF62B-1E39-487A-8671-37F3378616E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27CBF62B-1E39-487A-8671-37F3378616E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5FFBA4C3-CF89-43D5-A397-045CCB2155D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5FFBA4C3-CF89-43D5-A397-045CCB2155D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5FFBA4C3-CF89-43D5-A397-045CCB2155D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5FFBA4C3-CF89-43D5-A397-045CCB2155D9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{739331BE-14A3-4C66-9138-86899D7EBBFB} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
@@ -60,5 +78,8 @@ Global
 		{13BB8E1F-6885-4216-BFB7-89F45A21BBBD} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 		{75FEEAC9-E465-447D-A823-3D2462C3DEA4} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 		{266F9153-E1E9-4B53-9E13-12D8EF584320} = {ECD908A9-44C5-454E-8C33-1B6347663736}
+		{DE939CC6-0BC8-4EC6-ABE0-989D1BA1667E} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
+		{27CBF62B-1E39-487A-8671-37F3378616E8} = {ECD908A9-44C5-454E-8C33-1B6347663736}
+		{5FFBA4C3-CF89-43D5-A397-045CCB2155D9} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 	EndGlobalSection
 EndGlobal

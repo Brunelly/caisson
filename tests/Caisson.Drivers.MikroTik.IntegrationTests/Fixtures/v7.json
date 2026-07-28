@@ -1,0 +1,47 @@
+{
+  "legacyLogin": false,
+  "commands": {
+    "/system/resource/print": {
+      "rows": [{ "version": "7.10.2", "board-name": "CCR2004", "platform": "MikroTik" }]
+    },
+    "/system/routerboard/print": {
+      "rows": [{ "routerboard": "true", "model": "CCR2004-1G-12S+2XS", "serial-number": "HET081ABCDE" }]
+    },
+    "/interface/print": {
+      "rows": [
+        { "name": "ether1", "running": "true", "disabled": "false" },
+        { "name": "ether2", "running": "false", "disabled": "true" },
+        { "name": "bridge1", "running": "true", "disabled": "false" }
+      ]
+    },
+    "/interface/ethernet/print": {
+      "rows": [
+        { "name": "ether1", "speed": "10Gbps" },
+        { "name": "ether2", "speed": "1Gbps" }
+      ]
+    },
+    "/interface/bridge/port/print": {
+      "rows": [{ "interface": "ether1", "pvid": "10" }]
+    },
+    "/interface/bridge/vlan/print": {
+      "rows": [{ "vlan-ids": "10,20,30-32", "tagged": "ether1,ether2", "untagged": "ether1" }]
+    },
+    "/ip/neighbor/print": {
+      "rows": [
+        {
+          "interface": "ether1",
+          "mac-address": "E4:8D:8C:11:22:33",
+          "identity": "core-sw",
+          "interface-name": "sfp-sfpplus1",
+          "address": "10.0.0.2"
+        }
+      ]
+    },
+    "/interface/bridge/host/print": {
+      "rows": [{ "mac-address": "AA:BB:CC:DD:EE:FF", "on-interface": "ether1" }]
+    },
+    "/interface/vlan/print": {
+      "rows": [{ "name": "vlan10", "vlan-id": "10" }]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "legacyLogin": true,
+  "commands": {
+    "/system/resource/print": {
+      "rows": [{ "version": "6.49.7", "board-name": "RB750Gr3", "platform": "MikroTik" }]
+    },
+    "/system/routerboard/print": {
+      "rows": [{ "routerboard": "yes", "model": "RB750Gr3", "serial-number": "7A1B0ABCDEF" }]
+    },
+    "/interface/print": {
+      "rows": [
+        { "name": "ether1", "running": "yes", "disabled": "no" },
+        { "name": "ether2", "running": "no", "disabled": "yes" }
+      ]
+    },
+    "/interface/bridge/port/print": {
+      "rows": [{ "interface": "ether1", "pvid": "10" }]
+    },
+    "/interface/bridge/vlan/print": {
+      "rows": [{ "vlan-ids": "10 20", "tagged": "ether1" }]
+    },
+    "/ip/neighbor/print": {
+      "rows": [{ "interface": "ether1", "chassis-id": "E4:8D:8C:AA:BB:CC", "identity": "edge" }]
+    },
+    "/interface/bridge/host/print": {
+      "rows": [{ "mac-address": "aabb.ccdd.eeff", "on-interface": "ether1" }]
+    },
+    "/interface/vlan/print": {
+      "rows": [{ "name": "vlan20", "vlan-id": "20" }]
+    }
+  }
+}

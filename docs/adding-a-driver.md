@@ -65,3 +65,12 @@ implementation of every interface described above and a reasonable starting poin
 `Caisson.Drivers.Abstractions.ReadOnly` namespace and fails the build if any method name contains a
 mutation verb (`Set`, `Update`, `Create`, `Delete`, `Reset`, `PowerCycle`, ...). Write operations
 belong in a future `*Mutating` interface, not here.
+
+## 6. A worked example: the MikroTik RouterOS driver
+
+`Caisson.Drivers.MikroTik` is the first production driver and a concrete example of every step above —
+an internal BCL-only RouterOS API client with a code-level read-only command allowlist, tolerant
+v6↔v7 parsing, an env-backed `ISwitchCredentialResolver` for `CredentialsRef`, and a
+simulator-backed integration suite. See [docs/routeros-discovery.md](routeros-discovery.md) for its
+data sources, least-privilege RouterOS permissions, and how to run its tests (simulator or real CHR),
+and [ADR 0008](adr/0008-mikrotik-routeros-readonly-driver.md) for the design decisions.

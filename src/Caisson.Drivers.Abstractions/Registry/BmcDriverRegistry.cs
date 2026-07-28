@@ -6,7 +6,9 @@ namespace Caisson.Drivers.Abstractions.Registry;
 /// <summary>
 /// A plain dictionary lookup over the <see cref="IBmcDriverFactory"/> instances supplied at
 /// construction — no reflection or assembly scanning (NFR4). Duplicate descriptors are rejected
-/// fail-fast, matching the codebase's validate-at-construction convention.
+/// fail-fast, matching the codebase's validate-at-construction convention. Resolution matches by
+/// (Vendor, Model, ConnectionKind) and is version-agnostic, selecting the highest registered
+/// <see cref="DriverDescriptor.DriverVersion"/> when several match (see ADR 0007).
 /// </summary>
 public sealed class BmcDriverRegistry : IBmcDriverRegistry
 {
@@ -34,5 +36,28 @@ public sealed class BmcDriverRegistry : IBmcDriverRegistry
 
     /// <inheritdoc />
     public bool TryResolve(DriverDescriptor query, [NotNullWhen(true)] out IBmcDriverFactory? factory)
-        => _factories.TryGetValue(query, out factory);
+    {
+        IBmcDriverFactory? best = null;
+        string? bestVersion = null;
+        foreach (var (descriptor, candidate) in _factories)
+        {
+            // Match by vendor/model/connection-kind only; the query's DriverVersion is ignored.
+            if (!string.Equals(descriptor.Vendor, query.Vendor, StringComparison.Ordinal)
+                || descriptor.Model != query.Model
+                || descriptor.ConnectionKind != query.ConnectionKind)
+            {
+                continue;
+            }
+
+            if (best is null
+                || DriverVersionComparer.Instance.Compare(descriptor.DriverVersion, bestVersion) > 0)
+            {
+                best = candidate;
+                bestVersion = descriptor.DriverVersion;
+            }
+        }
+
+        factory = best;
+        return best is not null;
+    }
 }

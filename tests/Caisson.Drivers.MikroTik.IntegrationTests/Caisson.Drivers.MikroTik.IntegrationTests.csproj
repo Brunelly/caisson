@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drivers.MikroTik.IntegrationTests</RootNamespace>
+    <AssemblyName>Caisson.Drivers.MikroTik.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.MikroTik\Caisson.Drivers.MikroTik.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Committed simulator fixtures, copied next to the test assembly for the in-process CHR sim. -->
+    <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
