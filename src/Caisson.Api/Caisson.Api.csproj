@@ -27,6 +27,9 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Formatting.Compact" />
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <!-- Live topology updates (story #9, ADR 0014): SignalR Redis backplane + Redis connectivity health. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" />
   </ItemGroup>
 
 </Project>

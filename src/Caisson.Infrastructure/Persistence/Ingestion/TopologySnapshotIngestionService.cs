@@ -1,9 +1,12 @@
+using System.Text.Json;
 using Caisson.Correlation.Input;
 using Caisson.Correlation.Results;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Caisson.Infrastructure.Persistence.Ingestion;
@@ -24,11 +27,19 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
 
     private readonly CaissonDbContext _context;
     private readonly ITopologyIdGenerator _ids;
+    private readonly ITopologyEventPublisher _events;
+    private readonly ILogger<TopologySnapshotIngestionService> _logger;
 
-    public TopologySnapshotIngestionService(CaissonDbContext context, ITopologyIdGenerator ids)
+    public TopologySnapshotIngestionService(
+        CaissonDbContext context,
+        ITopologyIdGenerator ids,
+        ITopologyEventPublisher events,
+        ILogger<TopologySnapshotIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _ids = ids ?? throw new ArgumentNullException(nameof(ids));
+        _events = events ?? throw new ArgumentNullException(nameof(events));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
@@ -108,7 +119,64 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
         // Single implicit transaction → all-or-nothing (NFR3).
         await _context.SaveChangesAsync(cancellationToken);
 
+        // Live update (story #9): emit snapshot-updated from this single atomic choke point so no persist
+        // path can be missed. Seq = the DB-monotonic per-rack version. Belt-and-braces around the
+        // fail-open publisher, so a publish fault can never fail ingestion (AC4/NFR3).
+        await PublishSnapshotUpdatedAsync(request, mapped.Snapshot, version, diffResult.ChangeCountsJson, cancellationToken);
+
         return new SnapshotIngestionOutcome(mapped.Snapshot.Id, version, diffResult.Diffs.Count);
+    }
+
+    private async Task PublishSnapshotUpdatedAsync(
+        TopologyIngestionRequest request, TopologySnapshot snapshot, int version, string changeCountsJson,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var (added, removed, modified) = ParseTotalChangeCounts(changeCountsJson);
+            var summary = new SnapshotSummary(
+                snapshot.Switches.Count, snapshot.Servers.Count, snapshot.Vlans.Count, added, removed, modified);
+
+            var @event = new SnapshotUpdatedEvent(
+                request.RackId,
+                request.JobId, // The discovery job that produced this snapshot, when known (optional per the contract).
+                snapshot.Id,
+                version,
+                summary,
+                new DateTimeOffset(DateTime.SpecifyKind(request.CompletedAtUtc, DateTimeKind.Utc)),
+                Seq: version,
+                request.CorrelationId);
+
+            await _events.PublishSnapshotUpdatedAsync(@event, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "snapshot-updated publish failed (swallowed) rackId={RackId} snapshotId={SnapshotId} correlationId={CorrelationId}",
+                request.RackId, snapshot.Id, request.CorrelationId);
+        }
+    }
+
+    private static (int Added, int Removed, int Modified) ParseTotalChangeCounts(string changeCountsJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(changeCountsJson);
+            if (document.RootElement.TryGetProperty("total", out var total))
+            {
+                return (
+                    total.TryGetProperty("added", out var a) ? a.GetInt32() : 0,
+                    total.TryGetProperty("removed", out var r) ? r.GetInt32() : 0,
+                    total.TryGetProperty("modified", out var m) ? m.GetInt32() : 0);
+            }
+        }
+        catch (JsonException)
+        {
+            // The counts summary is best-effort context for the event; malformed JSON must not fail ingestion.
+        }
+
+        return (0, 0, 0);
     }
 
     private void DetachAll()
@@ -145,6 +213,8 @@ public interface ITopologySnapshotIngestionService
 /// <param name="Status">The terminal outcome of the run.</param>
 /// <param name="StartedAtUtc">When the run started.</param>
 /// <param name="CompletedAtUtc">When the run completed (also the snapshot creation/sort time).</param>
+/// <param name="JobId">The discovery job that produced the run, when known; flows to the snapshot-updated
+/// event so a snapshot can be correlated back to its job (optional for non-job ingestion paths).</param>
 public sealed record TopologyIngestionRequest(
     Guid RackId,
     TopologyCorrelationInput Observed,
@@ -157,7 +227,8 @@ public sealed record TopologyIngestionRequest(
     Guid CorrelationId,
     SnapshotStatus Status,
     DateTime StartedAtUtc,
-    DateTime CompletedAtUtc);
+    DateTime CompletedAtUtc,
+    Guid? JobId = null);
 
 /// <summary>The result of persisting a discovery run.</summary>
 /// <param name="SnapshotId">The new snapshot's id.</param>

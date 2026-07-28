@@ -24,9 +24,16 @@ namespace Caisson.Api.IntegrationTests;
 public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgresHarness _harness = new();
+    private readonly RedisHarness _redis = new();
 
     /// <summary>Whether an ephemeral Postgres was provisioned; when false the suite skips its cases.</summary>
     public bool Available => _harness.Available;
+
+    /// <summary>
+    /// Whether an ephemeral Redis was provisioned (independent of Postgres). Live-updates delivery routes
+    /// through Redis pub/sub, so the "receives an event" hub cases gate on this in addition to Postgres.
+    /// </summary>
+    public bool RedisAvailable => _redis.Available;
 
     /// <summary>The seeded topology identifiers (null when <see cref="Available"/> is false).</summary>
     public SeededTopology Seed { get; private set; } = null!;
@@ -34,6 +41,7 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
     public async Task InitializeAsync()
     {
         await _harness.InitializeAsync();
+        await _redis.InitializeAsync();
         if (_harness.Available)
         {
             Seed = await SeedData.SeedAsync(_harness);
@@ -43,6 +51,14 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Caisson", _harness.ConnectionString);
+        if (_redis.Available)
+        {
+            // Enable the live-updates pipeline (backplane + relay) against the harness Redis. Resolved via
+            // ConnectionStrings:Redis, mirroring RealtimeOptions.ResolveRedisConnectionString.
+            builder.UseSetting("ConnectionStrings:Redis", _redis.ConnectionString);
+            builder.UseSetting("Realtime:Enabled", "true");
+            builder.UseSetting("Realtime:HeartbeatSeconds", "1");
+        }
 
         builder.ConfigureTestServices(services =>
         {
@@ -84,6 +100,7 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
 
     async Task IAsyncLifetime.DisposeAsync()
     {
+        await _redis.DisposeAsync();
         await _harness.DisposeAsync();
         await base.DisposeAsync();
     }

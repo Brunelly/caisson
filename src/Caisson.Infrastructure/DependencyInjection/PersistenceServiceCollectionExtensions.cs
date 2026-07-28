@@ -1,3 +1,4 @@
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -24,6 +25,12 @@ public static class PersistenceServiceCollectionExtensions
 
         services.TryAddSingleton<ITopologyIdGenerator, GuidTopologyIdGenerator>();
         services.TryAddScoped<ITopologySnapshotIngestionService, TopologySnapshotIngestionService>();
+
+        // Live-updates seam (story #9, ADR 0014): a no-op publisher + in-process sequencer are the
+        // fail-open defaults so ingestion/orchestration never hard-depend on Redis. AddCaissonLiveUpdates
+        // replaces these with the Redis-backed implementations when a connection string is configured.
+        services.TryAddSingleton<ITopologyEventPublisher, NoOpTopologyEventPublisher>();
+        services.TryAddSingleton<ITopologyEventSequencer, InProcessTopologyEventSequencer>();
 
         return services;
     }
