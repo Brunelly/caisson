@@ -69,6 +69,17 @@ Correlation confidence is a `ConfidenceScore` value object bounded to `[0.0, 1.0
 and `NaN`). The bound is enforced twice: in the value object factory and again by a PostgreSQL `CHECK`
 constraint on the column. See [ADR 0004](docs/adr/0004-mac-and-confidence-value-objects-and-check-constraints.md).
 
+### Topology correlation engine
+Correlation lives in a separate **pure** project, `Caisson.Correlation` (layered like the driver
+abstraction: AOT-compatible, no EF Core/Npgsql/HTTP, enforced by a reflection guard). It consumes the
+story-3 driver info records and reuses the domain `ConfidenceScore`/`MacAddressValue`/`ReasonCode` (the
+enum is extended append-only, ≤32 chars) to infer NIC↔port↔VLAN mappings with rule-based additive scoring,
+explicit ambiguity (ranked candidates, LAG detection), unmapped NIC/port reasons, and access-vs-trunk
+disambiguation. It is deterministic (stable ordering/scores) and side-effect free — resolve it via
+`AddTopologyCorrelation()`. Confidence bands are High ≥ 0.8 / Medium 0.5–0.79 / Low < 0.5. See
+[ADR 0010](docs/adr/0010-topology-correlation-engine.md) and
+[docs/topology-correlation.md](docs/topology-correlation.md).
+
 ### EF Core + Npgsql, code-first migrations, snake_case
 PostgreSQL via Npgsql; schema is code-first through EF Core migrations. Column/table names are
 `snake_case` via `EFCore.NamingConventions`. See

@@ -31,6 +31,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.Redfish.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Drivers.Redfish.IntegrationTests", "tests\Caisson.Drivers.Redfish.IntegrationTests\Caisson.Drivers.Redfish.IntegrationTests.csproj", "{B50BC17C-25E6-4424-8A72-2C3F6BA3FB91}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Correlation", "src\Caisson.Correlation\Caisson.Correlation.csproj", "{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Correlation.Tests", "tests\Caisson.Correlation.Tests\Caisson.Correlation.Tests.csproj", "{7FF33DE4-9A8B-43D2-998F-A7CC176696B1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -88,6 +92,14 @@ Global
 		{B50BC17C-25E6-4424-8A72-2C3F6BA3FB91}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B50BC17C-25E6-4424-8A72-2C3F6BA3FB91}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B50BC17C-25E6-4424-8A72-2C3F6BA3FB91}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{739331BE-14A3-4C66-9138-86899D7EBBFB} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
@@ -102,5 +114,7 @@ Global
 		{0096EF48-E29A-43C1-B9D4-61C2E10D5DCE} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
 		{0C0692E5-C69E-4DE2-B0E2-A263030E1272} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 		{B50BC17C-25E6-4424-8A72-2C3F6BA3FB91} = {ECD908A9-44C5-454E-8C33-1B6347663736}
+		{A1A0B97F-E1F8-41F0-88F5-C25559FAFD23} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
+		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 	EndGlobalSection
 EndGlobal

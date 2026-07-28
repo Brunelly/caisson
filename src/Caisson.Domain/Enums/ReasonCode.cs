@@ -43,4 +43,31 @@ public enum ReasonCode
     /// downstream correlation can weight or audit the evidence.
     /// </summary>
     FallbackSource,
+
+    /// <summary>The MAC was learned on exactly one access/edge port, the strongest attachment signal.</summary>
+    MacLearnUnique,
+
+    /// <summary>An LLDP neighbour on the port is consistent with (does not contradict) the mapping.</summary>
+    LldpConsistent,
+
+    /// <summary>An LLDP neighbour on the port identifies a different device, contradicting the mapping.</summary>
+    LldpContradicts,
+
+    /// <summary>The same MAC was learned on more than one candidate port, producing ambiguity.</summary>
+    MultipleMacPorts,
+
+    /// <summary>The candidate ports share a switch and identical VLAN config, so they look like one LAG.</summary>
+    PortsInSameLag,
+
+    /// <summary>The MAC was only seen on a trunk/uplink port, which is not a reliable direct attachment.</summary>
+    SeenOnTrunkPort,
+
+    /// <summary>One or more VLANs were inferred for the port from its Pvid/tagged-VLAN context.</summary>
+    VlanInferred,
+
+    /// <summary>No VLAN/bridge context was available for the port, so VLAN membership is unknown.</summary>
+    VlanContextMissing,
+
+    /// <summary>The port has an LLDP neighbour but it could not be correlated to any known NIC.</summary>
+    PortNeighbourUnknown,
 }
