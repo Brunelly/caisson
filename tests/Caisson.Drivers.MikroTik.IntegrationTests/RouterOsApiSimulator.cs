@@ -1,6 +1,8 @@
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 
@@ -24,15 +26,23 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
     private readonly RouterOsProfile _profile;
     private readonly string _expectedUsername;
     private readonly string _expectedPassword;
+    private readonly X509Certificate2? _serverCertificate;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
     private Task? _acceptLoop;
 
-    public RouterOsApiSimulator(RouterOsProfile profile, string username, string password)
+    /// <summary>
+    /// Creates a simulator. When <paramref name="serverCertificate"/> is supplied the transport speaks
+    /// TLS (a real server-side <see cref="SslStream"/> handshake, as CHR does on 8729) before the
+    /// RouterOS login; otherwise it is plaintext, as on 8728.
+    /// </summary>
+    public RouterOsApiSimulator(
+        RouterOsProfile profile, string username, string password, X509Certificate2? serverCertificate = null)
     {
         _profile = profile;
         _expectedUsername = username;
         _expectedPassword = password;
+        _serverCertificate = serverCertificate;
         _listener = new TcpListener(IPAddress.Loopback, 0);
     }
 
@@ -90,10 +100,23 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
     private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
     {
         using (client)
-        await using (var stream = client.GetStream())
+        await using (var networkStream = client.GetStream())
         {
+            Stream stream = networkStream;
+            SslStream? ssl = null;
             try
             {
+                if (_serverCertificate is not null)
+                {
+                    // Real server-side TLS handshake — the driver's SslStream/ValidateServerCertificate
+                    // path runs against this, proving the 8729 transport end-to-end (not just the callback).
+                    ssl = new SslStream(networkStream, leaveInnerStreamOpen: false);
+                    await ssl.AuthenticateAsServerAsync(
+                        new SslServerAuthenticationOptions { ServerCertificate = _serverCertificate },
+                        cancellationToken).ConfigureAwait(false);
+                    stream = ssl;
+                }
+
                 if (!await HandleLoginAsync(stream, cancellationToken).ConfigureAwait(false))
                 {
                     return;
@@ -121,6 +144,17 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
             catch (IOException)
             {
                 // Client disconnected mid-write — normal.
+            }
+            catch (System.Security.Authentication.AuthenticationException)
+            {
+                // The client aborted the TLS handshake (e.g. it rejected our certificate) — expected.
+            }
+            finally
+            {
+                if (ssl is not null)
+                {
+                    await ssl.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
     }
