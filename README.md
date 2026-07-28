@@ -81,12 +81,21 @@ Story #10 adds the Angular live rack topology map UI under `web/` — see
 [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md) for running it against a live
 API, and [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the architecture.
 
+## Simulation harness (no physical hardware needed)
+
+Story #11 adds a simulation-first virtual-rack harness: a MikroTik RouterOS switch + Redfish/IPMI BMC,
+discovered by the real drivers through the real orchestration pipeline, with no physical hardware. See
+[`docs/simulation-harness.md`](docs/simulation-harness.md) for the full walkthrough (Postgres/Redis via
+`infra/sim/docker-compose.yml`, seeding, running the API/UI against it) and
+[ADR 0017](docs/adr/0017-simulation-first-virtual-rack-harness.md) for the design.
+
 ## Documentation
 
 - Architecture decisions: [`docs/adr/`](docs/adr/)
 - Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Architecture record for AI/human contributors: [`CLAUDE.md`](CLAUDE.md)
 - Frontend getting started: [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md)
+- Simulation harness: [`docs/simulation-harness.md`](docs/simulation-harness.md)
 
 ## License
 

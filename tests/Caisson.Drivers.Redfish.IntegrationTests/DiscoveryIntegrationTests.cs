@@ -9,6 +9,7 @@ using Caisson.Drivers.Redfish;
 using Caisson.Drivers.Redfish.Credentials;
 using Caisson.Drivers.Redfish.Observability;
 using Caisson.Drivers.Redfish.Transport;
+using Caisson.Drivers.Simulators;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

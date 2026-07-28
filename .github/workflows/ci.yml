@@ -122,6 +122,20 @@ jobs:
       - name: API integration tests
         run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release
 
+      # Story #11: the consolidated virtual-rack harness — drives the REAL RouterOsSwitchDriver/
+      # RedfishBmcDriver against the in-process simulators through the real orchestration/persistence/
+      # query path (no fake drivers), and asserts the discovered-vs-expected topology diff.
+      - name: Virtual-rack integration tests (simulators)
+        run: dotnet test tests/Caisson.VirtualRack.IntegrationTests --no-build -c Release --logger "trx;LogFileName=virtual-rack.trx"
+
+      - name: Upload virtual-rack test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-rack-test-logs
+          path: tests/Caisson.VirtualRack.IntegrationTests/TestResults/*.trx
+          if-no-files-found: ignore
+
   angular-build-and-test:
     runs-on: ubuntu-latest
 
@@ -167,29 +181,53 @@ jobs:
             web/coverage
           if-no-files-found: ignore
 
-  # Playwright smoke test (Task #55) against a real, already-running, already-seeded Caisson.Api +
-  # Postgres/Redis stack — seeding the rack and driving a discovery job to produce a live snapshot
-  # event is owned by the separate mcp-tooling-caisson harness (never referenced from this repo). This
-  # job stays inert (skipped) until an orchestrating pipeline that stands up that stack sets the
-  # `E2E_ENABLED` repository variable and the E2E_* environment values below; it never runs on a plain
-  # PR build, since there is nothing here to seed a rack against.
+  # Story #11: a SELF-CONTAINED Playwright smoke test (Task #55) — this job now provisions its own
+  # Postgres, seeds a virtual rack via the repo-native Caisson.VirtualRack.Seeder (real drivers + real
+  # orchestration against the in-process simulators, no mcp-tooling-caisson reference), boots a live
+  # Caisson.Api with its environment-gated test-auth scheme (ADR 0018), and serves the `e2e`-configured
+  # Angular build (ADR 0016-style fileReplacements auth bypass). It no longer depends on an externally
+  # seeded stack, so it is a genuine required check once enabled.
+  #
+  # ACTION ITEM (outside source control): flip the `E2E_ENABLED` repository variable to `true` in repo
+  # Settings → Secrets and variables → Actions → Variables to turn this job on as a required check —
+  # see docs/simulation-harness.md.
   angular-e2e-smoke:
     runs-on: ubuntu-latest
     if: ${{ vars.E2E_ENABLED == 'true' }}
 
-    defaults:
-      run:
-        working-directory: web
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: caisson
+          POSTGRES_PASSWORD: caisson
+          POSTGRES_DB: caisson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U caisson"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
-      E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
-      E2E_RACK_ID: ${{ vars.E2E_RACK_ID }}
-      E2E_SEARCH_TERM: ${{ vars.E2E_SEARCH_TERM }}
-      E2E_SEARCH_LABEL_PART: ${{ vars.E2E_SEARCH_LABEL_PART }}
+      CAISSON_DB: "Host=localhost;Port=5432;Database=caisson;Username=caisson;Password=caisson"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
+          restore-keys: ${{ runner.os }}-nuget-
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -198,13 +236,82 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: Install dependencies
+      - name: Restore local tools (dotnet-ef)
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build .NET (Release)
+        run: dotnet build --no-restore -c Release
+
+      - name: Apply database migrations
+        run: dotnet ef database update --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
+
+      # Boots the simulators + real drivers + real orchestration against CAISSON_DB, drives a discovery
+      # job to Succeeded, and prints E2E_RACK_ID/E2E_SEARCH_TERM/E2E_SEARCH_LABEL_PART. The live API
+      # below only ever reads this already-persisted snapshot — it never reaches the simulators.
+      - name: Seed the virtual rack
+        run: dotnet run --no-build --project tests/Caisson.VirtualRack.Seeder -c Release | tee "$RUNNER_TEMP/seed-output.txt"
+
+      - name: Export seeded rack identifiers
+        run: grep -E '^E2E_(RACK_ID|SEARCH_TERM|SEARCH_LABEL_PART)=' "$RUNNER_TEMP/seed-output.txt" >> "$GITHUB_ENV"
+
+      # The environment-gated test-auth scheme (ADR 0018) is enabled ONLY here, via env vars — never in
+      # a committed appsettings file — and only under ASPNETCORE_ENVIRONMENT=Testing, which
+      # TestAuthStartupGuard requires.
+      - name: Start Caisson.Api with the test-auth scheme
+        env:
+          ASPNETCORE_ENVIRONMENT: "Testing"
+          Testing__EnableTestAuth: "true"
+          ASPNETCORE_URLS: "http://127.0.0.1:5000"
+          Cors__AllowedOrigins__0: "http://127.0.0.1:4200"
+        run: |
+          nohup dotnet run --no-build --project src/Caisson.Api -c Release > "$RUNNER_TEMP/api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/api.pid"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5000/health/ready > /dev/null; then
+              echo "Caisson.Api is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Caisson.Api did not become ready within 30s"
+          cat "$RUNNER_TEMP/api.log"
+          exit 1
+
+      - name: Install npm dependencies
+        working-directory: web
         run: npm ci
 
+      - name: Build Angular (e2e configuration, auth bypass)
+        working-directory: web
+        run: npm run build:e2e
+
+      - name: Serve the Angular e2e build
+        working-directory: web
+        run: |
+          nohup npm run serve:e2e > "$RUNNER_TEMP/serve.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/serve.pid"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4200/ > /dev/null; then
+              echo "Angular e2e build is being served."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Angular e2e build did not become ready within 30s"
+          cat "$RUNNER_TEMP/serve.log"
+          exit 1
+
       - name: Install Playwright browsers
+        working-directory: web
         run: npx playwright install --with-deps chromium
 
       - name: Run e2e smoke test
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
         run: npm run e2e
 
       - name: Upload Playwright report on failure
@@ -214,3 +321,10 @@ jobs:
           name: playwright-report
           path: web/playwright-report
           if-no-files-found: ignore
+
+      # Best-effort cleanup; the runner is torn down after the job regardless.
+      - name: Stop background processes
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/api.pid" ] && kill "$(cat "$RUNNER_TEMP/api.pid")" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/serve.pid" ] && kill "$(cat "$RUNNER_TEMP/serve.pid")" 2>/dev/null || true

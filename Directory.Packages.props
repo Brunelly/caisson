@@ -75,4 +75,10 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Story #11 repo-native seeder (tests/Caisson.VirtualRack.Seeder): a plain console host, unlike
+         Caisson.Api's ASP.NET Core host, so it needs the full generic-host builder/console logging. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
 </Project>

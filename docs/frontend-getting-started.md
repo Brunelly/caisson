@@ -41,13 +41,12 @@ The API is strictly read-only from the outside; a snapshot only exists once a di
    [`docs/routeros-discovery.md`](routeros-discovery.md) and [`docs/redfish-discovery.md`](redfish-discovery.md)
    for the connection-option shape (vendor/model/connection kind/host/port/credentials ref).
 
-> **Note on simulators.** The MikroTik/Redfish simulators referenced in those two docs
-> (`RouterOsApiSimulator`, `RedfishSimulator`) are in-process test fixtures used only by the automated
-> integration test suite — there is currently no standalone simulator process you can point a locally
-> running `Caisson.Api` at. To exercise the UI against real discovery output today, point
-> `Discovery:Racks` at real reachable network devices (a MikroTik switch and a Redfish/IPMI BMC). A
-> standalone simulator for local UI development is a reasonable follow-up if this friction becomes a
-> recurring problem.
+> **Note on simulators.** To exercise the UI against real discovery output without physical hardware,
+> use the story-#11 simulation-first virtual-rack harness instead of the steps above: it seeds a rack
+> and drives a real discovery job against in-process MikroTik/Redfish simulators for you — see
+> [`docs/simulation-harness.md`](simulation-harness.md). The manual `Discovery:Racks` config route above
+> is still the one to use against *real*, reachable network devices (a MikroTik switch and a
+> Redfish/IPMI BMC).
 
 With both in place, trigger an on-demand run (Admin/Operator role required) and poll for completion:
 

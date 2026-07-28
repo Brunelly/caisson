@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Story #11: the consolidated virtual-rack harness. Drives the REAL RouterOsSwitchDriver/RedfishBmcDriver
+    against the in-process simulators through the real orchestration path (no fake drivers), persists via
+    the real ingestion service, and queries the real read-only API — the single cohesive integration test
+    "the whole rack runs virtual" deliverable.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.VirtualRack.IntegrationTests</RootNamespace>
+    <AssemblyName>Caisson.VirtualRack.IntegrationTests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Api\Caisson.Api.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Simulators\Caisson.Drivers.Simulators.csproj" />
+    <ProjectReference Include="..\Caisson.VirtualRack.Fixtures\Caisson.VirtualRack.Fixtures.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Xunit.SkippableFact" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Redis" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+</Project>

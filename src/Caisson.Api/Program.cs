@@ -7,6 +7,7 @@ using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Orchestration.DependencyInjection;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,13 @@ using Serilog;
 using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Environment-gated test-auth scheme (ADR 0018): read the flag and fail closed BEFORE any service
+// registration, so a misconfigured production/staging deployment refuses to boot rather than silently
+// minting the synthetic principal. Default false; never set to true in a committed non-Development
+// appsettings file — CI supplies it solely via the Testing__EnableTestAuth environment variable.
+var enableTestAuth = builder.Configuration.GetValue("Testing:EnableTestAuth", defaultValue: false);
+TestAuthStartupGuard.Validate(builder.Environment, enableTestAuth);
 
 // Structured logging (ADR 0012): compact JSON to the console, with the correlation id enriched onto
 // every log line via the LogContext property pushed by CorrelationIdMiddleware.
@@ -53,8 +61,15 @@ var roleMappings = builder.Configuration
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authentication.IClaimsTransformation>(
     new RoleClaimsTransformation(roleMappings));
 
-// AuthN: JWT bearer against Entra ID / OIDC (config-driven; no custom identity system).
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// AuthN: JWT bearer against Entra ID / OIDC (config-driven; no custom identity system). When the
+// environment-gated test-auth scheme is active (Testing:EnableTestAuth, fail-closed outside
+// Development/Testing — see TestAuthStartupGuard/ADR 0018), it becomes the DEFAULT scheme instead, so
+// the existing fallback RequireAuthenticatedUser + RequireRole policies resolve its synthetic principal
+// with zero controller changes. The JWT bearer registration itself is byte-for-byte unchanged either way.
+var defaultAuthenticationScheme = enableTestAuth
+    ? TestAuthenticationHandler.SchemeName
+    : JwtBearerDefaults.AuthenticationScheme;
+var authenticationBuilder = builder.Services.AddAuthentication(defaultAuthenticationScheme)
     .AddJwtBearer(options =>
     {
         var authority = builder.Configuration["AzureAd:Authority"];
@@ -85,6 +100,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             },
         };
     });
+
+if (enableTestAuth)
+{
+    authenticationBuilder.AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+        TestAuthenticationHandler.SchemeName, _ => { });
+}
 
 // AuthZ: anonymous → 401 (fallback), authenticated-without-a-recognised-role → 403 (TopologyRead).
 builder.Services.AddAuthorizationBuilder()
@@ -169,6 +190,18 @@ app.MapHub<TopologyHub>("/hubs/topology");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
     .AllowAnonymous();
+
+// Test-auth startup visibility (ADR 0018): make it unmistakable in the logs whenever every request is
+// being authenticated as the fixed, non-privileged caisson-ci-e2e principal instead of a real token.
+if (enableTestAuth)
+{
+    app.Logger.LogWarning(
+        "Caisson.Api is running with the environment-gated TEST-AUTH SCHEME ACTIVE (Testing:EnableTestAuth=true, " +
+        "ASPNETCORE_ENVIRONMENT={Environment}). Every request authenticates as the fixed principal '{Subject}' " +
+        "holding only the {Role} role. This must never be enabled outside Development/Testing (enforced at " +
+        "startup by TestAuthStartupGuard).",
+        app.Environment.EnvironmentName, TestAuthenticationHandler.Subject, CaissonRoles.ReadOnly);
+}
 
 // Live-updates startup visibility (story #9, NFR4): make it obvious to operators when cross-instance
 // relay is off because Redis is unconfigured.

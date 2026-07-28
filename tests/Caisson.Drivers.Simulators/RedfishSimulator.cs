@@ -6,7 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 
-namespace Caisson.Drivers.Redfish.IntegrationTests;
+namespace Caisson.Drivers.Simulators;
 
 /// <summary>
 /// An in-process HTTPS Redfish server for CI (AC4): a loopback <see cref="TcpListener"/> that performs a

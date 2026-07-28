@@ -1,6 +1,6 @@
 using Caisson.Drivers.Redfish.Transport;
 
-namespace Caisson.Drivers.Redfish.IntegrationTests;
+namespace Caisson.Drivers.Simulators;
 
 /// <summary>
 /// An <see cref="IIpmiCommandRunner"/> for the integration suite that replays committed <c>ipmitool</c>

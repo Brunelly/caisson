@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The story-11 "one definition, two renderers" fixture (non-test support library, mirroring
+    Caisson.Drivers.Simulators): a single ground-truth virtual rack model rendered into both simulator
+    wire formats and the correlation result the real engine must reproduce from them.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.VirtualRack.Fixtures</RootNamespace>
+    <AssemblyName>Caisson.VirtualRack.Fixtures</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Simulators\Caisson.Drivers.Simulators.csproj" />
+  </ItemGroup>
+
+</Project>
