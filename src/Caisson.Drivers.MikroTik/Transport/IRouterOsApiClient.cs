@@ -32,8 +32,19 @@ public interface IRouterOsApiClient : IAsyncDisposable
 /// <param name="Username">RouterOS API username (least-privilege read+api user).</param>
 /// <param name="Password">RouterOS API password.</param>
 /// <param name="Timeout">Per-command timeout applied via a linked cancellation source.</param>
+/// <param name="CertificateThumbprint">
+/// Optional SHA-256 certificate fingerprint to pin the TLS peer against (hex, separators/whitespace and
+/// case ignored). When set, the self-signed CHR certificate is trusted only if its fingerprint matches;
+/// this is the recommended way to secure the 8729 transport against an active man-in-the-middle.
+/// </param>
+/// <param name="AllowUntrustedCertificate">
+/// Explicit, per-connection opt-in that accepts an otherwise-untrusted TLS certificate (self-signed,
+/// expired or name-mismatched) when no <see cref="CertificateThumbprint"/> pin is configured. Defaults
+/// to <c>false</c> so blanket acceptance can never be the silent default (CWE-295).
+/// </param>
 public sealed record RouterOsConnectionSettings(
-    string Host, int Port, bool UseTls, string Username, string Password, TimeSpan Timeout);
+    string Host, int Port, bool UseTls, string Username, string Password, TimeSpan Timeout,
+    string? CertificateThumbprint = null, bool AllowUntrustedCertificate = false);
 
 /// <summary>A RouterOS protocol-level failure (a <c>!trap</c>/<c>!fatal</c> reply or a malformed sentence).</summary>
 public class RouterOsApiException : Exception

@@ -17,6 +17,10 @@ public static class RouterOsMappers
 {
     private static readonly char[] ListSeparators = { ',', ' ', ';' };
 
+    /// <summary>The valid 802.1Q VLAN id range. Ids from device data outside this are ignored (AC3).</summary>
+    private const int MinVlanId = 1;
+    private const int MaxVlanId = 4094;
+
     /// <summary>Maps <c>/system/resource</c> (+ optional <c>/system/routerboard</c>) into device info.</summary>
     public static SwitchDeviceInfo MapDeviceInfo(RouterOsRecord resource, RouterOsRecord? routerboard, string host)
     {
@@ -32,16 +36,21 @@ public static class RouterOsMappers
 
     /// <summary>
     /// Maps <c>/interface</c> joined with <c>/interface/bridge/port</c> (PVID) and tagged-port sets
-    /// inverted from <c>/interface/bridge/vlan</c> into ports.
+    /// inverted from <c>/interface/bridge/vlan</c> into ports. When <paramref name="ethernetRows"/>
+    /// (<c>/interface/ethernet</c>) is non-empty, the port list is scoped to those physical interfaces so
+    /// logical interfaces (bridges, VLAN interfaces, loopbacks) do not pollute the topology; if that
+    /// auxiliary section is unavailable the mapper degrades to including every interface (AC3).
     /// </summary>
     public static IReadOnlyList<SwitchPortInfo> MapPorts(
         IReadOnlyList<IReadOnlyDictionary<string, string>> interfaceRows,
+        IReadOnlyList<IReadOnlyDictionary<string, string>> ethernetRows,
         IReadOnlyList<IReadOnlyDictionary<string, string>> bridgePortRows,
         IReadOnlyList<IReadOnlyDictionary<string, string>> bridgeVlanRows,
         List<DriverDiagnostic> diagnostics)
     {
         var pvidByPort = BuildPvidByPort(bridgePortRows);
         var taggedByPort = BuildTaggedVlansByPort(bridgeVlanRows);
+        var physicalPorts = BuildPhysicalPortNames(ethernetRows);
 
         var ports = new List<SwitchPortInfo>(interfaceRows.Count);
         for (var i = 0; i < interfaceRows.Count; i++)
@@ -53,6 +62,13 @@ public static class RouterOsMappers
                 diagnostics.Add(new DriverDiagnostic(
                     DriverDiagnosticSeverity.Error, ReasonCode.ParseError, $"interface[{i}]",
                     "Interface row has no name and was skipped."));
+                continue;
+            }
+
+            // Scope to physical ethernet ports when the ethernet section is available; a logical
+            // interface (bridge, VLAN, loopback) is skipped silently — it is expected, not an error.
+            if (physicalPorts.Count > 0 && !physicalPorts.Contains(name))
+            {
                 continue;
             }
 
@@ -175,7 +191,9 @@ public static class RouterOsMappers
 
     /// <summary>
     /// Parses RouterOS VLAN-id list syntax such as <c>"10,20,30-32"</c> into the expanded, distinct id
-    /// set. Unparseable fragments are skipped rather than throwing (AC3).
+    /// set. Unparseable fragments are skipped rather than throwing (AC3), and ids are clamped to the valid
+    /// 802.1Q range 1–4094 so untrusted device data (e.g. a crafted <c>"0-2147483647"</c> range) can never
+    /// drive an unbounded loop/allocation.
     /// </summary>
     public static IEnumerable<int> ParseVlanIds(string? value)
     {
@@ -192,7 +210,10 @@ public static class RouterOsMappers
             {
                 if (TryInt(part[..dash], out var from) && TryInt(part[(dash + 1)..], out var to) && from <= to)
                 {
-                    for (var id = from; id <= to; id++)
+                    // Clamp the range into the valid VLAN band; a fully out-of-range fragment yields nothing.
+                    var lo = Math.Max(from, MinVlanId);
+                    var hi = Math.Min(to, MaxVlanId);
+                    for (var id = lo; id <= hi; id++)
                     {
                         if (seen.Add(id))
                         {
@@ -204,11 +225,27 @@ public static class RouterOsMappers
                 continue;
             }
 
-            if (TryInt(part, out var single) && seen.Add(single))
+            if (TryInt(part, out var single) && single is >= MinVlanId and <= MaxVlanId && seen.Add(single))
             {
                 yield return single;
             }
         }
+    }
+
+    private static HashSet<string> BuildPhysicalPortNames(
+        IReadOnlyList<IReadOnlyDictionary<string, string>> ethernetRows)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in ethernetRows)
+        {
+            var name = new RouterOsRecord(row).GetString("name");
+            if (name is not null)
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
     }
 
     private static Dictionary<string, int> BuildPvidByPort(

@@ -33,6 +33,12 @@ public static class RouterOsFixtures
             Row(("name", "ether2"), ("running", "false"), ("disabled", "true")),
         };
 
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> EthernetInterfaces => new[]
+        {
+            Row(("name", "ether1"), ("speed", "10Gbps")),
+            Row(("name", "ether2"), ("speed", "1Gbps")),
+        };
+
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> BridgePorts => new[]
         {
             Row(("interface", "ether1"), ("pvid", "10")),
@@ -73,6 +79,12 @@ public static class RouterOsFixtures
         {
             Row(("name", "  ether1  "), ("running", "yes"), ("disabled", "no")),
             Row(("name", "ether2"), ("running", "no"), ("disabled", "yes")),
+        };
+
+        public static IReadOnlyList<IReadOnlyDictionary<string, string>> EthernetInterfaces => new[]
+        {
+            Row(("name", "ether1")),
+            Row(("name", "ether2")),
         };
 
         public static IReadOnlyList<IReadOnlyDictionary<string, string>> BridgePorts => new[]

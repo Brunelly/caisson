@@ -69,10 +69,11 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
         => ExecuteAsync<IReadOnlyList<SwitchPortInfo>>("interfaces", cancellationToken, async (client, diagnostics, ct) =>
         {
             var interfaceRows = await client.SendCommandAsync(RouterOsReadCommands.Interfaces, ct).ConfigureAwait(false);
+            var ethernetRows = await TryReadAsync(client, RouterOsReadCommands.EthernetInterfaces, "ethernet", diagnostics, ct).ConfigureAwait(false);
             var bridgePortRows = await TryReadAsync(client, RouterOsReadCommands.BridgePorts, "bridge-port", diagnostics, ct).ConfigureAwait(false);
             var bridgeVlanRows = await TryReadAsync(client, RouterOsReadCommands.BridgeVlans, "bridge-vlan", diagnostics, ct).ConfigureAwait(false);
 
-            return RouterOsMappers.MapPorts(interfaceRows, bridgePortRows, bridgeVlanRows, diagnostics);
+            return RouterOsMappers.MapPorts(interfaceRows, ethernetRows, bridgePortRows, bridgeVlanRows, diagnostics);
         });
 
     /// <inheritdoc />
@@ -203,6 +204,8 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
             _ => new DriverError(
                 DriverErrorCode.DeviceUnreachable, "The RouterOS device could not be reached.", Retryable: true),
         },
+        System.Security.Authentication.AuthenticationException => new DriverError(
+            DriverErrorCode.ProtocolError, "The RouterOS device's TLS certificate was not trusted.", Retryable: false),
         EndOfStreamException => new DriverError(
             DriverErrorCode.DeviceUnreachable, "The RouterOS connection closed unexpectedly.", Retryable: true),
         FormatException => new DriverError(

@@ -24,6 +24,15 @@ best-effort). ADR 0006 also deferred credential resolution behind `CredentialsRe
   is a `FrozenSet` of exactly the nine `.../print` paths, and the single `SendCommandAsync` chokepoint
   throws `InvalidOperationException` for anything else **before any socket I/O**. This is the
   code-reviewable artifact NFR1 asks for.
+- **TLS is validated, never blanket-accepted (CWE-295).** The 8729 transport verifies the peer certificate:
+  a trusted chain, a configured SHA-256 fingerprint pin (the recommended posture for the self-signed CHR),
+  or an explicit per-connection opt-in — otherwise the connection is rejected. Blanket acceptance can never
+  be the silent default. TLS trust (pin / opt-in) is sourced from environment variables keyed by the
+  credentials reference, so `SwitchConnectionOptions` is not widened. A secret-free warning is logged when
+  a password would cross a non-TLS connection.
+- **Untrusted-input hardening.** The wire reader rejects any peer-supplied word length above a fixed cap
+  before allocating (no OOM from a crafted length prefix), and VLAN-id parsing clamps to the valid 802.1Q
+  range 1–4094 so a malicious range like `0-2147483647` cannot drive an unbounded loop/allocation.
 - **Evidence/audit (AC4) and metrics (NFR6) are folded into structured logging + `System.Diagnostics`,
   not a widened shared contract.** The `SendCommandAsync` chokepoint emits one structured, secret-free
   log line per command (Command, Host, ElapsedMs, Outcome) and the driver wraps each call in an
@@ -58,4 +67,5 @@ best-effort). ADR 0006 also deferred credential resolution behind `CredentialsRe
   retryable) and a single failed section/row degrades to a diagnostic rather than failing the whole run.
 - AC4's on-contract "raw source records" requirement is intentionally satisfied via logs/metrics for now;
   the ADR flags the follow-up should the result contract need to carry evidence directly.
-- SSH transport, certificate pinning for 8729, and richer per-record evidence are explicit future work.
+- TLS certificate pinning for 8729 is implemented (SHA-256 fingerprint pin or an explicit accept-untrusted
+  opt-in, sourced from environment). SSH transport and richer per-record evidence remain explicit future work.

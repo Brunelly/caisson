@@ -10,11 +10,15 @@
     "/interface/print": {
       "rows": [
         { "name": "ether1", "running": "true", "disabled": "false" },
-        { "name": "ether2", "running": "false", "disabled": "true" }
+        { "name": "ether2", "running": "false", "disabled": "true" },
+        { "name": "bridge1", "running": "true", "disabled": "false" }
       ]
     },
     "/interface/ethernet/print": {
-      "rows": [{ "name": "ether1", "speed": "10Gbps" }]
+      "rows": [
+        { "name": "ether1", "speed": "10Gbps" },
+        { "name": "ether2", "speed": "1Gbps" }
+      ]
     },
     "/interface/bridge/port/print": {
       "rows": [{ "interface": "ether1", "pvid": "10" }]

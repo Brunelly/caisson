@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
@@ -55,12 +56,22 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
             Stream stream = _tcp.GetStream();
             if (_settings.UseTls)
             {
-                // CHR ships a self-signed certificate; TLS here protects credentials in transit.
-                // Certificate pinning is a deliberate future enhancement (see docs/routeros-discovery.md).
-                var ssl = new SslStream(stream, leaveInnerStreamOpen: false, (_, _, _, _) => true);
+                // CHR ships a self-signed certificate. Validation is enforced by ValidateServerCertificate:
+                // a fully trusted chain, a matching pinned fingerprint, or an explicit per-connection
+                // opt-in — never a silent accept-all (CWE-295).
+                var ssl = new SslStream(stream, leaveInnerStreamOpen: false, ValidateServerCertificate);
                 await ssl.AuthenticateAsClientAsync(
                     new SslClientAuthenticationOptions { TargetHost = _settings.Host }, linked.Token).ConfigureAwait(false);
                 stream = ssl;
+            }
+            else
+            {
+                // The RouterOS plaintext API sends "=password=<secret>" over the wire immediately after
+                // connect; warn (secret-free) so operators consciously accept the plaintext exposure.
+                _logger.LogWarning(
+                    "RouterOS credentials for {Host}:{Port} will be sent over a plaintext (non-TLS) connection. " +
+                    "Use the TLS API port 8729 with a pinned certificate to protect them in transit.",
+                    _settings.Host, _settings.Port);
             }
 
             _stream = stream;
@@ -70,6 +81,67 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
         {
             throw new TimeoutException($"Connecting to RouterOS at {_settings.Host}:{_settings.Port} timed out.");
         }
+    }
+
+    /// <summary>
+    /// TLS peer-certificate policy for the 8729 transport. Accepts a fully trusted chain; otherwise, if a
+    /// SHA-256 fingerprint pin is configured, accepts only an exact match (the recommended posture for the
+    /// self-signed CHR certificate); otherwise accepts an untrusted certificate only when the caller has
+    /// explicitly opted in via <see cref="RouterOsConnectionSettings.AllowUntrustedCertificate"/>. All
+    /// other cases are rejected, so validation is never silently disabled (CWE-295). Log lines are
+    /// secret-free.
+    /// </summary>
+    internal bool ValidateServerCertificate(
+        object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
+    {
+        if (sslPolicyErrors == SslPolicyErrors.None)
+        {
+            return true;
+        }
+
+        if (certificate is not null && !string.IsNullOrWhiteSpace(_settings.CertificateThumbprint))
+        {
+            var presented = Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData()));
+            if (string.Equals(presented, NormalizeFingerprint(_settings.CertificateThumbprint), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            _logger.LogWarning(
+                "RouterOS TLS certificate for {Host} did not match the configured SHA-256 fingerprint pin; rejecting the connection.",
+                _settings.Host);
+            return false;
+        }
+
+        if (_settings.AllowUntrustedCertificate)
+        {
+            _logger.LogWarning(
+                "RouterOS TLS certificate for {Host} is untrusted ({Errors}) but was accepted because certificate " +
+                "validation is explicitly disabled for this connection. Configure a certificate fingerprint pin to remove this risk.",
+                _settings.Host, sslPolicyErrors);
+            return true;
+        }
+
+        _logger.LogWarning(
+            "Rejecting RouterOS TLS certificate for {Host}: {Errors}. Configure a SHA-256 certificate fingerprint pin " +
+            "or explicitly allow an untrusted certificate for this connection.",
+            _settings.Host, sslPolicyErrors);
+        return false;
+    }
+
+    /// <summary>Strips separators/whitespace from a hex fingerprint so <c>AA:BB</c>, <c>aa bb</c> and <c>AABB</c> compare equal.</summary>
+    private static string NormalizeFingerprint(string fingerprint)
+    {
+        var builder = new StringBuilder(fingerprint.Length);
+        foreach (var c in fingerprint)
+        {
+            if (Uri.IsHexDigit(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 
     /// <inheritdoc />

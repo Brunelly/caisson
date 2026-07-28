@@ -48,7 +48,8 @@ public sealed class MappingTests
     public void Ports_map_from_v7_with_pvid_and_inverted_tagged_vlans()
     {
         var ports = RouterOsMappers.MapPorts(
-            RouterOsFixtures.V7.Interfaces, RouterOsFixtures.V7.BridgePorts, RouterOsFixtures.V7.BridgeVlans, _diagnostics);
+            RouterOsFixtures.V7.Interfaces, RouterOsFixtures.V7.EthernetInterfaces,
+            RouterOsFixtures.V7.BridgePorts, RouterOsFixtures.V7.BridgeVlans, _diagnostics);
 
         var ether1 = ports.Single(p => p.PortName == "ether1");
         ether1.IsUp.Should().BeTrue();
@@ -64,11 +65,51 @@ public sealed class MappingTests
     public void Ports_map_from_v6_with_yes_no_booleans_and_trimmed_names()
     {
         var ports = RouterOsMappers.MapPorts(
-            RouterOsFixtures.V6.Interfaces, RouterOsFixtures.V6.BridgePorts, RouterOsFixtures.V6.BridgeVlans, _diagnostics);
+            RouterOsFixtures.V6.Interfaces, RouterOsFixtures.V6.EthernetInterfaces,
+            RouterOsFixtures.V6.BridgePorts, RouterOsFixtures.V6.BridgeVlans, _diagnostics);
 
         var ether1 = ports.Single(p => p.PortName == "ether1");
         ether1.IsUp.Should().BeTrue();
         ether1.TaggedVlans.Should().Equal(10, 20);
+    }
+
+    [Fact]
+    public void Ports_are_scoped_to_physical_ethernet_interfaces_when_that_section_is_present()
+    {
+        var interfaces = new[]
+        {
+            RouterOsFixtures.Row(("name", "ether1"), ("running", "true"), ("disabled", "false")),
+            RouterOsFixtures.Row(("name", "bridge1"), ("running", "true"), ("disabled", "false")),
+            RouterOsFixtures.Row(("name", "vlan10"), ("running", "true"), ("disabled", "false")),
+        };
+        var ethernet = new[] { RouterOsFixtures.Row(("name", "ether1")) };
+
+        var ports = RouterOsMappers.MapPorts(
+            interfaces, ethernet,
+            Array.Empty<IReadOnlyDictionary<string, string>>(),
+            Array.Empty<IReadOnlyDictionary<string, string>>(), _diagnostics);
+
+        // Logical interfaces (bridge, VLAN) are excluded so they cannot pollute topology; no diagnostic.
+        ports.Select(p => p.PortName).Should().Equal("ether1");
+        _diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Ports_include_every_interface_when_the_ethernet_section_is_unavailable()
+    {
+        var interfaces = new[]
+        {
+            RouterOsFixtures.Row(("name", "ether1"), ("running", "true")),
+            RouterOsFixtures.Row(("name", "bridge1"), ("running", "true")),
+        };
+
+        // An empty ethernet section (unsupported/errored) degrades to including all interfaces (AC3).
+        var ports = RouterOsMappers.MapPorts(
+            interfaces, Array.Empty<IReadOnlyDictionary<string, string>>(),
+            Array.Empty<IReadOnlyDictionary<string, string>>(),
+            Array.Empty<IReadOnlyDictionary<string, string>>(), _diagnostics);
+
+        ports.Select(p => p.PortName).Should().BeEquivalentTo("ether1", "bridge1");
     }
 
     [Fact]
@@ -77,6 +118,7 @@ public sealed class MappingTests
         var rows = new[] { RouterOsFixtures.Row(("running", "true")) };
 
         var ports = RouterOsMappers.MapPorts(rows, Array.Empty<IReadOnlyDictionary<string, string>>(),
+            Array.Empty<IReadOnlyDictionary<string, string>>(),
             Array.Empty<IReadOnlyDictionary<string, string>>(), _diagnostics);
 
         ports.Should().BeEmpty();

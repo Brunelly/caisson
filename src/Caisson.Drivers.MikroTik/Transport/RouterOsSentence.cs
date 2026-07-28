@@ -18,6 +18,15 @@ internal static class RouterOsSentence
 {
     private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
+    /// <summary>
+    /// Upper bound on a single word's length. RouterOS <c>print</c> reply words are small (a few bytes to
+    /// a few KB), but the peer-supplied length prefix can encode up to ~2 GB. A compromised or
+    /// man-in-the-middle'd device could otherwise send one crafted prefix to force a multi-hundred-MB
+    /// allocation and OOM the discovery agent, so anything larger than this generous cap is rejected
+    /// before a buffer is allocated.
+    /// </summary>
+    internal const int MaxWordLength = 8 * 1024 * 1024;
+
     /// <summary>Writes <paramref name="words"/> as one framed sentence, followed by its zero-length terminator.</summary>
     public static async Task WriteAsync(Stream stream, IReadOnlyList<string> words, CancellationToken cancellationToken)
     {
@@ -49,6 +58,14 @@ internal static class RouterOsSentence
             if (length == 0)
             {
                 return words;
+            }
+
+            // Reject an implausible peer-supplied word length before allocating a buffer for it. The
+            // negative guard also covers the 0xF0 wide form, whose 32-bit value can set the sign bit.
+            if (length < 0 || length > MaxWordLength)
+            {
+                throw new RouterOsApiException(
+                    $"RouterOS word length {length} is outside the permitted 0..{MaxWordLength} range and was rejected.");
             }
 
             var bytes = await ReadExactAsync(stream, length, cancellationToken).ConfigureAwait(false);

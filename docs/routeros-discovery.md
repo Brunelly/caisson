@@ -14,13 +14,16 @@ the **only** commands the driver may send — enforced by `RouterOsReadCommands.
 | Method | RouterOS command(s) | Produces |
 |--------|---------------------|----------|
 | `GetDeviceInfoAsync` | `/system/resource/print` (+ `/system/routerboard/print`) | `SwitchDeviceInfo` — version→`OsVersion`, board→`Model`, host→`ManagementIp`, serial (null on CHR) |
-| `GetPortsAsync` | `/interface/print` + `/interface/bridge/port/print` (PVID) + `/interface/bridge/vlan/print` (tagged sets) | `SwitchPortInfo` — name, `IsUp`, `Pvid`, `TaggedVlans` |
+| `GetPortsAsync` | `/interface/print` + `/interface/ethernet/print` (physical-port scope) + `/interface/bridge/port/print` (PVID) + `/interface/bridge/vlan/print` (tagged sets) | `SwitchPortInfo` — name, `IsUp`, `Pvid`, `TaggedVlans` |
 | `GetLldpNeighborsAsync` | `/ip/neighbor/print` | `LldpNeighbourInfo` — local port → chassis/port/system/mgmt |
 | `GetBridgeHostTableAsync` | `/interface/bridge/host/print` | `BridgeHostEntry` — normalized MAC → port |
 | `GetVlansAsync` | `/interface/bridge/vlan/print` ∪ `/interface/vlan/print` | `VlanInfo` — VLAN id (+ name), deduped |
 
 `GetDeviceInfoAsync`/`GetPortsAsync`/`GetVlansAsync` treat their secondary commands as **auxiliary**: if
 one fails or is unsupported, that section degrades to a per-section diagnostic and the call still succeeds.
+`GetPortsAsync` uses `/interface/ethernet/print` to **scope the port list to physical interfaces**: when
+that section is available, logical interfaces (bridges, VLAN interfaces, loopbacks) are excluded so they
+cannot pollute topology; when it is unavailable the mapper degrades to reporting every interface.
 
 ## v6 ↔ v7 field-name differences (best-effort parsing)
 
@@ -51,6 +54,35 @@ Discovery needs **read + api only**. Create a dedicated group and user that expl
 `!write`/`!policy`/`!sensitive` guarantee the account cannot change configuration, edit permissions, or
 read secrets even if the driver's allowlist were bypassed — defence in depth on top of the code-level
 read-only boundary.
+
+## TLS transport and certificate trust
+
+The RouterOS plaintext API (TCP 8728) sends the API password over the wire in cleartext immediately after
+connecting, so it is protected only against a passive eavesdropper. **Prefer the TLS transport (port 8729)
+in any environment where an on-path attacker is plausible.** The driver logs a secret-free warning whenever
+a password will be sent over a non-TLS connection, so a plaintext choice is always a conscious one.
+
+CHR ships a self-signed certificate, so a fully trusted chain is unavailable. Rather than blanket-accepting
+any certificate (which would leave TLS defenceless against an active man-in-the-middle who could intercept
+the cleartext login, CWE-295), the driver enforces one of three outcomes and **never** silently accepts:
+
+1. a fully trusted chain (a proper CA-issued cert) is accepted;
+2. otherwise, if a **SHA-256 fingerprint pin** is configured, the certificate is accepted only on an exact
+   match — the recommended posture for CHR;
+3. otherwise, an untrusted certificate is accepted only when the operator has **explicitly opted in**.
+
+TLS trust is configured via environment variables keyed by the credentials reference (same slug rule as
+credentials), falling back to a global default:
+
+```
+# Pin the self-signed CHR certificate (openssl x509 -fingerprint -sha256; separators/case ignored):
+export CAISSON_SWITCH_{REF}_TLS_FINGERPRINT=AB:CD:...:EF   # or CAISSON_SWITCH_TLS_FINGERPRINT
+
+# Or, only where you accept the MITM risk, opt in to accepting an untrusted certificate:
+export CAISSON_SWITCH_{REF}_TLS_ALLOW_UNTRUSTED=true       # or CAISSON_SWITCH_TLS_ALLOW_UNTRUSTED
+```
+
+With neither set, TLS to a self-signed CHR is **rejected** — configure a fingerprint pin to use it securely.
 
 ## Credentials
 

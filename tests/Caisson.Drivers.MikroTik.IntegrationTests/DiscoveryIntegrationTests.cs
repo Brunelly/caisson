@@ -62,6 +62,13 @@ public sealed class DiscoveryIntegrationTests : IClassFixture<RouterOsChrFixture
         ports.Success.Should().BeTrue();
         ports.Value!.Should().NotBeEmpty("at least one interface/port must be discovered (AC5)");
 
+        if (!_fixture.UsingRealChr)
+        {
+            // The v7 profile includes a logical 'bridge1' interface absent from /interface/ethernet;
+            // it must be filtered out so only physical ports are reported.
+            ports.Value!.Should().OnlyContain(p => p.PortName == "ether1" || p.PortName == "ether2");
+        }
+
         // Bridge host table must be a valid structure — may be empty, must not error.
         hosts.Success.Should().BeTrue();
         hosts.Value.Should().NotBeNull();

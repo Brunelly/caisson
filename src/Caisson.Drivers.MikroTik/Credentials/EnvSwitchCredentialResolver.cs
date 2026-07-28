@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Caisson.Drivers.MikroTik.Credentials;
 
 /// <summary>
@@ -34,7 +32,7 @@ public sealed class EnvSwitchCredentialResolver : ISwitchCredentialResolver
     {
         ArgumentNullException.ThrowIfNull(credentialsRef);
 
-        var slug = Normalize(credentialsRef);
+        var slug = CredentialReferenceSlug.Normalize(credentialsRef);
         var username = Read($"{Prefix}_{slug}_USERNAME") ?? Read($"{Prefix}_USERNAME");
         var password = Read($"{Prefix}_{slug}_PASSWORD") ?? Read($"{Prefix}_PASSWORD");
 
@@ -53,16 +51,5 @@ public sealed class EnvSwitchCredentialResolver : ISwitchCredentialResolver
     {
         var value = _readEnvironment(name);
         return string.IsNullOrEmpty(value) ? null : value;
-    }
-
-    private static string Normalize(string reference)
-    {
-        var builder = new StringBuilder(reference.Length);
-        foreach (var c in reference)
-        {
-            builder.Append(char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_');
-        }
-
-        return builder.ToString();
     }
 }

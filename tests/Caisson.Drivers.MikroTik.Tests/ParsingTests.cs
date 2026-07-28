@@ -67,6 +67,27 @@ public sealed class ParsingTests
         RouterOsMappers.ParseVlanIds(input).Should().Equal(expected);
     }
 
+    [Theory]
+    [InlineData("0", new int[0])]                       // below the 802.1Q range
+    [InlineData("4095", new int[0])]                    // above the range
+    [InlineData("0-4094", new[] { 1, 4094 })]           // clamped at both ends (endpoints checked)
+    [InlineData("4090-9999", new[] { 4090, 4094 })]     // upper end clamped to 4094
+    [InlineData("0-2147483647", new[] { 1, 4094 })]     // a malicious huge range never loops unbounded
+    public void ParseVlanIds_clamps_ids_to_the_valid_802_1q_range(string input, int[] expectedEndpoints)
+    {
+        var ids = RouterOsMappers.ParseVlanIds(input).ToList();
+
+        if (expectedEndpoints.Length == 0)
+        {
+            ids.Should().BeEmpty();
+            return;
+        }
+
+        ids.Should().OnlyContain(id => id >= 1 && id <= 4094);
+        ids.First().Should().Be(expectedEndpoints[0]);
+        ids.Last().Should().Be(expectedEndpoints[1]);
+    }
+
     [Fact]
     public async Task Sentence_framing_round_trips_words_including_multi_byte_length_prefixes()
     {
@@ -80,5 +101,17 @@ public sealed class ParsingTests
         var readBack = await RouterOsSentence.ReadAsync(stream, CancellationToken.None);
 
         readBack.Should().Equal(words);
+    }
+
+    [Fact]
+    public async Task Reading_a_word_longer_than_the_maximum_is_rejected_before_allocation()
+    {
+        // 0xEF FF FF FF encodes a ~268MB word via the 4-byte length prefix — far over MaxWordLength.
+        // The reader must reject it (no multi-hundred-MB allocation) rather than trying to read the body.
+        using var stream = new MemoryStream(new byte[] { 0xEF, 0xFF, 0xFF, 0xFF });
+
+        var act = () => RouterOsSentence.ReadAsync(stream, CancellationToken.None);
+
+        await act.Should().ThrowAsync<RouterOsApiException>().WithMessage("*outside the permitted*");
     }
 }
