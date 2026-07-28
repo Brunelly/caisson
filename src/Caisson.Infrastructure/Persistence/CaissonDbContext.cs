@@ -1,3 +1,4 @@
+using Caisson.Domain.Discovery;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,6 +54,15 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Tamper-evident audit trail for discovery runs and API access.</summary>
     public DbSet<TopologyAuditEvent> AuditEvents => Set<TopologyAuditEvent>();
+
+    /// <summary>Durable, resumable discovery orchestration jobs (story #8).</summary>
+    public DbSet<DiscoveryJob> DiscoveryJobs => Set<DiscoveryJob>();
+
+    /// <summary>Per-step status rows for discovery jobs.</summary>
+    public DbSet<DiscoveryJobStep> DiscoveryJobSteps => Set<DiscoveryJobStep>();
+
+    /// <summary>Per-rack recurring discovery schedules.</summary>
+    public DbSet<RackDiscoverySchedule> RackDiscoverySchedules => Set<RackDiscoverySchedule>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

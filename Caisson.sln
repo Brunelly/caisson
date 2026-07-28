@@ -39,6 +39,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Api", "src\Caisson.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Api.IntegrationTests", "tests\Caisson.Api.IntegrationTests\Caisson.Api.IntegrationTests.csproj", "{206EC827-1510-4F37-B0E8-B7AEF2F375E4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Orchestration", "src\Caisson.Orchestration\Caisson.Orchestration.csproj", "{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Caisson.Orchestration.Tests", "tests\Caisson.Orchestration.Tests\Caisson.Orchestration.Tests.csproj", "{EC2F98CC-158E-4672-AF58-9AA35F18E5E4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -112,6 +116,14 @@ Global
 		{206EC827-1510-4F37-B0E8-B7AEF2F375E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{206EC827-1510-4F37-B0E8-B7AEF2F375E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{206EC827-1510-4F37-B0E8-B7AEF2F375E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EC2F98CC-158E-4672-AF58-9AA35F18E5E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC2F98CC-158E-4672-AF58-9AA35F18E5E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC2F98CC-158E-4672-AF58-9AA35F18E5E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC2F98CC-158E-4672-AF58-9AA35F18E5E4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{739331BE-14A3-4C66-9138-86899D7EBBFB} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
@@ -130,5 +142,7 @@ Global
 		{7FF33DE4-9A8B-43D2-998F-A7CC176696B1} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 		{5FBBB70E-2DEE-42BE-8A1D-16A02C81933C} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
 		{206EC827-1510-4F37-B0E8-B7AEF2F375E4} = {ECD908A9-44C5-454E-8C33-1B6347663736}
+		{23CB3A7E-CEFE-487B-AE47-7C7AD46436C5} = {8DA6850B-5AB2-4BF2-81A0-3A7A9D4818F7}
+		{EC2F98CC-158E-4672-AF58-9AA35F18E5E4} = {ECD908A9-44C5-454E-8C33-1B6347663736}
 	EndGlobalSection
 EndGlobal

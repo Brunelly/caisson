@@ -13,6 +13,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <!--
+      Discovery orchestration (story #8). The API references only this project; it names NO
+      Caisson.Drivers.* type, so the non-transitive Api_references_no_driver_assembly guard stays green
+      (driver access is transitive through Caisson.Orchestration at runtime).
+    -->
+    <ProjectReference Include="..\Caisson.Orchestration\Caisson.Orchestration.csproj" />
   </ItemGroup>
 
   <ItemGroup>

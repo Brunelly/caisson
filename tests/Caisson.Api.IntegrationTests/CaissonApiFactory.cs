@@ -1,4 +1,8 @@
+using Caisson.Domain.Topology;
+using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Orchestration.Options;
+using Caisson.Orchestration.RackDefinitions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -50,7 +54,32 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
             // Replace JWT/Entra auth with the header-driven test scheme (becomes the default scheme).
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // Story #8: make discovery deterministic and hardware-free. Any rack resolves a Mock
+            // definition, Mock drivers return canned data, the scheduler is off, and retries don't sleep.
+            services.RemoveAll(typeof(IRackDefinitionProvider));
+            services.AddScoped<IRackDefinitionProvider, TestRackDefinitionProvider>();
+            services.AddSingleton<ISwitchDriverFactory, TestSwitchDriverFactory>();
+            services.AddSingleton<IBmcDriverFactory, TestBmcDriverFactory>();
+            services.Configure<DiscoveryOrchestrationOptions>(options =>
+            {
+                options.SchedulerEnabled = false;
+                options.RunnerEnabled = true;
+                options.RunnerPollSeconds = 1;
+                options.RetryBaseDelayMs = 0;
+                options.HeartbeatStalenessSeconds = 5;
+            });
         });
+    }
+
+    /// <summary>Creates a fresh rack in the isolated database and returns its id.</summary>
+    public async Task<Guid> CreateRackAsync(string? name = null)
+    {
+        var rackId = Guid.NewGuid();
+        await using var context = _harness.CreateContext();
+        context.Racks.Add(new Rack(rackId, "rack-" + rackId.ToString("N"), name ?? "Test Rack", DateTime.UtcNow));
+        await context.SaveChangesAsync();
+        return rackId;
     }
 
     async Task IAsyncLifetime.DisposeAsync()

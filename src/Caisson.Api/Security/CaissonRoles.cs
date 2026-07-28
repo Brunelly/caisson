@@ -21,4 +21,7 @@ public static class CaissonRoles
 
     /// <summary>Every role permitted to read topology/audit data.</summary>
     public static readonly IReadOnlyList<string> All = new[] { Admin, Operator, ReadOnly, ServiceAccount };
+
+    /// <summary>Roles permitted to trigger/cancel discovery runs (story #8, AC2/NFR3).</summary>
+    public static readonly IReadOnlyList<string> Operators = new[] { Admin, Operator };
 }

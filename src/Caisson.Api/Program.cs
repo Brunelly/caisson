@@ -3,6 +3,7 @@ using Caisson.Api.Middleware;
 using Caisson.Api.Security;
 using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Orchestration.DependencyInjection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,11 @@ var connectionString = ResolveConnectionString(builder.Configuration);
 builder.Services.AddDbContext<CaissonDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddCaissonPersistence();
 builder.Services.AddSingleton(TimeProvider.System);
+
+// Discovery orchestration (story #8, ADR 0013): the config-bound rack definitions, driver-touching
+// pipeline, job/schedule services and the background runner + scheduler. The API names no driver type;
+// driver access is transitive through Caisson.Orchestration at runtime (the guard test stays green).
+builder.Services.AddCaissonOrchestration(builder.Configuration);
 
 // Correlation-id context (scoped) and the API-access audit writer.
 builder.Services.AddScoped<CorrelationContext>();
@@ -60,7 +66,11 @@ builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build())
-    .AddPolicy(AuthorizationPolicies.TopologyRead, policy => policy.RequireRole(CaissonRoles.All));
+    .AddPolicy(AuthorizationPolicies.TopologyRead, policy => policy.RequireRole(CaissonRoles.All))
+    // Story #8: trigger/cancel are Admin+Operator; schedule management is Admin-only. Fail-closed is
+    // automatic (fallback → 401 for anonymous; RequireRole → 403 for a recognised-but-insufficient role).
+    .AddPolicy(AuthorizationPolicies.DiscoveryTrigger, policy => policy.RequireRole(CaissonRoles.Operators))
+    .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin));
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
