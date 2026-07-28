@@ -34,12 +34,17 @@ against, so this ADR fixes the baseline future frontend work should follow.
   longer the default). `ng test` runs headless-by-default in a non-TTY environment (`--watch` defaults
   to `false` outside a TTY), so CI needs no `--browsers=ChromeHeadless` flag and no Chrome install step —
   a deliberate deviation from the older Karma-based convention this story was originally scoped against.
-- **Graph rendering: raw D3, tree/hierarchy layout + `d3-zoom`.** The story's explicit technical
-  constraint is "prefer simple, widely-used Angular graph rendering (e.g. D3) without heavy licensing
-  constraints." D3 is Apache-clause-free (ISC-licensed) with no licensing risk, and a layered tree
-  layout is the natural fit for the strictly-layered Server → NIC → Port → VLAN DAG (a force layout
-  would fight the DAG's inherent hierarchy). D3 is wrapped by a thin Angular component that owns the
-  `<svg>` and patches it via D3 enter/update/exit joins, not torn down and rebuilt, so pan/zoom/selection
+- **Graph rendering: raw D3, a manual layered (columnar) layout + `d3-zoom`, not `d3.hierarchy`.** The
+  story's explicit technical constraint is "prefer simple, widely-used Angular graph rendering (e.g.
+  D3) without heavy licensing constraints." D3 is Apache-clause-free (ISC-licensed) with no licensing
+  risk, and a layered layout (one column per entity type: Server → NIC → Switch → Port → VLAN) is the
+  natural fit for the DAG's inherent layering (a force layout would fight it). It deliberately does not
+  use `d3.hierarchy`/`d3.tree`, because the graph is not a strict tree: a switch port and a VLAN can each
+  be reached from more than one NIC (they are dedup-derived from every NIC's best attachment, not
+  one-per-NIC), which breaks `d3.hierarchy`'s single-parent assumption — positions are computed directly
+  per column instead.
+  D3 is wrapped by a thin Angular component that owns the `<svg>` and patches it via D3 enter/update/exit
+  joins, not torn down and rebuilt, so pan/zoom/selection
   state survives a live refresh.
 - **State: plain injectable services + Angular signals/RxJS, no NgRx.** This is a single read-only page
   with one meaningful piece of shared state (the current rack's snapshot/graph/selection/connection

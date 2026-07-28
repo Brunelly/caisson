@@ -3,8 +3,11 @@
 // and the discovery-job status. Graph/search/legend/details-panel child components are wired in here by
 // later story #10 steps; this page owns only rackId resolution, loading/error state and the header.
 import { DatePipe } from '@angular/common';
-import { Component, effect, inject } from '@angular/core';
+import { Component, effect, inject, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { TopologyGraphComponent } from './graph/topology-graph.component';
+import { TopologyLegendComponent } from './legend/topology-legend.component';
+import type { TopologyGraphEdge, TopologyGraphNode } from './model/topology-graph-model';
 import { TopologyStateService } from './state/topology-state.service';
 
 @Component({
@@ -36,8 +39,14 @@ import { TopologyStateService } from './state/topology-state.service';
         </header>
 
         <div class="topology-shell">
-          <!-- app-topology-search / app-topology-graph / app-topology-legend / app-topology-details-panel
-               are composed here by later story #10 steps. -->
+          <!-- app-topology-search / app-topology-details-panel are composed here by later story #10 steps. -->
+          <app-topology-graph
+            #graph
+            [graph]="state.graph()"
+            (nodeSelected)="onNodeSelected($event)"
+            (edgeSelected)="onEdgeSelected($event)"
+          />
+          <app-topology-legend />
         </div>
       }
     </section>
@@ -84,12 +93,13 @@ import { TopologyStateService } from './state/topology-state.service';
       }
     `,
   ],
-  imports: [DatePipe],
+  imports: [DatePipe, TopologyGraphComponent, TopologyLegendComponent],
 })
 export class TopologyPageComponent {
   protected readonly state = inject(TopologyStateService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly graphRef = viewChild<TopologyGraphComponent>('graph');
 
   constructor() {
     const rackId = this.route.snapshot.paramMap.get('rackId');
@@ -105,5 +115,19 @@ export class TopologyPageComponent {
         void this.router.navigate(['/access-denied']);
       }
     });
+  }
+
+  protected onNodeSelected(node: TopologyGraphNode): void {
+    this.state.selectEntity(node);
+  }
+
+  protected onEdgeSelected(edge: TopologyGraphEdge): void {
+    // Edges have no independent details view yet; selecting one focuses its source node instead.
+    this.graphRef()?.panZoomToNode(edge.source);
+  }
+
+  /** Used by search (story #10 step 5) to focus/highlight a selected result in the graph. */
+  focusNode(nodeId: string): void {
+    this.graphRef()?.panZoomToNode(nodeId);
   }
 }
