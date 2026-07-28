@@ -49,9 +49,13 @@ export class TopologyStateService {
 
   /** Loads the latest snapshot + graph and the discovery status for a rack, in parallel (AC1). */
   loadRackTopology(rackId: string): void {
+    const isRackChange = this._rackId() !== null && this._rackId() !== rackId;
     this._rackId.set(rackId);
     this._loading.set(true);
     this._error.set(null);
+    if (isRackChange) {
+      this.clearSelection();
+    }
 
     forkJoin({
       detail: this.snapshots.getLatest(rackId),

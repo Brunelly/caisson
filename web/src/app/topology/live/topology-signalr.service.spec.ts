@@ -321,6 +321,29 @@ describe('TopologySignalRService', () => {
     expect(lastConnection!.state).toBe('Connected');
   });
 
+  it('connect() with a different rackId while connected unsubscribes the previous rack first', async () => {
+    await connectAndFlush('rack-1');
+
+    lastConnection!.invokeCalls = [];
+    service.connect('rack-2');
+    await Promise.resolve();
+
+    expect(lastConnection!.invokeCalls).toEqual([
+      { method: 'UnsubscribeFromRack', args: ['rack-1'] },
+      { method: 'SubscribeToRack', args: ['rack-2'] },
+    ]);
+  });
+
+  it('connect() with the same rackId is a no-op (no duplicate subscribe)', async () => {
+    await connectAndFlush('rack-1');
+
+    lastConnection!.invokeCalls = [];
+    service.connect('rack-1');
+    await Promise.resolve();
+
+    expect(lastConnection!.invokeCalls).toEqual([]);
+  });
+
   it('disconnect unsubscribes, stops the connection, and clears timers', async () => {
     await connectAndFlush();
 

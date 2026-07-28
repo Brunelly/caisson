@@ -101,6 +101,10 @@ export class TopologySignalRService {
 
   /** Connects (or, if already connected, switches rack subscription) and subscribes to `rackId`. */
   connect(rackId: string): void {
+    const previousRackId = this.currentRackId;
+    if (previousRackId === rackId) {
+      return;
+    }
     this.currentRackId = rackId;
 
     if (!this.connection) {
@@ -110,6 +114,9 @@ export class TopologySignalRService {
     if (this.connection.state === HubConnectionState.Disconnected) {
       this.startConnection();
     } else if (this.connection.state === HubConnectionState.Connected) {
+      if (previousRackId) {
+        void this.connection.invoke('UnsubscribeFromRack', previousRackId).catch(() => undefined);
+      }
       void this.connection.invoke('SubscribeToRack', rackId).catch(() => undefined);
     }
   }

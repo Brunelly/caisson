@@ -4,6 +4,7 @@
 // later story #10 steps; this page owns only rackId resolution, loading/error state and the header.
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, effect, inject, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TopologyDetailsPanelComponent } from './details/topology-details-panel.component';
 import { TopologyGraphComponent } from './graph/topology-graph.component';
@@ -147,11 +148,16 @@ export class TopologyPageComponent {
   private readonly graphRef = viewChild<TopologyGraphComponent>('graph');
 
   constructor() {
-    const rackId = this.route.snapshot.paramMap.get('rackId');
-    if (rackId) {
-      this.state.loadRackTopology(rackId);
-      this.signalR.connect(rackId);
-    }
+    // Subscribed rather than read once from the snapshot: Angular's default route-reuse strategy
+    // keeps this component instance alive across a rackId-only navigation on the same route config
+    // (the constructor does not re-run), so a one-shot snapshot read would freeze on the first rack.
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const rackId = params.get('rackId');
+      if (rackId) {
+        this.state.loadRackTopology(rackId);
+        this.signalR.connect(rackId);
+      }
+    });
 
     this.destroyRef.onDestroy(() => this.signalR.disconnect());
 

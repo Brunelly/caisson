@@ -109,7 +109,7 @@ describe('TopologyPageComponent accessibility', () => {
         { provide: TopologyEntityService, useValue: { getEntity: () => of({ kind: 'notFound' }) } },
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { paramMap: { get: () => 'rack-1' } } },
+          useValue: { paramMap: of({ get: () => 'rack-1' }) },
         },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
       ],
