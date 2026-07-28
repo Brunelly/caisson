@@ -1,5 +1,6 @@
 using System.Reflection;
 using Caisson.Api.Controllers;
+using Caisson.Api.Realtime.Hubs;
 using Caisson.Api.Security;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
@@ -90,6 +91,26 @@ public sealed class ReadOnlyGuardTests
                     controller.Name, action.Name);
             }
         }
+    }
+
+    [Fact]
+    public void Topology_hub_exposes_only_subscribe_and_unsubscribe()
+    {
+        // Story #9 safety boundary: the hub is strictly read-only. The only invokable server methods are
+        // the group mechanics; an accidental future mutating method must fail the build. Overrides of the
+        // SignalR Hub base (OnConnectedAsync/OnDisconnectedAsync) are not client-invocable, so exclude them.
+        var invokable = typeof(TopologyHub)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName)
+            .Where(m => m.GetBaseDefinition().DeclaringType == m.DeclaringType)
+            .Select(m => m.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        invokable.Should().BeEquivalentTo(new[]
+        {
+            nameof(TopologyHub.SubscribeToRack),
+            nameof(TopologyHub.UnsubscribeFromRack),
+        });
     }
 
     private static IEnumerable<string> PolicyNames(IEnumerable<Attribute> attributes)

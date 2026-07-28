@@ -73,7 +73,9 @@ public sealed class TopologyHub : Hub<ITopologyClient>
 
         if (!await _context.RackExistsAsync(rackId, Context.ConnectionAborted))
         {
-            await AuditAsync(rackId, "topology.hub.subscribe", "rack-not-found");
+            // The rack does not exist, so it cannot be the audit's rack_id (a FK) — record the attempted
+            // rack in targetId with a null rack_id, and join no group (fail-closed).
+            await AuditAsync(auditRackId: null, rackId, "topology.hub.subscribe", "rack-not-found");
             _logger.LogWarning(
                 "Topology hub subscribe rejected — rack not found rackId={RackId} connectionId={ConnectionId} correlationId={CorrelationId} user={User}",
                 rackId, Context.ConnectionId, CorrelationId(), UserId());
@@ -81,7 +83,7 @@ public sealed class TopologyHub : Hub<ITopologyClient>
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, TopologyGroups.ForRack(rackId), Context.ConnectionAborted);
-        await AuditAsync(rackId, "topology.hub.subscribe", "success");
+        await AuditAsync(rackId, rackId, "topology.hub.subscribe", "success");
         _logger.LogInformation(
             "Topology hub subscribed rackId={RackId} connectionId={ConnectionId} correlationId={CorrelationId} user={User}",
             rackId, Context.ConnectionId, CorrelationId(), UserId());
@@ -93,16 +95,18 @@ public sealed class TopologyHub : Hub<ITopologyClient>
         StampCorrelation();
 
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, TopologyGroups.ForRack(rackId), Context.ConnectionAborted);
-        await AuditAsync(rackId, "topology.hub.unsubscribe", "success");
+        // A client may unsubscribe from any id (including a non-existent rack), so keep rack_id null (the
+        // FK) and record the target in targetId — unsubscribe is pure group mechanics.
+        await AuditAsync(auditRackId: null, rackId, "topology.hub.unsubscribe", "success");
         _logger.LogInformation(
             "Topology hub unsubscribed rackId={RackId} connectionId={ConnectionId} correlationId={CorrelationId} user={User}",
             rackId, Context.ConnectionId, CorrelationId(), UserId());
     }
 
-    private Task AuditAsync(Guid rackId, string action, string result)
+    private Task AuditAsync(Guid? auditRackId, Guid targetRackId, string action, string result)
         => _audit.WriteActionAsync(
             Context.User ?? new ClaimsPrincipal(new ClaimsIdentity()),
-            rackId, action, targetType: "rack", targetId: rackId.ToString(), result, Context.ConnectionAborted);
+            auditRackId, action, targetType: "rack", targetId: targetRackId.ToString(), result, Context.ConnectionAborted);
 
     // Hub method invocations over an established WebSocket do not pass through the HTTP correlation
     // middleware, so stamp the per-connection id onto the scoped context the audit writer reads.

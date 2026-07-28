@@ -25,6 +25,10 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
     <PackageReference Include="coverlet.collector" />
+    <!-- Live-updates hub + Redis fan-out tests (story #9). -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Testcontainers.Redis" />
+    <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
 
 </Project>

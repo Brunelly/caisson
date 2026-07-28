@@ -173,6 +173,55 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
         }
     }
 
+    [Fact]
+    public async Task Publishes_one_snapshot_updated_event_with_counts_and_version_as_seq()
+    {
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync();
+        var (input, result) = IngestionTestData.Large();
+        var publisher = new RecordingTopologyEventPublisher();
+
+        SnapshotIngestionOutcome outcome;
+        await using (var context = _fixture.CreateContext())
+        {
+            outcome = await Ingest(context, rackId, input, result, publisher);
+        }
+
+        publisher.Snapshots.Should().HaveCount(1);
+        var @event = publisher.Snapshots[0];
+        @event.RackId.Should().Be(rackId);
+        @event.SnapshotId.Should().Be(outcome.SnapshotId);
+        @event.Version.Should().Be(outcome.Version);
+        @event.Seq.Should().Be(outcome.Version); // snapshot seq reuses the monotonic per-rack version
+        @event.JobId.Should().BeNull(); // the ingestion request does not carry a jobId
+        @event.Summary.SwitchCount.Should().Be(2);
+        @event.Summary.ServerCount.Should().Be(20);
+        @event.Summary.Added.Should().BeGreaterThan(0); // rack's first snapshot → every entity is Added
+        @event.Summary.Removed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_throwing_publisher_does_not_fail_ingestion()
+    {
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync();
+        var input = IngestionTestData.Observed();
+        var result = IngestionTestData.Correlation();
+
+        SnapshotIngestionOutcome outcome;
+        await using (var context = _fixture.CreateContext())
+        {
+            // A publisher that throws (simulated Redis outage) must not fail ingestion (AC4/NFR3).
+            outcome = await Ingest(context, rackId, input, result, new ThrowingTopologyEventPublisher());
+        }
+
+        outcome.Version.Should().Be(1);
+        await using (var context = _fixture.CreateContext())
+        {
+            (await context.Snapshots.CountAsync(s => s.RackId == rackId)).Should().Be(1);
+        }
+    }
+
     private static Task<SnapshotIngestionOutcome> Ingest(
         CaissonDbContext context, Guid rackId, TopologyCorrelationInput input, TopologyCorrelationResult result,
         LiveUpdates.ITopologyEventPublisher? publisher = null)
