@@ -85,9 +85,11 @@ public sealed class TopologyHeartbeatService : BackgroundService
                 TimeSpan.FromSeconds(_heartbeatSeconds * 2),
                 When.NotExists);
         }
-        catch
+        catch (Exception ex)
         {
             // Fail-open: if the guard is unreachable, still beat (a duplicate heartbeat is harmless).
+            // Logged (like the relay guard) so the two fail-open paths are symmetric and diagnosable.
+            _logger.LogWarning(ex, "Heartbeat guard unavailable for bucket={Bucket}; beating without dedup.", bucket);
             return true;
         }
     }

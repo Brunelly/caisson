@@ -1,3 +1,4 @@
+using Caisson.Api.Realtime.Hubs;
 using Caisson.Infrastructure.LiveUpdates;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http.Connections;
@@ -54,7 +55,7 @@ public sealed class TopologyHubTests
 
         await using var connection = BuildConnection("tester", role);
         var received = new TaskCompletionSource<SnapshotUpdatedEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClientMethods.SnapshotUpdated), e => received.TrySetResult(e));
+        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClient.SnapshotUpdated), e => received.TrySetResult(e));
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToRack", _factory.Seed.RackId);
@@ -84,7 +85,7 @@ public sealed class TopologyHubTests
 
         await using var connection = BuildConnection("tester", "ReadOnly");
         var received = new TaskCompletionSource<SnapshotUpdatedEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClientMethods.SnapshotUpdated), e => received.TrySetResult(e));
+        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClient.SnapshotUpdated), e => received.TrySetResult(e));
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToRack", _factory.Seed.RackId);
@@ -123,11 +124,5 @@ public sealed class TopologyHubTests
             });
 
         return builder.Build();
-    }
-
-    // Names the server → client methods without depending on the internal ITopologyClient interface.
-    private static class ITopologyClientMethods
-    {
-        public const string SnapshotUpdated = nameof(SnapshotUpdated);
     }
 }

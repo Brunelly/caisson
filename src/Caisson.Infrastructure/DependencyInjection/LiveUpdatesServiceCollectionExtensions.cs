@@ -32,9 +32,7 @@ public static class LiveUpdatesServiceCollectionExtensions
         services.AddOptions<RealtimeOptions>().Bind(configuration.GetSection(RealtimeOptions.SectionName));
         services.TryAddSingleton<TopologyMetrics>();
 
-        var options = configuration.GetSection(RealtimeOptions.SectionName).Get<RealtimeOptions>() ?? new RealtimeOptions();
-        var redisConnectionString = RealtimeOptions.ResolveRedisConnectionString(configuration);
-        var useRedis = options.Enabled && !string.IsNullOrWhiteSpace(redisConnectionString);
+        var useRedis = RealtimeOptions.IsRedisEnabled(configuration, out var redisConnectionString);
 
         // The publisher/sequencer are singletons; decide them here rather than TryAdd so this call wins
         // over the no-op defaults registered by AddCaissonPersistence, regardless of registration order.

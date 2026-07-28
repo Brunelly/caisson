@@ -201,6 +201,24 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
     }
 
     [Fact]
+    public async Task Snapshot_updated_event_carries_the_requests_jobId_when_present()
+    {
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync();
+        var (input, result) = IngestionTestData.Large();
+        var jobId = Guid.NewGuid();
+        var publisher = new RecordingTopologyEventPublisher();
+
+        await using (var context = _fixture.CreateContext())
+        {
+            await Ingest(context, rackId, input, result, publisher, jobId);
+        }
+
+        // AC1: a snapshot must be correlatable back to the discovery job that produced it.
+        publisher.Snapshots.Should().ContainSingle().Which.JobId.Should().Be(jobId);
+    }
+
+    [Fact]
     public async Task A_throwing_publisher_does_not_fail_ingestion()
     {
         await _fixture.MigrateAsync();
@@ -224,14 +242,14 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
 
     private static Task<SnapshotIngestionOutcome> Ingest(
         CaissonDbContext context, Guid rackId, TopologyCorrelationInput input, TopologyCorrelationResult result,
-        LiveUpdates.ITopologyEventPublisher? publisher = null)
+        LiveUpdates.ITopologyEventPublisher? publisher = null, Guid? jobId = null)
     {
         var service = new TopologySnapshotIngestionService(
             context, new GuidTopologyIdGenerator(), publisher ?? new LiveUpdates.NoOpTopologyEventPublisher(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TopologySnapshotIngestionService>.Instance);
         var request = new TopologyIngestionRequest(
             rackId, input, result, TriggerType.OnDemand, "svc-discovery", ActorType.ServiceAccount,
-            "chr", "7.15", Guid.NewGuid(), SnapshotStatus.Completed, At, At);
+            "chr", "7.15", Guid.NewGuid(), SnapshotStatus.Completed, At, At, jobId);
         return service.IngestAsync(request);
     }
 

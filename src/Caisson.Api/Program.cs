@@ -155,8 +155,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 // Live-updates startup visibility (story #9, NFR4): make it obvious to operators when cross-instance
 // relay is off because Redis is unconfigured.
 var realtimeOptions = app.Configuration.GetSection(RealtimeOptions.SectionName).Get<RealtimeOptions>() ?? new RealtimeOptions();
-var realtimeRedis = RealtimeOptions.ResolveRedisConnectionString(app.Configuration);
-if (realtimeOptions.Enabled && !string.IsNullOrWhiteSpace(realtimeRedis))
+if (RealtimeOptions.IsRedisEnabled(app.Configuration, out var realtimeRedis))
 {
     app.Logger.LogInformation("Live topology updates enabled with Redis backplane (channel {Channel}).", realtimeOptions.EventsChannel);
 }

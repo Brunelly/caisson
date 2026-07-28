@@ -139,7 +139,7 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
 
             var @event = new SnapshotUpdatedEvent(
                 request.RackId,
-                JobId: null, // The ingestion request does not carry a jobId; optional per the contract.
+                request.JobId, // The discovery job that produced this snapshot, when known (optional per the contract).
                 snapshot.Id,
                 version,
                 summary,
@@ -213,6 +213,8 @@ public interface ITopologySnapshotIngestionService
 /// <param name="Status">The terminal outcome of the run.</param>
 /// <param name="StartedAtUtc">When the run started.</param>
 /// <param name="CompletedAtUtc">When the run completed (also the snapshot creation/sort time).</param>
+/// <param name="JobId">The discovery job that produced the run, when known; flows to the snapshot-updated
+/// event so a snapshot can be correlated back to its job (optional for non-job ingestion paths).</param>
 public sealed record TopologyIngestionRequest(
     Guid RackId,
     TopologyCorrelationInput Observed,
@@ -225,7 +227,8 @@ public sealed record TopologyIngestionRequest(
     Guid CorrelationId,
     SnapshotStatus Status,
     DateTime StartedAtUtc,
-    DateTime CompletedAtUtc);
+    DateTime CompletedAtUtc,
+    Guid? JobId = null);
 
 /// <summary>The result of persisting a discovery run.</summary>
 /// <param name="SnapshotId">The new snapshot's id.</param>

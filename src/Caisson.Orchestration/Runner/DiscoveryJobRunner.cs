@@ -204,34 +204,13 @@ RETURNING id AS ""Value""";
         await PublishStatusAsync(job, job.Status, previousStatus: DiscoveryJobStatus.InProgress.ToString(), cancellationToken);
     }
 
-    private async Task PublishStatusAsync(
+    private Task PublishStatusAsync(
         DiscoveryJob job, DiscoveryJobStatus status, string? previousStatus, CancellationToken cancellationToken)
-    {
-        // Belt-and-braces around the fail-open publisher so a publish fault can never abort or fail the
-        // discovery job (AC4/NFR3).
-        try
-        {
-            var seq = await _sequencer.NextAsync("job:" + job.Id.ToString("N"), cancellationToken);
-            var @event = new DiscoveryJobStatusChangedEvent(
-                job.RackId,
-                job.Id,
-                status.ToString(),
-                previousStatus,
-                CurrentStep: null,
-                status == DiscoveryJobStatus.Failed ? job.ErrorCode : null,
-                _time.GetUtcNow(),
-                seq,
-                job.CorrelationId);
-            await _events.PublishJobStatusChangedAsync(@event, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "discovery-job-status-changed publish failed (swallowed) jobId={JobId} status={Status} correlationId={CorrelationId}",
-                job.Id, status, job.CorrelationId);
-        }
-    }
+        => _events.PublishJobStatusAsync(
+            _sequencer, _time, _logger,
+            job.RackId, job.Id, status.ToString(), previousStatus,
+            errorCode: status == DiscoveryJobStatus.Failed ? job.ErrorCode : null,
+            job.CorrelationId, cancellationToken);
 
     private async Task WaitForWorkAsync(CancellationToken stoppingToken)
     {

@@ -45,4 +45,24 @@ public sealed class RealtimeOptions
         var fromConfig = configuration.GetConnectionString("Redis");
         return string.IsNullOrWhiteSpace(fromConfig) ? null : fromConfig;
     }
+
+    /// <summary>
+    /// The single source of truth for "is the Redis-backed live-updates path active": the feature is
+    /// enabled AND a connection string resolves. Both DI paths (<c>AddCaissonLiveUpdates</c>,
+    /// <c>AddCaissonRealtime</c>) and the startup log call this so the enablement rule cannot drift.
+    /// </summary>
+    public static bool IsRedisEnabled(IConfiguration configuration)
+        => IsRedisEnabled(configuration, out _);
+
+    /// <summary>
+    /// As <see cref="IsRedisEnabled(IConfiguration)"/> but also yields the resolved connection string
+    /// (non-null exactly when the result is <c>true</c>), so a single call both decides and supplies it.
+    /// </summary>
+    public static bool IsRedisEnabled(IConfiguration configuration, out string? redisConnectionString)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var options = configuration.GetSection(SectionName).Get<RealtimeOptions>() ?? new RealtimeOptions();
+        redisConnectionString = ResolveRedisConnectionString(configuration);
+        return options.Enabled && !string.IsNullOrWhiteSpace(redisConnectionString);
+    }
 }

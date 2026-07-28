@@ -1,3 +1,4 @@
+using Caisson.Api.Realtime.Hubs;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
@@ -57,7 +58,7 @@ public sealed class TopologyEventFanOutTests : IAsyncLifetime
         await using var connection = BuildConnection(hostB, "tester", "Operator");
         var received = new List<SnapshotUpdatedEvent>();
         var first = new TaskCompletionSource<SnapshotUpdatedEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.On<SnapshotUpdatedEvent>("SnapshotUpdated", e =>
+        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClient.SnapshotUpdated), e =>
         {
             lock (received)
             {

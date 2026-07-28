@@ -53,6 +53,7 @@ public sealed class DiscoveryOrchestratorTests
         request.TriggeredBy.Should().Be("operator-1");
         request.ActorType.Should().Be(ActorType.User);
         request.CorrelationId.Should().Be(job.CorrelationId);
+        request.JobId.Should().Be(job.Id); // AC1: the snapshot must be correlatable back to its job
         request.Status.Should().Be(SnapshotStatus.Completed);
         request.Observed.Switches.Should().ContainSingle(s => s.SwitchId == "sw1");
         request.Observed.Servers.Should().ContainSingle(s => s.ServerId == "srv1");

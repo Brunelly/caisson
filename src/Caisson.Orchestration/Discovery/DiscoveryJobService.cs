@@ -115,32 +115,12 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
 
         // Live update (story #9): the durable Created→Queued transition. Fail-open + belt-and-braces so a
         // publish fault can never fail the enqueue (AC4/NFR3).
-        await PublishStatusAsync(
+        await _events.PublishJobStatusAsync(
+            _sequencer, _time, _logger,
             rackId, job.Id, DiscoveryJobStatus.Queued.ToString(), previousStatus: null, errorCode: null,
             correlationId, cancellationToken);
 
         return new EnqueueResult(EnqueueDisposition.Created, job.Id);
-    }
-
-    private async Task PublishStatusAsync(
-        Guid rackId, Guid jobId, string status, string? previousStatus, string? errorCode,
-        Guid correlationId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var seq = await _sequencer.NextAsync("job:" + jobId.ToString("N"), cancellationToken);
-            var @event = new DiscoveryJobStatusChangedEvent(
-                rackId, jobId, status, previousStatus, CurrentStep: null, errorCode,
-                _time.GetUtcNow(), seq, correlationId);
-            await _events.PublishJobStatusChangedAsync(@event, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "discovery-job-status-changed publish failed (swallowed) jobId={JobId} status={Status} correlationId={CorrelationId}",
-                jobId, status, correlationId);
-        }
     }
 
     /// <inheritdoc />

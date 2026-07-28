@@ -241,7 +241,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             {
                 var request = new TopologyIngestionRequest(
                     job.RackId, input, correlation, job.Mode, job.TriggeredBy, job.ActorType,
-                    Source, null, job.CorrelationId, status, startedAtUtc, Now);
+                    Source, null, job.CorrelationId, status, startedAtUtc, Now, job.Id);
                 var outcome = await _ingestion.IngestAsync(request, cancellationToken);
 
                 job.SetResultSnapshot(outcome.SnapshotId);

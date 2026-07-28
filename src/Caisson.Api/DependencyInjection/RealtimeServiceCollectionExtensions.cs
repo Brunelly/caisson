@@ -12,9 +12,11 @@ namespace Caisson.Api.DependencyInjection;
 /// <summary>
 /// Wires the live-updates delivery side in the API host (story #9, ADR 0014): the dependency-free seam
 /// (<see cref="LiveUpdatesServiceCollectionExtensions.AddCaissonLiveUpdates"/>), the SignalR hub with a
-/// Redis backplane, the per-instance relay subscriber + heartbeat, and the Redis health check. When no
-/// Redis connection string is configured it degrades to plain single-instance SignalR (no backplane, no
-/// cross-instance relay) — an intentional dev/CI fallback.
+/// Redis backplane, the per-instance relay subscriber + heartbeat, and the Redis health check. Live
+/// delivery REQUIRES Redis: with no connection string the publisher is the no-op implementation and
+/// neither the relay subscriber nor the heartbeat is registered, so the hub still accepts connections
+/// but delivers no events and emits no heartbeats — an intentional dev/CI fallback, not a delivery mode.
+/// The real deployment target is multiple instances + Redis.
 /// </summary>
 public static class RealtimeServiceCollectionExtensions
 {
@@ -29,8 +31,7 @@ public static class RealtimeServiceCollectionExtensions
         services.AddCaissonLiveUpdates(configuration);
 
         var options = configuration.GetSection(RealtimeOptions.SectionName).Get<RealtimeOptions>() ?? new RealtimeOptions();
-        var redisConnectionString = RealtimeOptions.ResolveRedisConnectionString(configuration);
-        var useRedis = options.Enabled && !string.IsNullOrWhiteSpace(redisConnectionString);
+        var useRedis = RealtimeOptions.IsRedisEnabled(configuration, out var redisConnectionString);
 
         services.TryAddSingleton<TopologyHubLoggingFilter>();
         var signalr = services.AddSignalR(o => o.AddFilter<TopologyHubLoggingFilter>());
