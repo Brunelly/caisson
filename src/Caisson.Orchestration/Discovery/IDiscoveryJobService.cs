@@ -40,7 +40,7 @@ public interface IDiscoveryJobService
     Task<DateTime?> GetLastSuccessAtUtcAsync(Guid rackId, CancellationToken cancellationToken);
 
     /// <summary>Returns the rack's discovery status summary (latest job + last success), or null if none.</summary>
-    Task<DiscoveryStatusSummary?> GetStatusAsync(Guid rackId, CancellationToken cancellationToken);
+    Task<DiscoveryStatusSummary> GetStatusAsync(Guid rackId, CancellationToken cancellationToken);
 }
 
 /// <summary>The disposition of an <see cref="IDiscoveryJobService.EnqueueAsync"/> call.</summary>

@@ -1,3 +1,4 @@
+using Caisson.Drivers.Abstractions.Bmc;
 using Caisson.Drivers.Abstractions.Identity;
 using Caisson.Drivers.Abstractions.ReadOnly;
 using Caisson.Drivers.Abstractions.Registry;
@@ -13,10 +14,11 @@ using Xunit;
 namespace Caisson.Orchestration.Tests;
 
 /// <summary>
-/// DB-free tests for the runner's collaborators: the read-only device discovery service (folding,
-/// partial/total failure, driver-not-found — AC5) and the in-process cancellation/nudge primitives (Q3).
+/// DB-free tests for the read-only <see cref="DeviceDiscoveryService"/> — both the switch and BMC/server
+/// folding paths (folding, partial/total failure, driver-not-found — AC5) — and the in-process
+/// cancellation/nudge primitives (Q3).
 /// </summary>
-public sealed class DiscoveryJobRunnerTests
+public sealed class DeviceDiscoveryServiceTests
 {
     private static readonly DeviceDiscoveryContext Context =
         new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
@@ -100,6 +102,78 @@ public sealed class DiscoveryJobRunnerTests
     }
 
     [Fact]
+    public async Task Server_discovery_folds_read_only_output_into_the_snapshot()
+    {
+        var driver = new MockBmcDiscoveryDriver
+        {
+            NetworkInterfacesResult = () => DriverResult<IReadOnlyList<BmcNetworkInterfaceInfo>>.Ok(
+                new[] { new BmcNetworkInterfaceInfo("eth0", null) }, TimeSpan.Zero),
+        };
+        var service = BmcService(new MockBmcDriverFactory { DriverFactory = _ => driver });
+        var definition = ServerDefinition(("srv1", "Mock", DriverConnectionKind.Redfish, "good"));
+
+        var outcome = await service.DiscoverServersAsync(definition, Context, CancellationToken.None);
+
+        outcome.Servers.Should().ContainSingle();
+        outcome.Servers[0].ServerId.Should().Be("srv1");
+        outcome.Servers[0].Nics.Should().ContainSingle(n => n.Name == "eth0");
+        outcome.Failed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Server_discovery_reports_partial_when_some_devices_fail()
+    {
+        var factory = new MockBmcDriverFactory
+        {
+            DriverFactory = opts => opts.Host == "bad"
+                ? new MockBmcDiscoveryDriver
+                {
+                    SystemInventoryResult = Failing<BmcSystemInventory>(),
+                    NetworkInterfacesResult = FailingList<BmcNetworkInterfaceInfo>(),
+                }
+                : new MockBmcDiscoveryDriver(),
+        };
+        var service = BmcService(factory);
+        var definition = ServerDefinition(
+            ("srv-good", "Mock", DriverConnectionKind.Redfish, "good"),
+            ("srv-bad", "Mock", DriverConnectionKind.Redfish, "bad"));
+
+        var outcome = await service.DiscoverServersAsync(definition, Context, CancellationToken.None);
+
+        outcome.Servers.Should().ContainSingle(s => s.ServerId == "srv-good");
+        outcome.Failed.Should().Be(1);
+        outcome.IsPartial.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Server_discovery_throws_retryable_when_all_devices_fail()
+    {
+        var driver = new MockBmcDiscoveryDriver
+        {
+            SystemInventoryResult = Failing<BmcSystemInventory>(retryable: true),
+            NetworkInterfacesResult = FailingList<BmcNetworkInterfaceInfo>(retryable: true),
+        };
+        var service = BmcService(new MockBmcDriverFactory { DriverFactory = _ => driver });
+        var definition = ServerDefinition(("srv1", "Mock", DriverConnectionKind.Redfish, "good"));
+
+        var act = () => service.DiscoverServersAsync(definition, Context, CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DiscoveryStepException>())
+            .Which.Retryable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Server_discovery_treats_missing_driver_as_a_failure()
+    {
+        var service = BmcService(new MockBmcDriverFactory());
+        var definition = ServerDefinition(("srv1", "NoSuchVendor", DriverConnectionKind.Redfish, "good"));
+
+        var act = () => service.DiscoverServersAsync(definition, Context, CancellationToken.None);
+
+        await act.Should().ThrowAsync<DiscoveryStepException>();
+    }
+
+    [Fact]
     public void Cancellation_registry_signals_only_local_jobs()
     {
         var registry = new DiscoveryCancellationRegistry();
@@ -134,6 +208,13 @@ public sealed class DiscoveryJobRunnerTests
             TimeProvider.System,
             NullLogger<DeviceDiscoveryService>.Instance);
 
+    private static DeviceDiscoveryService BmcService(MockBmcDriverFactory factory)
+        => new(
+            new SwitchDriverRegistry(Array.Empty<ISwitchDriverFactory>()),
+            new BmcDriverRegistry(new IBmcDriverFactory[] { factory }),
+            TimeProvider.System,
+            NullLogger<DeviceDiscoveryService>.Instance);
+
     private static RackDefinition SwitchDefinition(params (string Key, string Vendor, DriverConnectionKind Kind, string Host)[] switches)
         => new(
             Guid.NewGuid(),
@@ -141,6 +222,14 @@ public sealed class DiscoveryJobRunnerTests
             switches.Select(s => new DeviceDefinition(
                 s.Key, s.Vendor, null, s.Kind, s.Host, null, TimeSpan.FromSeconds(1), "kv://ref")).ToList(),
             Array.Empty<DeviceDefinition>());
+
+    private static RackDefinition ServerDefinition(params (string Key, string Vendor, DriverConnectionKind Kind, string Host)[] servers)
+        => new(
+            Guid.NewGuid(),
+            "rack-key",
+            Array.Empty<DeviceDefinition>(),
+            servers.Select(s => new DeviceDefinition(
+                s.Key, s.Vendor, null, s.Kind, s.Host, null, TimeSpan.FromSeconds(1), "kv://ref")).ToList());
 
     private static Func<DriverResult<T>> Failing<T>(bool retryable = false)
         => () => DriverResult<T>.Fail(new DriverError(DriverErrorCode.DeviceUnreachable, "down", retryable), TimeSpan.Zero);

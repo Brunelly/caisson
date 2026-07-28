@@ -2,6 +2,7 @@ using Caisson.Api.Auditing;
 using Caisson.Api.Contracts;
 using Caisson.Api.Middleware;
 using Caisson.Api.Security;
+using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
@@ -59,6 +60,15 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
             {
                 return ValidationError((nameof(request.Mode), "mode must be 'OnDemand'."));
             }
+        }
+
+        // Bound the idempotency key before enqueue: an over-length key otherwise fails the pre-check
+        // lookup and throws a 22001 (string too long) on insert, which is not a unique violation and so
+        // would surface as a 500 rather than a 400.
+        if (request.IdempotencyKey is { Length: > DiscoveryJob.MaxIdempotencyKeyLength })
+        {
+            return ValidationError((nameof(request.IdempotencyKey),
+                $"idempotencyKey must be at most {DiscoveryJob.MaxIdempotencyKeyLength} characters."));
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))

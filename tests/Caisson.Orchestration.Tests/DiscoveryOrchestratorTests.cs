@@ -27,7 +27,7 @@ public sealed class DiscoveryOrchestratorTests
 
     private readonly FakeDeviceDiscoveryService _devices = new();
     private readonly FakeCorrelationEngine _engine = new();
-    private readonly FakeTopologyIngestionService _ingestion = new();
+    private FakeTopologyIngestionService _ingestion = new();
     private readonly FakeDiscoveryJobStore _store = new();
     private RackDefinition? _definition = Definition();
 
@@ -164,6 +164,64 @@ public sealed class DiscoveryOrchestratorTests
         Step(job, DiscoveryStepName.Correlation).Status.Should().Be(DiscoveryStepStatus.Skipped);
         Step(job, DiscoveryStepName.Persistence).Status.Should().Be(DiscoveryStepStatus.Skipped);
         _ingestion.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Generic_step_failure_persists_operator_safe_message_not_raw_exception()
+    {
+        // A non-DiscoveryStepException whose message carries internal SQL/host detail (OWASP A05).
+        const string rawLeak = "npgsql: relation \"discovery_job\" host=10.9.9.9 constraint ux_secret";
+        _devices.SwitchBehavior = _ => throw new InvalidOperationException(rawLeak);
+        var job = NewJob();
+
+        await Run(job);
+
+        job.Status.Should().Be(DiscoveryJobStatus.Failed);
+        job.ErrorCode.Should().Be(DiscoveryErrorCodes.UnexpectedError);
+        job.ErrorMessage.Should().Be(DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.UnexpectedError));
+        job.ErrorMessage.Should().NotContain("10.9.9.9").And.NotContain("discovery_job");
+
+        var step = Step(job, DiscoveryStepName.SwitchDiscovery);
+        step.Status.Should().Be(DiscoveryStepStatus.Failed);
+        step.ErrorMessage.Should().Be(DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.UnexpectedError));
+    }
+
+    [Fact]
+    public async Task Persistence_failure_persists_operator_safe_message_not_raw_exception()
+    {
+        const string rawLeak = "23505: duplicate key value violates unique constraint host=10.9.9.9";
+        _devices.SwitchBehavior = _ => new SwitchDiscoveryOutcome(new[] { Switch("sw1") }, 1, 0);
+        _devices.ServerBehavior = _ => new ServerDiscoveryOutcome(new[] { Server("srv1") }, 1, 0);
+        _ingestion = new FakeTopologyIngestionService(_ => throw new InvalidOperationException(rawLeak));
+        var job = NewJob();
+
+        await Run(job);
+
+        job.Status.Should().Be(DiscoveryJobStatus.Failed);
+        job.ErrorCode.Should().Be(DiscoveryErrorCodes.PersistenceFailed);
+        job.ErrorMessage.Should().Be(DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.PersistenceFailed));
+        job.ErrorMessage.Should().NotContain("10.9.9.9").And.NotContain("constraint");
+
+        Step(job, DiscoveryStepName.Persistence).ErrorMessage
+            .Should().Be(DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.PersistenceFailed));
+    }
+
+    [Fact]
+    public async Task Step_failure_message_is_truncated_to_the_column_bound()
+    {
+        // A DiscoveryStepException whose (hypothetically) long message must be truncated before persist,
+        // so the subsequent save can never trip a Postgres 22001 (value too long).
+        var longMessage = new string('x', DiscoveryJobStep.MaxErrorMessageLength + 500);
+        _devices.SwitchBehavior = _ =>
+            throw new DiscoveryStepException(DiscoveryErrorCodes.SwitchDiscoveryFailed, longMessage, retryable: false);
+        var job = NewJob();
+
+        await Run(job);
+
+        job.Status.Should().Be(DiscoveryJobStatus.Failed);
+        Step(job, DiscoveryStepName.SwitchDiscovery).ErrorMessage!.Length
+            .Should().Be(DiscoveryJobStep.MaxErrorMessageLength);
+        job.ErrorMessage!.Length.Should().Be(DiscoveryJob.MaxErrorMessageLength);
     }
 
     [Fact]

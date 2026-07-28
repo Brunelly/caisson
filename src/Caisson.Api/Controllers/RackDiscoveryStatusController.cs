@@ -45,6 +45,6 @@ public sealed class RackDiscoveryStatusController : DiscoveryControllerBase
         var summary = await _jobs.GetStatusAsync(rackId, cancellationToken);
         await _audit.WriteReadAsync(
             User, rackId, "discovery.status.read", "rack", rackId.ToString(), cancellationToken);
-        return Ok(DiscoveryContractMappers.ToStatus(summary!));
+        return Ok(DiscoveryContractMappers.ToStatus(summary));
     }
 }

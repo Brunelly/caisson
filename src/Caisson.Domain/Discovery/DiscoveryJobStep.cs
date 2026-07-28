@@ -13,6 +13,9 @@ public sealed class DiscoveryJobStep
     /// <summary>Maximum length of the bounded <see cref="ResultSummaryJson"/> payload.</summary>
     public const int MaxResultSummaryJsonLength = 4096;
 
+    /// <summary>Maximum length of the operator-safe <see cref="ErrorMessage"/> (matches the column bound).</summary>
+    public const int MaxErrorMessageLength = 2048;
+
     private DiscoveryJobStep()
     {
         // EF Core materialization constructor.
@@ -88,7 +91,7 @@ public sealed class DiscoveryJobStep
         Status = DiscoveryStepStatus.Failed;
         Finish(finishedAtUtc);
         ErrorCode = errorCode;
-        ErrorMessage = errorMessage;
+        ErrorMessage = Truncate(errorMessage);
     }
 
     /// <summary>Marks the step as skipped (already done, or the job was canceled).</summary>
@@ -105,6 +108,9 @@ public sealed class DiscoveryJobStep
             ? (long)Math.Max(0, (finishedAtUtc - started).TotalMilliseconds)
             : null;
     }
+
+    private static string? Truncate(string? message)
+        => message is { Length: > MaxErrorMessageLength } ? message[..MaxErrorMessageLength] : message;
 
     private static void GuardSummary(string? resultSummaryJson)
     {

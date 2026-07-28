@@ -165,7 +165,7 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
             .MaxAsync(j => (DateTime?)j.FinishedAtUtc, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<DiscoveryStatusSummary?> GetStatusAsync(Guid rackId, CancellationToken cancellationToken)
+    public async Task<DiscoveryStatusSummary> GetStatusAsync(Guid rackId, CancellationToken cancellationToken)
     {
         var latest = await _context.DiscoveryJobs
             .AsNoTracking()
@@ -182,10 +182,14 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.RackId == rackId, cancellationToken);
 
+        // Use the true max across all succeeded jobs (on-demand *and* scheduled): the schedule's
+        // LastSuccessAtUtc is only stamped for scheduled runs, so it can understate the rack's actual
+        // last-success time when a later on-demand run succeeds. Keeps parity with the list endpoint's
+        // GetLastSuccessAtUtcAsync so the two never disagree (AC4).
         return new DiscoveryStatusSummary(
             rackId,
             latest,
-            schedule?.LastSuccessAtUtc ?? lastSuccess,
+            lastSuccess,
             schedule?.Enabled ?? false,
             schedule?.NextRunAtUtc);
     }

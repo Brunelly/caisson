@@ -175,9 +175,11 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             }
             catch (DiscoveryStepException ex)
             {
+                // ex.Message is operator-safe by construction (DiscoveryStepException is only thrown with
+                // our own fixed messages), so it is surfaced directly.
                 if (!ex.Retryable || attempt >= _options.MaxStepAttempts)
                 {
-                    await FailStepAndJobAsync(job, step, ex.ErrorCode, ex.Message, cancellationToken);
+                    throw await FailStepAndJobAsync(job, step, ex.ErrorCode, ex.Message, cancellationToken);
                 }
 
                 _logger.LogWarning(
@@ -187,10 +189,13 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not JobAbortedException)
             {
+                // Persist only a fixed operator-safe message keyed off the code; the raw exception (which
+                // can carry internal SQL/host detail) is logged server-side only (OWASP A05).
                 if (attempt >= _options.MaxStepAttempts)
                 {
-                    await FailStepAndJobAsync(
-                        job, step, DiscoveryErrorCodes.UnexpectedError, ex.Message, cancellationToken);
+                    throw await FailStepAndJobAsync(
+                        job, step, DiscoveryErrorCodes.UnexpectedError,
+                        DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.UnexpectedError), cancellationToken);
                 }
 
                 _logger.LogWarning(
@@ -247,10 +252,13 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not JobAbortedException)
             {
+                // Persist only a fixed operator-safe message keyed off the code; the raw exception (which
+                // can carry internal SQL/host/constraint detail via Npgsql) is logged server-side only (OWASP A05).
                 if (attempt >= _options.MaxStepAttempts)
                 {
-                    await FailStepAndJobAsync(
-                        job, step, DiscoveryErrorCodes.PersistenceFailed, ex.Message, cancellationToken);
+                    throw await FailStepAndJobAsync(
+                        job, step, DiscoveryErrorCodes.PersistenceFailed,
+                        DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.PersistenceFailed), cancellationToken);
                 }
 
                 _logger.LogWarning(
@@ -260,14 +268,19 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
         }
     }
 
-    private async Task FailStepAndJobAsync(
+    /// <summary>
+    /// Durably fails the step and job (steps skipped, state persisted) and returns the control-flow
+    /// signal for the caller to <c>throw</c>. Returning (rather than throwing internally) makes the abort
+    /// explicit at each call site, so the retry loop can never fall through to a spurious retry/backoff.
+    /// </summary>
+    private async Task<JobAbortedException> FailStepAndJobAsync(
         DiscoveryJob job, DiscoveryJobStep step, string errorCode, string message, CancellationToken cancellationToken)
     {
         step.Fail(Now, errorCode, message);
         SkipRemaining(job);
         job.Fail(Now, errorCode, message);
         await _store.SaveAsync(cancellationToken);
-        throw new JobAbortedException(errorCode);
+        return new JobAbortedException(errorCode);
     }
 
     private async Task FailJobAsync(DiscoveryJob job, string errorCode, string message, CancellationToken cancellationToken)

@@ -75,6 +75,19 @@ public sealed class DiscoveryApiTests
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [SkippableFact]
+    public async Task Over_length_idempotency_key_is_rejected_with_400_not_500()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres.");
+        var rackId = await _factory.CreateRackAsync();
+
+        // 201 chars: exceeds the varchar(200) column bound. Must be a validation 400, not a 22001-driven 500.
+        var response = await Send(HttpMethod.Post, $"/api/racks/{rackId}/discovery-jobs", "op", "Operator",
+            new { mode = "OnDemand", idempotencyKey = new string('k', 201) });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [SkippableTheory]
     [InlineData("Admin")]
     [InlineData("Operator")]

@@ -15,6 +15,9 @@ public sealed class DiscoveryJob
     /// <summary>Maximum length of the operator-safe <see cref="ErrorMessage"/>.</summary>
     public const int MaxErrorMessageLength = 2048;
 
+    /// <summary>Maximum length of the client <see cref="IdempotencyKey"/> (matches the column bound).</summary>
+    public const int MaxIdempotencyKeyLength = 200;
+
     private readonly List<DiscoveryJobStep> _steps = new();
 
     private DiscoveryJob()

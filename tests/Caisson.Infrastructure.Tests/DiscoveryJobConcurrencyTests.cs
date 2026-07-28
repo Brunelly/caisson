@@ -162,6 +162,49 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
         }
     }
 
+    [Fact]
+    public async Task Status_last_success_reflects_a_later_on_demand_run_over_an_older_scheduled_one()
+    {
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync();
+
+        var scheduledSuccess = DateTime.UtcNow.AddHours(-2);
+        var onDemandSuccess = DateTime.UtcNow.AddMinutes(-5);
+
+        // A schedule row whose LastSuccessAtUtc is the *older* scheduled success, plus a *later* on-demand
+        // succeeded job — the exact case where reading schedule.LastSuccessAtUtc would understate AC4.
+        await using (var context = _fixture.CreateContext())
+        {
+            var schedule = new RackDiscoverySchedule(rackId, enabled: true, intervalSeconds: 3600, jitterSeconds: 0);
+            schedule.RecordSuccess(scheduledSuccess);
+            context.RackDiscoverySchedules.Add(schedule);
+            await context.SaveChangesAsync();
+        }
+
+        await InsertSucceededJobAsync(rackId, TriggerType.OnDemand, onDemandSuccess);
+
+        await using (var context = _fixture.CreateContext())
+        {
+            var status = await Service(context).GetStatusAsync(rackId, default);
+
+            status.LastSuccessAtUtc.Should().BeCloseTo(onDemandSuccess, TimeSpan.FromSeconds(1));
+            status.ScheduleEnabled.Should().BeTrue();
+        }
+    }
+
+    private async Task<Guid> InsertSucceededJobAsync(Guid rackId, TriggerType mode, DateTime finishedAtUtc)
+    {
+        await using var context = _fixture.CreateContext();
+        var job = new DiscoveryJob(
+            Guid.NewGuid(), rackId, mode, "a", ActorType.User, Guid.NewGuid(), finishedAtUtc.AddMinutes(-1));
+        job.SeedSteps(Guid.NewGuid);
+        job.MarkInProgress(finishedAtUtc.AddMinutes(-1));
+        job.Succeed(finishedAtUtc);
+        context.DiscoveryJobs.Add(job);
+        await context.SaveChangesAsync();
+        return job.Id;
+    }
+
     private async Task<Guid> InsertInProgressJobAsync(Guid rackId, DateTime heartbeatAt)
     {
         await using var context = _fixture.CreateContext();
