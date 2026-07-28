@@ -1,3 +1,4 @@
+using Caisson.Drivers.Simulators;
 using Xunit;
 
 namespace Caisson.Drivers.MikroTik.IntegrationTests;

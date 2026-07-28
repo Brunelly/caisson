@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Drivers.MikroTik\Caisson.Drivers.MikroTik.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Simulators\Caisson.Drivers.Simulators.csproj" />
   </ItemGroup>
 
   <ItemGroup>

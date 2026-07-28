@@ -6,7 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 
-namespace Caisson.Drivers.MikroTik.IntegrationTests;
+namespace Caisson.Drivers.Simulators;
 
 /// <summary>
 /// An in-process RouterOS API server for CI (AC5): a loopback <see cref="TcpListener"/> that speaks the

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared, non-test support library holding the in-process protocol simulators (RouterOS API, Redfish/IPMI)
+    used by both the per-driver integration suites and the story-11 virtual-rack harness. Deliberately NOT a
+    test project (IsTestProject=false) so it can be referenced from non-test projects (e.g. a future seeder)
+    without a test-project-referencing-test-project smell. References Caisson.Domain only for the MAC/vendor
+    value types the drivers themselves depend on.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drivers.Simulators</RootNamespace>
+    <AssemblyName>Caisson.Drivers.Simulators</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Drivers.Redfish\Caisson.Drivers.Redfish.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Caisson.Drivers.Simulators;
 using Xunit;
 
 namespace Caisson.Drivers.Redfish.IntegrationTests;
