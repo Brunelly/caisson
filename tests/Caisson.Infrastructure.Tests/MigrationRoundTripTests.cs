@@ -15,12 +15,19 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
     {
         "rack", "topology_snapshot", "switch", "switch_port", "server", "nic",
         "mac_address", "vlan", "lldp_neighbour", "topology_candidate_mapping",
-        "topology_change_summary",
+        "topology_change_summary", "topology_entity_diff", "topology_audit_event",
     };
 
     private static readonly string[] ExpectedIndexes =
     {
         "ix_topology_snapshot_rack_id_created_at",
+        "ux_topology_snapshot_rack_id_version",
+        "ix_topology_snapshot_rack_id_completed_at",
+        "ux_topology_entity_diff_snapshot_entity_key",
+        "ix_topology_entity_diff_rack_id_snapshot_id",
+        "ix_topology_entity_diff_rack_id_entity_type_entity_stable_key",
+        "ix_topology_audit_event_rack_id_occurred_at",
+        "ix_topology_audit_event_correlation_id",
         "ix_switch_snapshot_id_rack_id",
         "ux_switch_snapshot_id_serial",
         "ux_switch_port_snapshot_id_switch_id_port_name",
