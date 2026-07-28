@@ -57,6 +57,33 @@ public static class StableKeys
         return ForSwitchPort(switchKey, port.PortName);
     }
 
+    /// <summary>
+    /// Attempts to compute a switch port's stable key, returning <c>false</c> (rather than throwing) when
+    /// the port name is missing/empty. A switch can report a port with a blank name (unlabelled or only
+    /// partially decoded); such a port has no stable identity across snapshots and is skipped by the
+    /// diff/detail layer instead of aborting the whole all-or-nothing ingestion run (NFR3), mirroring
+    /// <see cref="TryForLldp"/>.
+    /// </summary>
+    public static bool TryForSwitchPort(string switchKey, string? portName, out string stableKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(switchKey);
+        if (string.IsNullOrEmpty(portName))
+        {
+            stableKey = string.Empty;
+            return false;
+        }
+
+        stableKey = ForSwitchPort(switchKey, portName);
+        return true;
+    }
+
+    /// <summary>Attempts to compute a persisted <see cref="SwitchPort"/>'s stable key; see the string overload.</summary>
+    public static bool TryForSwitchPort(string switchKey, SwitchPort port, out string stableKey)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return TryForSwitchPort(switchKey, port.PortName, out stableKey);
+    }
+
     /// <summary>Stable key for a server: BMC UUID, else hostname, else BMC address.</summary>
     public static string ForServer(string? bmcUuid, string? hostname, string? bmcAddress)
         => Coalesce(nameof(Server), bmcUuid, hostname, bmcAddress);

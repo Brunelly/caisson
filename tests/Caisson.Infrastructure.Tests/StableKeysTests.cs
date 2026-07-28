@@ -32,6 +32,22 @@ public sealed class StableKeysTests
         => StableKeys.ForSwitchPort("SER-1", "ether1").Should().Be("SER-1|ether1");
 
     [Fact]
+    public void TryForSwitchPort_succeeds_when_port_name_is_present()
+    {
+        StableKeys.TryForSwitchPort("SER-1", "ether1", out var key).Should().BeTrue();
+        key.Should().Be("SER-1|ether1");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void TryForSwitchPort_fails_without_throwing_when_port_name_is_blank(string? portName)
+    {
+        StableKeys.TryForSwitchPort("SER-1", portName, out var key).Should().BeFalse();
+        key.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Server_prefers_bmc_uuid_then_hostname_then_bmc_address()
     {
         StableKeys.ForServer("uuid-1", "host-1", "10.0.1.1").Should().Be("uuid-1");

@@ -46,7 +46,14 @@ public static class TopologyEntityFields
 
             foreach (var port in sw.Ports)
             {
-                var portKey = StableKeys.ForSwitchPort(switchKey, port);
+                // A port with a blank/empty name has no stable identity, so it is skipped rather than
+                // aborting the diff/detail computation (and thus the all-or-nothing ingestion run, NFR3) —
+                // mirroring the LLDP skip path below.
+                if (!StableKeys.TryForSwitchPort(switchKey, port, out var portKey))
+                {
+                    continue;
+                }
+
                 ports[portKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["switch"] = switchKey,
