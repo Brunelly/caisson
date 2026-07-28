@@ -121,3 +121,48 @@ jobs:
       # the read-only guard, hosted in-process via WebApplicationFactory against the Postgres service.
       - name: API integration tests
         run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release
+
+  angular-build-and-test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Verify formatting
+        run: npm run format:check
+
+      - name: Build
+        run: npm run build
+
+      # Angular 22's default unit-test builder (Vitest + jsdom) runs headless with no Chrome
+      # install needed; --watch=false is explicit here even though it is already the CI default
+      # (ng test defaults --watch to false outside a TTY) — see ADR 0015.
+      - name: Unit tests
+        run: npm test -- --watch=false
+
+      - name: Upload test/coverage artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: angular-test-artifacts
+          path: |
+            web/coverage
+          if-no-files-found: ignore

@@ -123,6 +123,16 @@ PostgreSQL via Npgsql; schema is code-first through EF Core migrations. Column/t
 [ADR 0003](docs/adr/0003-ef-core-npgsql-code-first-migrations.md) and
 [ADR 0005](docs/adr/0005-efcore-namingconventions-dependency.md).
 
+### Angular frontend (`web/`)
+Story #10 adds the first frontend: an Angular 22 standalone-components SPA at `web/` visualizing the
+live rack topology graph (server → NIC → switch port → VLAN), with search, drill-down, and SignalR live
+updates. It consumes the story-7 query APIs and the story-9 hub, stays strictly read-only, and enforces
+the same four `CaissonRoles` via OIDC/Entra (in-memory token, PKCE). Rendering is raw D3 (no NgRx —
+plain services + signals), search is client-side (bounded by the medium-rack cap), and live updates are
+snapshot-refetch-on-event, patched into the existing DOM rather than a full reload. See
+[ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the full rationale, including the
+config-driven CORS policy and the `NicNodeDto.UnmappedReasonCode` addition this story required.
+
 ## Guardrails (M0)
 - **No** remediation/desired-state fields (no `Desired*`, `Target*`, VLAN/port *config intent*).
 - **No** credentials or PII in the observed-state schema (NFR5). A reflection guard test enforces this.
