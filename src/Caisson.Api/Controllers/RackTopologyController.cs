@@ -21,7 +21,7 @@ namespace Caisson.Api.Controllers;
 [Route("api/racks/{rackId:guid}/topology")]
 [Authorize(Policy = AuthorizationPolicies.TopologyRead)]
 [Produces("application/json")]
-public sealed class RackTopologyController : ControllerBase
+public sealed class RackTopologyController : ReadOnlyControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IAuditEventWriter _audit;
@@ -61,7 +61,7 @@ public sealed class RackTopologyController : ControllerBase
     {
         if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var error))
         {
-            return ValidationProblem(error!.Value);
+            return ValidationError(error!.Value);
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
@@ -156,23 +156,13 @@ public sealed class RackTopologyController : ControllerBase
         using var counts = JsonDocument.Parse(result.ChangeCountsJson);
         return Ok(new SnapshotDiffDto(
             from, to, counts.RootElement.Clone(),
-            result.Diffs.Select(ContractMappers.ToLiveDiff).ToList()));
+            // The diff rows are freshly computed and unsaved; the stored-vs-live distinction is only in
+            // whether CreatedAt/snapshot ids are populated, so the same mapper serves both.
+            result.Diffs.Select(ContractMappers.ToEntityDiff).ToList()));
     }
 
     private static SnapshotDetailDto ToDetail(TopologySnapshot snapshot)
         => new(ContractMappers.ToMetadata(snapshot), ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot)));
-
-    private static (List<T> Items, string? NextCursor) Paginate<T>(
-        List<T> page, int limit, Func<T, string> cursorOf)
-    {
-        if (page.Count <= limit)
-        {
-            return (page, null);
-        }
-
-        var items = page.Take(limit).ToList();
-        return (items, cursorOf(items[^1]));
-    }
 
     private async Task<ObjectResult> NotFoundSnapshotAsync(Guid rackId, CancellationToken cancellationToken)
     {
@@ -181,15 +171,6 @@ public sealed class RackTopologyController : ControllerBase
             : RackNotFound(rackId);
     }
 
-    private ObjectResult RackNotFound(Guid rackId)
-        => Problem(statusCode: StatusCodes.Status404NotFound, title: "Rack not found", detail: $"Rack '{rackId}' does not exist.");
-
     private ObjectResult SnapshotNotFound(Guid rackId, Guid snapshotId)
         => Problem(statusCode: StatusCodes.Status404NotFound, title: "Snapshot not found", detail: $"Snapshot '{snapshotId}' was not found for rack '{rackId}'.");
-
-    private ActionResult ValidationProblem((string Field, string Message) error)
-    {
-        ModelState.AddModelError(error.Field, error.Message);
-        return ValidationProblem(ModelState);
-    }
 }

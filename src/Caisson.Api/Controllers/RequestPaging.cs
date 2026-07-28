@@ -16,18 +16,21 @@ internal static class RequestPaging
     public const int MaxPageSize = 200;
 
     /// <summary>
-    /// Resolves the page limit and keyset position. Returns <c>false</c> with a <paramref name="error"/>
-    /// (field name → message) when the page size is out of range or the cursor is malformed.
+    /// Resolves the page limit and the full composite keyset position <c>(timestamp, id)</c>. Returns
+    /// <c>false</c> with a <paramref name="error"/> (field name → message) when the page size is out of
+    /// range or the cursor is malformed. Both halves of the cursor are propagated so the page queries can
+    /// apply the composite predicate <c>ts &lt; cur.ts OR (ts == cur.ts AND id &lt; cur.id)</c> and never
+    /// drop rows that share the boundary timestamp.
     /// </summary>
     public static bool TryResolve(
         int? pageSize,
         string? cursor,
         out int limit,
-        out DateTime? afterTimestampUtc,
+        out KeysetPosition? after,
         out (string Field, string Message)? error)
     {
         limit = pageSize ?? DefaultPageSize;
-        afterTimestampUtc = null;
+        after = null;
         error = null;
 
         if (pageSize is { } size && (size < 1 || size > MaxPageSize))
@@ -38,13 +41,13 @@ internal static class RequestPaging
 
         if (!string.IsNullOrEmpty(cursor))
         {
-            if (!CursorCodec.TryDecode(cursor, out var ts, out _))
+            if (!CursorCodec.TryDecode(cursor, out var ts, out var id))
             {
                 error = (nameof(cursor), "cursor is not a valid pagination cursor.");
                 return false;
             }
 
-            afterTimestampUtc = ts;
+            after = new KeysetPosition(ts, id);
         }
 
         return true;

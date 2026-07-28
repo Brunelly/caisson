@@ -99,8 +99,14 @@ app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// Swagger/OpenAPI discloses the full API surface, so it is gated to non-production environments rather
+// than exposed unauthenticated on a hosted control plane (ADR 0012). A hosted deployment that needs the
+// schema can serve it behind auth via configuration.
+if (!app.Environment.IsProduction())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -21,7 +21,7 @@ public sealed class ImmutabilityTests : IClassFixture<PostgresFixture>
     public async Task Mutating_a_persisted_snapshot_is_rejected()
     {
         await _fixture.MigrateAsync();
-        var (rackId, snapshotId) = await SeedAsync();
+        var (_, snapshotId) = await SeedAsync();
 
         await using var context = _fixture.CreateContext();
         var snapshot = await context.Snapshots.SingleAsync(s => s.Id == snapshotId);
@@ -32,7 +32,6 @@ public sealed class ImmutabilityTests : IClassFixture<PostgresFixture>
         var act = async () => await context.SaveChangesAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>();
-        _ = rackId;
     }
 
     [Fact]

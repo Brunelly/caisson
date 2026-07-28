@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Caisson.Api.Contracts;
 
@@ -19,7 +18,7 @@ public sealed record SnapshotMetadataDto(
     DateTime? CompletedAt,
     Guid CorrelationId,
     string Status,
-    [property: JsonPropertyName("diffSummary")] JsonElement? DiffSummary);
+    JsonElement? DiffSummary);
 
 /// <summary>A snapshot's metadata plus its projected topology graph (AC3 latest/detail).</summary>
 public sealed record SnapshotDetailDto(SnapshotMetadataDto Snapshot, TopologyGraphDto Graph);
@@ -65,8 +64,8 @@ public sealed record EntityDiffDto(
     string EntityType,
     string EntityStableKey,
     string ChangeType,
-    [property: JsonPropertyName("payload")] JsonElement Payload,
-    Guid? PreviousSnapshotId,
+    JsonElement Payload,
+    Guid? FromSnapshotId,
     Guid? ToSnapshotId,
     DateTime? CreatedAt,
     Guid CorrelationId);
@@ -75,7 +74,7 @@ public sealed record EntityDiffDto(
 public sealed record SnapshotDiffDto(
     Guid FromSnapshotId,
     Guid ToSnapshotId,
-    [property: JsonPropertyName("changeSummary")] JsonElement ChangeSummary,
+    JsonElement ChangeSummary,
     IReadOnlyList<EntityDiffDto> Diffs);
 
 /// <summary>An entity's current representation (if it still exists) plus its stored change history.</summary>

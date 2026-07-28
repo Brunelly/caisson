@@ -70,3 +70,19 @@ recomputation and idempotent on re-persist.
 - The append-only guard now distinguishes snapshot content (update-blocked, delete-allowed) from
   `IAppendOnly` records (update- and delete-blocked); the DB trigger makes audit tamper-evidence hold
   even outside EF.
+
+## Review-driven refinements
+- **The VLAN stable key is the rack-scoped `vlanId` only**, diverging from the story's answered
+  `vlanId+switchKey` canonical key. The story-2 domain `Vlan` carries no switch association and the mapper
+  de-duplicates VLANs per rack by id, so `vlanId` is the only key derivable today; the consequence is that
+  the same VLAN id observed on two switches collapses to one entity (a name change on one switch could be
+  mis-attributed). Switch-scoped VLAN identity is deferred until the domain models the association. This is
+  documented on `StableKeys.ForVlan`.
+- **An LLDP neighbour with an empty chassis or port id has no stable identity and is skipped**, not thrown
+  on. `StableKeys.TryForLldp` returns `false` instead of throwing, and `TopologyEntityFields.Extract`
+  omits such neighbours. Because `Extract` runs inside the diff during the all-or-nothing ingestion
+  (NFR3), a single partially-decoded LLDP TLV would otherwise have aborted and lost the entire snapshot
+  (and 500'd the live-diff/entity-detail endpoints).
+- **The versioning migration backfills a per-rack 1-based `version`** (ordered by `created_at, id`) before
+  creating the unique `(rack_id, version)` index, so a pre-existing rack with ≥2 story-2 snapshots (all
+  defaulting to version 0) does not collide and fail the migration. A no-op on a greenfield M0 database.

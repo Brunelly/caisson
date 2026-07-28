@@ -15,11 +15,17 @@ namespace Caisson.Api.Controllers;
 /// snapshot) plus its change history derived from the stored per-entity diffs (AC2). GET-only, guarded
 /// by <see cref="AuthorizationPolicies.TopologyRead"/>.
 /// </summary>
+/// <remarks>
+/// The <c>stableKey</c> is bound with a catch-all (<c>{**stableKey}</c>) because SwitchPort and LLDP
+/// keys legitimately contain '/' (e.g. a port id like <c>Ethernet1/0/1</c>). The catch-all must be the
+/// terminal segment, so history lives at <c>entities/{entityType}/history/{stableKey}</c> rather than a
+/// <c>/history</c> suffix — keeping both endpoints reachable for slash-bearing keys.
+/// </remarks>
 [ApiController]
-[Route("api/racks/{rackId:guid}/topology/entities/{entityType}/{stableKey}")]
+[Route("api/racks/{rackId:guid}/topology/entities/{entityType}")]
 [Authorize(Policy = AuthorizationPolicies.TopologyRead)]
 [Produces("application/json")]
-public sealed class TopologyEntitiesController : ControllerBase
+public sealed class TopologyEntitiesController : ReadOnlyControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IAuditEventWriter _audit;
@@ -31,7 +37,7 @@ public sealed class TopologyEntitiesController : ControllerBase
     }
 
     /// <summary>Returns the entity's latest representation and its stored change history.</summary>
-    [HttpGet]
+    [HttpGet("{**stableKey}")]
     [ProducesResponseType(typeof(EntityDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -57,7 +63,7 @@ public sealed class TopologyEntitiesController : ControllerBase
     }
 
     /// <summary>Returns only the entity's stored change history, newest-first.</summary>
-    [HttpGet("history")]
+    [HttpGet("history/{**stableKey}")]
     [ProducesResponseType(typeof(IReadOnlyList<EntityDiffDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -99,12 +105,9 @@ public sealed class TopologyEntitiesController : ControllerBase
         => Enum.TryParse(value, ignoreCase: true, out type) && Enum.IsDefined(type);
 
     private ActionResult InvalidEntityType(string entityType)
-    {
-        ModelState.AddModelError(
+        => ValidationError((
             nameof(entityType),
-            $"'{entityType}' is not a valid entity type. Expected one of: {string.Join(", ", Enum.GetNames<TopologyEntityType>())}.");
-        return ValidationProblem(ModelState);
-    }
+            $"'{entityType}' is not a valid entity type. Expected one of: {string.Join(", ", Enum.GetNames<TopologyEntityType>())}."));
 
     private ObjectResult EntityNotFound(Guid rackId, string entityType, string stableKey)
         => Problem(

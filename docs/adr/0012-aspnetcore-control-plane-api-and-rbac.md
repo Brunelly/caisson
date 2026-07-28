@@ -58,3 +58,21 @@ source.
   concern it can move off the request path behind the existing seam without changing the endpoint
   contract.
 - Health/OpenAPI endpoints are `AllowAnonymous`; all topology/audit endpoints require a read role.
+
+## Review-driven refinements
+- **Keyset pagination uses the full composite `(timestamp, id)` predicate**, not timestamp-only. The
+  cursor already encoded both halves; the page queries now filter
+  `ts < cur.ts OR (ts == cur.ts AND id < cur.id)`, matching the `(… desc, id desc)` ordering. Without
+  this, audit rows sharing an `OccurredAtUtc` (a discovery event plus several same-tick API-access reads)
+  were silently dropped at a page boundary — a compliance-relevant loss. `KeysetPosition` carries the
+  decoded position from `RequestPaging` into the query layer.
+- **The entity route binds the stable key with a catch-all** (`entities/{entityType}/{**stableKey}`)
+  because SwitchPort/LLDP keys legitimately contain `/` (e.g. a port id `Ethernet1/0/1`); a single-segment
+  binding 404'd those entities. A catch-all must be terminal, so entity history moved from a
+  `/history` suffix to `entities/{entityType}/history/{**stableKey}` — the only contract shape change,
+  acceptable pre-adoption in M0.
+- **Swagger/OpenAPI is gated to non-production environments** (`!IsProduction()`) rather than served
+  unauthenticated everywhere, so a hosted control plane does not disclose its full API surface to any
+  network-reachable client.
+- Shared read-endpoint concerns (keyset page trimming, validation-error → 400, rack-not-found 404) live on
+  a small `ReadOnlyControllerBase` so the three controllers no longer duplicate them.

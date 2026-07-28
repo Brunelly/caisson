@@ -13,8 +13,9 @@ namespace Caisson.Api.IntegrationTests;
 /// <summary>
 /// Hosts <c>Caisson.Api</c> in-process against an isolated Postgres (via <see cref="PostgresHarness"/>),
 /// seeds a realistic rack, and swaps JWT/Entra auth for the header-driven <see cref="TestAuthHandler"/>.
-/// The whole DB-backed suite gates on <see cref="Available"/>, staying green when Docker/Postgres is
-/// absent.
+/// The whole DB-backed suite gates on <see cref="Available"/> via <c>Assert.SkipUnless</c>, so cases are
+/// reported as <b>skipped</b> (not passed) when Docker/Postgres is absent — a visibly distinct signal
+/// from a genuine pass.
 /// </summary>
 public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {

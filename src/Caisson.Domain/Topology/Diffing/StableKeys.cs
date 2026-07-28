@@ -19,7 +19,11 @@ namespace Caisson.Domain.Topology.Diffing;
 /// <item><description>Server = BMC UUID, else hostname, else BMC address (the always-present fallback;
 /// the domain <c>Server</c> does not persist a chassis serial).</description></item>
 /// <item><description>NIC = normalized MAC.</description></item>
-/// <item><description>VLAN = VLAN id.</description></item>
+/// <item><description>VLAN = VLAN id. <b>Note:</b> the story's answered canonical-key question specified
+/// <c>vlanId+switchKey</c>, but the story-2 domain <see cref="Vlan"/> carries no switch association and the
+/// mapper de-duplicates VLANs per rack by id, so a rack-scoped <c>vlanId</c> is the only key derivable
+/// today. The consequence — the same VLAN id observed on two switches collapses to one entity — is
+/// recorded in ADR 0011; switch-scoped VLANs are deferred until the domain models the association.</description></item>
 /// <item><description>MAC = <c>{normalizedMac}|{source}</c>.</description></item>
 /// <item><description>LLDP = <c>{chassisId}|{portId}</c>.</description></item>
 /// </list>
@@ -108,6 +112,26 @@ public static class StableKeys
     {
         ArgumentNullException.ThrowIfNull(neighbour);
         return ForLldp(neighbour.ChassisId, neighbour.PortId);
+    }
+
+    /// <summary>
+    /// Attempts to compute an LLDP neighbour's stable key, returning <c>false</c> (rather than throwing)
+    /// when either identifier is missing. A device can advertise an LLDP TLV set that omits or only
+    /// partially decodes the chassis/port id, leaving one empty; such a neighbour cannot be stably
+    /// identified across snapshots and is skipped by the diff/detail layer instead of aborting the whole
+    /// ingestion run (which is all-or-nothing, NFR3).
+    /// </summary>
+    public static bool TryForLldp(LldpNeighbour neighbour, out string stableKey)
+    {
+        ArgumentNullException.ThrowIfNull(neighbour);
+        if (string.IsNullOrEmpty(neighbour.ChassisId) || string.IsNullOrEmpty(neighbour.PortId))
+        {
+            stableKey = string.Empty;
+            return false;
+        }
+
+        stableKey = ForLldp(neighbour.ChassisId, neighbour.PortId);
+        return true;
     }
 
     private static string Coalesce(string entity, params string?[] candidates)

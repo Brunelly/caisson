@@ -1,4 +1,5 @@
 using Caisson.Domain.Topology;
+using Caisson.Infrastructure.Persistence.Shaping;
 using Microsoft.EntityFrameworkCore;
 
 namespace Caisson.Infrastructure.Persistence.Queries;
@@ -47,11 +48,13 @@ public static class SnapshotQueries
 
     /// <summary>
     /// Loads a page of snapshot metadata (with change summary) for a rack, newest-first. When
-    /// <paramref name="afterCreatedAtUtc"/> is supplied the page continues strictly after that keyset
-    /// position. One extra row is fetched to let the caller decide whether a further page exists.
+    /// <paramref name="after"/> is supplied the page continues strictly after that composite
+    /// <c>(created_at, id)</c> keyset position — the id tie-break matches the <see cref="SnapshotSelector"/>
+    /// ordering so two snapshots that completed at the same tick are never skipped across a page boundary.
+    /// One extra row is fetched to let the caller decide whether a further page exists.
     /// </summary>
     public static Task<List<TopologySnapshot>> SnapshotHistoryPageAsync(
-        this CaissonDbContext context, Guid rackId, DateTime? afterCreatedAtUtc, int limit,
+        this CaissonDbContext context, Guid rackId, KeysetPosition? after, int limit,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -60,11 +63,13 @@ public static class SnapshotQueries
             .Include(s => s.ChangeSummary)
             .Where(s => s.RackId == rackId);
 
-        // Keyset on created_at (effectively unique per snapshot); id remains the deterministic tie-break
-        // in the ordering below.
-        if (afterCreatedAtUtc is { } cursor)
+        // Composite keyset on (created_at desc, id desc) matching OrderByLatest below, so rows sharing a
+        // boundary created_at are not dropped at a page boundary.
+        if (after is { } cursor)
         {
-            query = query.Where(s => s.CreatedAtUtc < cursor);
+            query = query.Where(s =>
+                s.CreatedAtUtc < cursor.TimestampUtc
+                || (s.CreatedAtUtc == cursor.TimestampUtc && s.Id < cursor.Id));
         }
 
         return SnapshotSelector.OrderByLatest(query)

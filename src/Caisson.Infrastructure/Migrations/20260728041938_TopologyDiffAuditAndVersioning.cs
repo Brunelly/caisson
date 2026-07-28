@@ -112,6 +112,25 @@ public partial class TopologyDiffAuditAndVersioning : Migration
             columns: new[] { "rack_id", "completed_at_utc" },
             descending: new[] { false, true });
 
+        // Backfill a per-rack monotonic version for any snapshots that predate this column (story-2 rows
+        // all default to 0). Without this, a rack with ≥2 pre-existing snapshots would collide at
+        // version 0 and the unique (rack_id, version) index below would fail to build. Numbered 1-based
+        // ordered by (created_at, id) to match both the deterministic "latest snapshot" ordering and the
+        // 1-based version the ingestion service assigns going forward (maxVersion + 1). A no-op on a
+        // greenfield M0 database (no pre-existing snapshots).
+        migrationBuilder.Sql(
+            """
+            WITH ordered AS (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY rack_id ORDER BY created_at_utc, id) AS seq
+                FROM topology_snapshot
+            )
+            UPDATE topology_snapshot AS s
+            SET version = ordered.seq
+            FROM ordered
+            WHERE s.id = ordered.id;
+            """);
+
         migrationBuilder.CreateIndex(
             name: "ux_topology_snapshot_rack_id_version",
             table: "topology_snapshot",

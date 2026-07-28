@@ -57,7 +57,14 @@ public static class TopologyEntityFields
 
                 foreach (var neighbour in port.LldpNeighbours)
                 {
-                    lldp[StableKeys.ForLldp(neighbour)] = new Dictionary<string, string?>(StringComparer.Ordinal)
+                    // A neighbour that advertised an empty chassis/port id has no stable identity, so it is
+                    // skipped rather than aborting the diff/detail computation (and thus the ingestion run).
+                    if (!StableKeys.TryForLldp(neighbour, out var lldpKey))
+                    {
+                        continue;
+                    }
+
+                    lldp[lldpKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
                     {
                         ["port"] = portKey,
                         ["systemName"] = neighbour.SystemName,

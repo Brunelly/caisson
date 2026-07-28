@@ -107,16 +107,18 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
             second = await Ingest(context, rackId, input, result);
         }
 
+        first.Version.Should().Be(1);
+        first.DiffCount.Should().BeGreaterThan(0); // rack's first snapshot → every entity is Added
         second.Version.Should().Be(2);
         second.DiffCount.Should().Be(0); // identical to v1 → no diffs
 
         await using (var context = _fixture.CreateContext())
         {
             (await context.EntityDiffs.CountAsync(d => d.SnapshotId == second.SnapshotId)).Should().Be(0);
+            (await context.EntityDiffs.CountAsync(d => d.SnapshotId == first.SnapshotId)).Should().Be(first.DiffCount);
             // No duplicate diffs overall: every (snapshot, type, key) is unique (backed by the index).
             var all = await context.EntityDiffs.Where(d => d.RackId == rackId).ToListAsync();
             all.Select(d => (d.SnapshotId, d.EntityType, d.EntityStableKey)).Should().OnlyHaveUniqueItems();
-            _ = first;
         }
     }
 

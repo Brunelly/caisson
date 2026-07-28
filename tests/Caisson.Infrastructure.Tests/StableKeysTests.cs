@@ -1,4 +1,5 @@
 using Caisson.Domain.Enums;
+using Caisson.Domain.Topology;
 using Caisson.Domain.Topology.Diffing;
 using Caisson.Domain.ValueObjects;
 using FluentAssertions;
@@ -54,4 +55,27 @@ public sealed class StableKeysTests
     [Fact]
     public void Lldp_is_chassis_pipe_port()
         => StableKeys.ForLldp("chassis-1", "port-1").Should().Be("chassis-1|port-1");
+
+    [Fact]
+    public void TryForLldp_succeeds_when_both_identifiers_are_present()
+    {
+        var neighbour = new LldpNeighbour(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "chassis-1", "port-1");
+
+        StableKeys.TryForLldp(neighbour, out var key).Should().BeTrue();
+        key.Should().Be("chassis-1|port-1");
+    }
+
+    [Theory]
+    [InlineData("", "port-1")]
+    [InlineData("chassis-1", "")]
+    [InlineData("", "")]
+    public void TryForLldp_fails_without_throwing_when_an_identifier_is_empty(string chassisId, string portId)
+    {
+        var neighbour = new LldpNeighbour(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), chassisId, portId);
+
+        StableKeys.TryForLldp(neighbour, out var key).Should().BeFalse();
+        key.Should().BeEmpty();
+    }
 }

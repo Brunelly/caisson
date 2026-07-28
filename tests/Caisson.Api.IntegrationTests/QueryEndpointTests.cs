@@ -17,13 +17,10 @@ public sealed class QueryEndpointTests
 
     public QueryEndpointTests(CaissonApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [SkippableFact]
     public async Task Latest_returns_the_newest_snapshot_with_graph()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         using var doc = await GetJson($"{Base}/snapshots/latest");
         doc.RootElement.GetProperty("snapshot").GetProperty("version").GetInt32()
@@ -31,13 +28,10 @@ public sealed class QueryEndpointTests
         doc.RootElement.GetProperty("graph").GetProperty("servers").GetArrayLength().Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task History_is_ordered_and_keyset_paginated()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         using var firstPage = await GetJson($"{Base}/snapshots?pageSize=1");
         firstPage.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
@@ -56,26 +50,20 @@ public sealed class QueryEndpointTests
             .Should().Be(_factory.Seed.SecondVersion); // newest first
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Detail_returns_the_requested_snapshot()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         using var doc = await GetJson($"{Base}/snapshots/{_factory.Seed.FirstSnapshotId}");
         doc.RootElement.GetProperty("snapshot").GetProperty("version").GetInt32()
             .Should().Be(_factory.Seed.FirstVersion);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Graph_surfaces_unmapped_ports()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         using var doc = await GetJson($"{Base}/snapshots/latest/graph");
         var unmapped = doc.RootElement.GetProperty("unmappedPorts").EnumerateArray()
@@ -83,13 +71,10 @@ public sealed class QueryEndpointTests
         unmapped.Should().Contain("ether3");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Diff_reports_the_modified_server()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var url = $"{Base}/diff?from={_factory.Seed.FirstSnapshotId}&to={_factory.Seed.SecondSnapshotId}";
         using var doc = await GetJson(url);
@@ -101,29 +86,41 @@ public sealed class QueryEndpointTests
             && d.GetProperty("changeType").GetString() == "Modified");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_detail_returns_latest_and_history()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         using var doc = await GetJson($"{Base}/entities/Server/uuid-1");
         doc.RootElement.GetProperty("latest").ValueKind.Should().NotBe(JsonValueKind.Null);
         doc.RootElement.GetProperty("history").GetArrayLength().Should().BeGreaterThan(0);
 
-        using var history = await GetJson($"{Base}/entities/Server/uuid-1/history");
+        using var history = await GetJson($"{Base}/entities/Server/history/uuid-1");
         history.RootElement.GetArrayLength().Should().BeGreaterThan(0);
     }
 
-    [Fact]
+    [SkippableFact]
+    public async Task Entity_with_a_slash_in_its_stable_key_is_reachable()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        // The seeded switch port "1/1/1" has stable key "SW-1|1/1/1" — the '/' segments must be bound by
+        // the catch-all route, not split into extra path segments (which would 404). The '|' is encoded;
+        // the slashes are left literal so the catch-all captures them.
+        const string key = "SW-1%7C1/1/1";
+
+        using var detail = await GetJson($"{Base}/entities/SwitchPort/{key}");
+        detail.RootElement.GetProperty("stableKey").GetString().Should().Be("SW-1|1/1/1");
+        detail.RootElement.GetProperty("history").GetArrayLength().Should().BeGreaterThan(0);
+
+        using var history = await GetJson($"{Base}/entities/SwitchPort/history/{key}");
+        history.RootElement.GetArrayLength().Should().BeGreaterThan(0);
+    }
+
+    [SkippableFact]
     public async Task Audit_trail_returns_discovery_events()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var url = $"/api/racks/{_factory.Seed.RackId}/audit?from=2026-07-01T00:00:00Z&to=2027-01-01T00:00:00Z";
         using var doc = await GetJson(url);
@@ -133,16 +130,13 @@ public sealed class QueryEndpointTests
         actions.Should().Contain("discovery.persisted");
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("/snapshots?pageSize=0")]
     [InlineData("/snapshots?pageSize=9999")]
     [InlineData("/snapshots?cursor=%40%40notacursor")]
     public async Task Invalid_pagination_returns_problem_details(string suffix)
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await ReadClient().GetAsync($"{Base}{suffix}");
 
@@ -150,13 +144,10 @@ public sealed class QueryEndpointTests
         await AssertProblemDetailsAsync(response, expectedStatus: 400);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Missing_snapshot_returns_not_found_problem_details()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await ReadClient().GetAsync($"{Base}/snapshots/{Guid.NewGuid()}");
 
@@ -164,37 +155,28 @@ public sealed class QueryEndpointTests
         await AssertProblemDetailsAsync(response, expectedStatus: 404);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Missing_entity_returns_not_found()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await ReadClient().GetAsync($"{Base}/entities/Server/does-not-exist");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Invalid_entity_type_returns_bad_request()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await ReadClient().GetAsync($"{Base}/entities/NotAType/whatever");
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Missing_rack_returns_not_found()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await ReadClient().GetAsync($"/api/racks/{Guid.NewGuid()}/topology/snapshots/latest");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);

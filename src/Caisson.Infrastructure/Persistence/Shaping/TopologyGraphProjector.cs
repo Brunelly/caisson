@@ -18,7 +18,6 @@ public static class TopologyGraphProjector
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        var switchById = snapshot.Switches.ToDictionary(s => s.Id);
         var portById = snapshot.Switches
             .SelectMany(s => s.Ports.Select(p => (Port: p, Switch: s)))
             .ToDictionary(x => x.Port.Id);
@@ -40,7 +39,7 @@ public static class TopologyGraphProjector
                 server.BmcUuid,
                 server.Nics
                     .OrderBy(n => n.Name, StringComparer.Ordinal)
-                    .Select(nic => ProjectNic(nic, candidatesByNic, portById, switchById))
+                    .Select(nic => ProjectNic(nic, candidatesByNic, portById))
                     .ToList()))
             .ToList();
 
@@ -58,10 +57,8 @@ public static class TopologyGraphProjector
     private static NicNode ProjectNic(
         Nic nic,
         IReadOnlyDictionary<Guid, List<TopologyCandidateMapping>> candidatesByNic,
-        IReadOnlyDictionary<Guid, (SwitchPort Port, Switch Switch)> portById,
-        IReadOnlyDictionary<Guid, Switch> switchById)
+        IReadOnlyDictionary<Guid, (SwitchPort Port, Switch Switch)> portById)
     {
-        _ = switchById;
         var attachments = new List<PortAttachment>();
         if (candidatesByNic.TryGetValue(nic.Id, out var candidates))
         {

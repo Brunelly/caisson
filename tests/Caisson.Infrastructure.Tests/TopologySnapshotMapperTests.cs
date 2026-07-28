@@ -39,15 +39,16 @@ public sealed class TopologySnapshotMapperTests
     {
         var mapped = Map();
 
-        // 2 BMC macs (srv1/eth0, srv2/eth0, srv2/eth1) + 2 switch bridge macs.
+        // 3 BMC macs (srv1/eth0=A, srv2/eth0=B, srv2/eth1=C) + 2 switch bridge macs (A, B).
         var bmc = mapped.MacAddresses.Where(m => m.Source == MacSource.Bmc).ToList();
         var switched = mapped.MacAddresses.Where(m => m.Source == MacSource.Switch).ToList();
 
         bmc.Should().HaveCount(3); // eth0(A), eth0(B), eth1(C) — the MAC-less eth2 is skipped
         switched.Should().HaveCount(2);
 
-        // Switch-learned MacA matches srv1/eth0's NIC and links to it; the others link where known.
-        switched.Should().Contain(m => m.NicId != null); // MacA / MacB both match a known NIC
+        // Both switch-learned MACs (A→srv1/eth0, B→srv2/eth0) match a known NIC, so both link.
+        switched.Should().OnlyContain(m => m.NicId != null);
+        switched.Count(m => m.NicId != null).Should().Be(2);
     }
 
     [Fact]

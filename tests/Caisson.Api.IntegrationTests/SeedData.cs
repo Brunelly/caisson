@@ -71,6 +71,9 @@ internal static class SeedData
                 new("ether1", true, 10, new[] { 10 }),
                 new("ether2", true, 20, new[] { 20 }),
                 new("ether3", false, 1, Array.Empty<int>()),
+                // A port name containing '/' (e.g. a stacked-switch port id) — its stable key carries a
+                // slash so it exercises the catch-all entity route (that a single-segment route would 404).
+                new("1/1/1", true, 30, Array.Empty<int>()),
             },
             new List<LldpNeighbourInfo>(),
             new List<BridgeHostEntry>

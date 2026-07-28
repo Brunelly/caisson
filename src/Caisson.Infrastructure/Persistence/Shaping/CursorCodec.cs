@@ -4,6 +4,14 @@ using System.Text;
 namespace Caisson.Infrastructure.Persistence.Shaping;
 
 /// <summary>
+/// A decoded keyset position: the full composite sort key <c>(timestamp, id)</c> a page continues
+/// strictly after. Both halves are carried so the page queries can apply the composite predicate
+/// <c>ts &lt; TimestampUtc OR (ts == TimestampUtc AND id &lt; Id)</c> and never skip rows that share the
+/// boundary timestamp but sort lower on the <c>id</c> tie-break.
+/// </summary>
+public readonly record struct KeysetPosition(DateTime TimestampUtc, Guid Id);
+
+/// <summary>
 /// An opaque, URL-safe base64 keyset cursor over the composite sort key <c>(timestamp, id)</c> used by
 /// the snapshot-history and audit pagination endpoints. The cursor is deliberately opaque to callers;
 /// invalid or malformed cursors are rejected (return <c>false</c>) so the API can answer with a 400

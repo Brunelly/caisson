@@ -14,13 +14,10 @@ public sealed class CorrelationIdTests
 
     public CorrelationIdTests(CaissonApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [SkippableFact]
     public async Task Generates_a_correlation_id_when_absent()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var response = await _factory.CreateClient().GetAsync("/health/live");
 
@@ -28,13 +25,10 @@ public sealed class CorrelationIdTests
         Guid.TryParse(echoed, out _).Should().BeTrue();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Echoes_a_valid_correlation_id_unchanged()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var provided = Guid.NewGuid().ToString();
         var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
@@ -45,13 +39,10 @@ public sealed class CorrelationIdTests
         response.Headers.GetValues(Header).Single().Should().Be(provided);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Regenerates_an_invalid_correlation_id()
     {
-        if (!_factory.Available)
-        {
-            return;
-        }
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
         var request = new HttpRequestMessage(HttpMethod.Get, "/health/live");
         request.Headers.Add(Header, "not-a-valid-correlation-id");

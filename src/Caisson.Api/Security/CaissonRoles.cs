@@ -20,5 +20,5 @@ public static class CaissonRoles
     public const string ServiceAccount = "ServiceAccount";
 
     /// <summary>Every role permitted to read topology/audit data.</summary>
-    public static readonly string[] All = { Admin, Operator, ReadOnly, ServiceAccount };
+    public static readonly IReadOnlyList<string> All = new[] { Admin, Operator, ReadOnly, ServiceAccount };
 }

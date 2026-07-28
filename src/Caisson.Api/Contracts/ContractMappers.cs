@@ -54,10 +54,6 @@ public static class ContractMappers
             diff.CorrelationId);
     }
 
-    /// <summary>Maps a freshly-computed (unsaved) diff onto the wire diff contract.</summary>
-    public static EntityDiffDto ToLiveDiff(TopologyEntityDiff diff)
-        => ToEntityDiff(diff);
-
     /// <summary>Maps an audit event onto the wire contract.</summary>
     public static AuditEventDto ToAudit(TopologyAuditEvent auditEvent)
     {

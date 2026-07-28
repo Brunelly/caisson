@@ -19,7 +19,7 @@ namespace Caisson.Api.Controllers;
 [Route("api/racks/{rackId:guid}/audit")]
 [Authorize(Policy = AuthorizationPolicies.TopologyRead)]
 [Produces("application/json")]
-public sealed class AuditController : ControllerBase
+public sealed class AuditController : ReadOnlyControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IAuditEventWriter _audit;
@@ -45,22 +45,19 @@ public sealed class AuditController : ControllerBase
     {
         if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var pagingError))
         {
-            return ValidationProblem(pagingError!.Value);
+            return ValidationError(pagingError!.Value);
         }
 
         var fromUtc = AsUtc(from) ?? DateTime.UnixEpoch;
         var toUtc = AsUtc(to) ?? DateTime.UtcNow;
         if (fromUtc >= toUtc)
         {
-            return ValidationProblem((nameof(from), "'from' must be earlier than 'to'."));
+            return ValidationError((nameof(from), "'from' must be earlier than 'to'."));
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
         {
-            return Problem(
-                statusCode: StatusCodes.Status404NotFound,
-                title: "Rack not found",
-                detail: $"Rack '{rackId}' does not exist.");
+            return RackNotFound(rackId);
         }
 
         var page = await _context.AuditPageAsync(rackId, fromUtc, toUtc, after, limit + 1, cancellationToken);
@@ -70,24 +67,11 @@ public sealed class AuditController : ControllerBase
         return Ok(new PagedResult<AuditEventDto>(items.Select(ContractMappers.ToAudit).ToList(), next));
     }
 
+    // 'from'/'to' are interpreted as UTC instants. A value carrying a non-UTC kind (e.g. a client sends an
+    // offset) is converted to the equivalent UTC instant rather than merely relabelled, so the filter
+    // window is not shifted by the offset.
     private static DateTime? AsUtc(DateTime? value)
-        => value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
-
-    private static (List<T> Items, string? NextCursor) Paginate<T>(
-        List<T> page, int limit, Func<T, string> cursorOf)
-    {
-        if (page.Count <= limit)
-        {
-            return (page, null);
-        }
-
-        var items = page.Take(limit).ToList();
-        return (items, cursorOf(items[^1]));
-    }
-
-    private ActionResult ValidationProblem((string Field, string Message) error)
-    {
-        ModelState.AddModelError(error.Field, error.Message);
-        return ValidationProblem(ModelState);
-    }
+        => value is { } v
+            ? (v.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : v.ToUniversalTime())
+            : null;
 }
