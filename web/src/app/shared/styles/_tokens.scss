@@ -1,0 +1,178 @@
+// Design tokens for the Caisson Angular UI (ADR 0015). This is the first frontend in the repo, so
+// there is no prior token set to reuse — every token here is the canonical source going forward.
+// Never hard-code colours in component styles; reference these custom properties instead.
+//
+// Theming: CSS custom properties on :root (light, the default) and overridden under
+// `[data-theme='dark']` (explicit toggle) or `prefers-color-scheme: dark` (no explicit choice made).
+// Component styles read `var(--color-*)` and stay theme-agnostic.
+
+:root {
+  // Surfaces
+  --color-bg: #ffffff;
+  --color-bg-elevated: #f7f8fa;
+  --color-bg-hover: #eef1f5;
+  --color-bg-active: #e2e6ec;
+  --color-border: #d3d8e0;
+  --color-border-strong: #aab1bd;
+
+  // Text
+  --color-text: #1a1d23;
+  --color-text-muted: #5b6270;
+  --color-input-text: #1a1d23;
+  --color-input-placeholder: #6b7280;
+  --color-search-placeholder: #6b7280;
+
+  // Interactive / focus
+  --color-focus-ring: #2563eb;
+  --color-link: #2563eb;
+
+  // Brand / primary
+  --color-primary: #2563eb;
+  --color-primary-contrast: #ffffff;
+
+  // Topology mapping-state semantics (AC4): confirmed / ambiguous / unmapped, shared by the graph,
+  // legend and status badge. Darkened from the original #1a7f37/#9a6700 (real-browser axe-core
+  // color-contrast check on the badge/banner text against their *-bg pairing measured 4.47:1/4.34:1 —
+  // both below WCAG AA's 4.5:1 for this text size/weight; jsdom cannot catch this, since it has no
+  // paint engine — see web/e2e/topology-harness.spec.ts).
+  --color-status-confirmed: #187536;
+  --color-status-confirmed-bg: #e6f4ea;
+  --color-status-ambiguous: #8a5c00;
+  --color-status-ambiguous-bg: #fdf1d6;
+  --color-status-unmapped: #b42318;
+  --color-status-unmapped-bg: #fbe7e6;
+
+  // Confidence bands (ConfidenceBands: High >= 0.8, Medium >= 0.5, Low otherwise).
+  --color-confidence-high: #187536;
+  --color-confidence-medium: #8a5c00;
+  --color-confidence-low: #b42318;
+
+  // Live-connection status (NFR4: text, not colour-only, conveys state).
+  --color-status-live: #187536;
+  --color-status-stale: #8a5c00;
+  --color-status-disconnected: #b42318;
+}
+
+[data-theme='dark'] {
+  --color-bg: #14161a;
+  --color-bg-elevated: #1c1f26;
+  --color-bg-hover: #262a33;
+  --color-bg-active: #30353f;
+  --color-border: #383e4a;
+  --color-border-strong: #4c5361;
+
+  --color-text: #e8eaed;
+  --color-text-muted: #a1a8b5;
+  --color-input-text: #e8eaed;
+  --color-input-placeholder: #8a91a0;
+  --color-search-placeholder: #8a91a0;
+
+  --color-focus-ring: #6ea8fe;
+  --color-link: #6ea8fe;
+
+  --color-primary: #6ea8fe;
+  --color-primary-contrast: #0b1220;
+
+  --color-status-confirmed: #4ade80;
+  --color-status-confirmed-bg: #14311f;
+  --color-status-ambiguous: #f2c94c;
+  --color-status-ambiguous-bg: #3a2f0d;
+  --color-status-unmapped: #f28b82;
+  --color-status-unmapped-bg: #3a1512;
+
+  --color-confidence-high: #4ade80;
+  --color-confidence-medium: #f2c94c;
+  --color-confidence-low: #f28b82;
+
+  --color-status-live: #4ade80;
+  --color-status-stale: #f2c94c;
+  --color-status-disconnected: #f28b82;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-bg: #14161a;
+    --color-bg-elevated: #1c1f26;
+    --color-bg-hover: #262a33;
+    --color-bg-active: #30353f;
+    --color-border: #383e4a;
+    --color-border-strong: #4c5361;
+
+    --color-text: #e8eaed;
+    --color-text-muted: #a1a8b5;
+    --color-input-text: #e8eaed;
+    --color-input-placeholder: #8a91a0;
+    --color-search-placeholder: #8a91a0;
+
+    --color-focus-ring: #6ea8fe;
+    --color-link: #6ea8fe;
+
+    --color-primary: #6ea8fe;
+    --color-primary-contrast: #0b1220;
+
+    --color-status-confirmed: #4ade80;
+    --color-status-confirmed-bg: #14311f;
+    --color-status-ambiguous: #f2c94c;
+    --color-status-ambiguous-bg: #3a2f0d;
+    --color-status-unmapped: #f28b82;
+    --color-status-unmapped-bg: #3a1512;
+
+    --color-confidence-high: #4ade80;
+    --color-confidence-medium: #f2c94c;
+    --color-confidence-low: #f28b82;
+
+    --color-status-live: #4ade80;
+    --color-status-stale: #f2c94c;
+    --color-status-disconnected: #f28b82;
+  }
+}
+
+// Shared "text-muted" utility class, referenced by the interactive-UI baseline for disabled states.
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+// Visible keyboard-focus ring for any focusable control. Applies only for keyboard focus
+// (`:focus-visible`), never for mouse/pointer focus, per WCAG 2.4.7 without being visually noisy.
+@mixin focus-visible-ring {
+  outline: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+// Baseline styling for text inputs (search box, filters, etc.) — token-driven so it is theme-safe and
+// meets contrast in both light and dark themes (NFR4).
+@mixin form-input {
+  background-color: var(--color-bg);
+  color: var(--color-input-text);
+  caret-color: var(--color-input-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+
+  &::placeholder {
+    color: var(--color-input-placeholder);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-border-strong);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-bg-active);
+  }
+
+  &:disabled {
+    color: var(--color-text-muted);
+    background-color: var(--color-bg-elevated);
+    cursor: not-allowed;
+  }
+
+  @include focus-visible-ring;
+}

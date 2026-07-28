@@ -1,0 +1,11 @@
+/* You can add global styles to this file, and also import other style files */
+@use 'app/shared/styles/tokens';
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}

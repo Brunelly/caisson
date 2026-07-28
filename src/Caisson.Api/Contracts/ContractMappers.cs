@@ -85,7 +85,8 @@ public static class ContractMappers
             nic.Name,
             nic.Mac,
             nic.BestAttachment is null ? null : ToAttachment(nic.BestAttachment),
-            nic.Candidates.Select(ToAttachment).ToList());
+            nic.Candidates.Select(ToAttachment).ToList(),
+            nic.UnmappedReasonCode);
 
     private static PortAttachmentDto ToAttachment(PortAttachment attachment)
         => new(

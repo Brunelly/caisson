@@ -103,6 +103,25 @@ public sealed class TopologyGraphProjectorTests
     }
 
     [Fact]
+    public void Unmapped_nic_surfaces_its_reason_code_instead_of_being_dropped()
+    {
+        var view = Project();
+        var nic = view.Servers.Single(s => s.BmcUuid == "uuid-2").Nics.Single(n => n.Name == "eth1");
+
+        nic.UnmappedReasonCode.Should().Be(ReasonCode.NotSeenInSwitch.ToString());
+    }
+
+    [Fact]
+    public void Mapped_nic_has_no_unmapped_reason_code()
+    {
+        var view = Project();
+        var server1 = view.Servers.Single(s => s.BmcUuid == "uuid-1");
+        var nic = server1.Nics.Single();
+
+        nic.UnmappedReasonCode.Should().BeNull();
+    }
+
+    [Fact]
     public void Unmapped_port_is_surfaced_by_the_anti_join()
     {
         var view = Project();

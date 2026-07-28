@@ -38,3 +38,11 @@ Thumbs.db
 
 ## Logs
 *.log
+
+## Angular workspace (web/) — dependency/build/tool artifacts, never committed.
+web/node_modules/
+web/dist/
+web/.angular/
+web/coverage/
+web/test-results/
+web/playwright-report/

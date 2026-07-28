@@ -38,13 +38,17 @@ public sealed record ServerNodeDto(
     string? BmcUuid,
     IReadOnlyList<NicNodeDto> Nics);
 
-/// <summary>A NIC with its best attachment and all candidate attachments.</summary>
+/// <summary>
+/// A NIC with its best attachment and all candidate attachments. <see cref="UnmappedReasonCode"/> is
+/// set only when the NIC has no attachment, explaining why (e.g. not seen in switch/BMC evidence).
+/// </summary>
 public sealed record NicNodeDto(
     string StableKey,
     string Name,
     string Mac,
     PortAttachmentDto? BestAttachment,
-    IReadOnlyList<PortAttachmentDto> Candidates);
+    IReadOnlyList<PortAttachmentDto> Candidates,
+    string? UnmappedReasonCode);
 
 /// <summary>A candidate NIC-to-port attachment with confidence, band, reason and VLANs.</summary>
 public sealed record PortAttachmentDto(
