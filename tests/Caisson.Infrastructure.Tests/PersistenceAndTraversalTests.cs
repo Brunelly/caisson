@@ -30,7 +30,7 @@ public sealed class PersistenceAndTraversalTests : IClassFixture<PostgresFixture
         await _fixture.MigrateAsync();
         var rackId = await SeedRackAsync();
 
-        var snapshot = BuildSnapshot(rackId, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var snapshot = BuildSnapshot(rackId, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), version: 1);
         await using (var context = _fixture.CreateContext())
         {
             context.Snapshots.Add(snapshot);
@@ -74,8 +74,8 @@ public sealed class PersistenceAndTraversalTests : IClassFixture<PostgresFixture
         await _fixture.MigrateAsync();
         var rackId = await SeedRackAsync();
 
-        var older = BuildSnapshot(rackId, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
-        var newer = BuildSnapshot(rackId, new DateTime(2026, 2, 2, 0, 0, 0, DateTimeKind.Utc));
+        var older = BuildSnapshot(rackId, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), version: 1);
+        var newer = BuildSnapshot(rackId, new DateTime(2026, 2, 2, 0, 0, 0, DateTimeKind.Utc), version: 2);
 
         await using (var context = _fixture.CreateContext())
         {
@@ -108,12 +108,14 @@ public sealed class PersistenceAndTraversalTests : IClassFixture<PostgresFixture
         return rackId;
     }
 
-    private static TopologySnapshot BuildSnapshot(Guid rackId, DateTime createdAtUtc)
+    private static TopologySnapshot BuildSnapshot(Guid rackId, DateTime createdAtUtc, int version = 1)
     {
         var snapshotId = Guid.NewGuid();
         var snapshot = new TopologySnapshot(
             snapshotId, rackId, createdAtUtc, "svc-discovery", "chr",
-            Guid.NewGuid(), SnapshotStatus.Completed, sourceVersion: "7.15");
+            Guid.NewGuid(), SnapshotStatus.Completed, sourceVersion: "7.15",
+            version: version, triggerType: TriggerType.Scheduled,
+            startedAtUtc: createdAtUtc, completedAtUtc: createdAtUtc);
 
         for (var s = 0; s < SwitchCount; s++)
         {

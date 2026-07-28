@@ -377,6 +377,85 @@ namespace Caisson.Infrastructure.Migrations
                     b.ToTable("switch_port", (string)null);
                 });
 
+            modelBuilder.Entity("Caisson.Domain.Topology.TopologyAuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("actor_type");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(8192)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details_json");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<Guid?>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("result");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_topology_audit_event");
+
+                    b.HasIndex("CorrelationId")
+                        .HasDatabaseName("ix_topology_audit_event_correlation_id");
+
+                    b.HasIndex("SnapshotId")
+                        .HasDatabaseName("ix_topology_audit_event_snapshot_id");
+
+                    b.HasIndex("RackId", "OccurredAtUtc")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_topology_audit_event_rack_id_occurred_at");
+
+                    b.ToTable("topology_audit_event", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.Topology.TopologyCandidateMapping", b =>
                 {
                     b.Property<Guid>("Id")
@@ -481,12 +560,86 @@ namespace Caisson.Infrastructure.Migrations
                     b.ToTable("topology_change_summary", (string)null);
                 });
 
+            modelBuilder.Entity("Caisson.Domain.Topology.TopologyEntityDiff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("change_type");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("DiffPayloadJson")
+                        .IsRequired()
+                        .HasMaxLength(8192)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("diff_payload_json");
+
+                    b.Property<string>("EntityStableKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("entity_stable_key");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<Guid?>("PreviousSnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_snapshot_id");
+
+                    b.Property<Guid>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_topology_entity_diff");
+
+                    b.HasIndex("PreviousSnapshotId")
+                        .HasDatabaseName("ix_topology_entity_diff_previous_snapshot_id");
+
+                    b.HasIndex("RackId", "SnapshotId")
+                        .HasDatabaseName("ix_topology_entity_diff_rack_id_snapshot_id");
+
+                    b.HasIndex("RackId", "EntityType", "EntityStableKey")
+                        .HasDatabaseName("ix_topology_entity_diff_rack_id_entity_type_entity_stable_key");
+
+                    b.HasIndex("SnapshotId", "EntityType", "EntityStableKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_topology_entity_diff_snapshot_entity_key");
+
+                    b.ToTable("topology_entity_diff", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.Topology.TopologySnapshot", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at_utc");
 
                     b.Property<Guid>("CorrelationId")
                         .HasColumnType("uuid")
@@ -527,18 +680,40 @@ namespace Caisson.Infrastructure.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("source_version");
 
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at_utc");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
 
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger_type");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
                     b.HasKey("Id")
                         .HasName("pk_topology_snapshot");
+
+                    b.HasIndex("RackId", "CompletedAtUtc")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_topology_snapshot_rack_id_completed_at");
 
                     b.HasIndex("RackId", "CreatedAtUtc")
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_topology_snapshot_rack_id_created_at");
+
+                    b.HasIndex("RackId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ux_topology_snapshot_rack_id_version");
 
                     b.ToTable("topology_snapshot", (string)null);
                 });
@@ -708,6 +883,21 @@ namespace Caisson.Infrastructure.Migrations
                         .HasConstraintName("fk_switch_port_switch_switch_id");
                 });
 
+            modelBuilder.Entity("Caisson.Domain.Topology.TopologyAuditEvent", b =>
+                {
+                    b.HasOne("Caisson.Domain.Topology.Rack", null)
+                        .WithMany()
+                        .HasForeignKey("RackId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_topology_audit_event_rack_rack_id");
+
+                    b.HasOne("Caisson.Domain.Topology.TopologySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_topology_audit_event_snapshots_snapshot_id");
+                });
+
             modelBuilder.Entity("Caisson.Domain.Topology.TopologyCandidateMapping", b =>
                 {
                     b.HasOne("Caisson.Domain.Topology.Nic", null)
@@ -759,6 +949,29 @@ namespace Caisson.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_topology_change_summary_snapshots_snapshot_id");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Topology.TopologyEntityDiff", b =>
+                {
+                    b.HasOne("Caisson.Domain.Topology.TopologySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousSnapshotId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_topology_entity_diff_snapshots_previous_snapshot_id");
+
+                    b.HasOne("Caisson.Domain.Topology.Rack", null)
+                        .WithMany()
+                        .HasForeignKey("RackId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_topology_entity_diff_rack_rack_id");
+
+                    b.HasOne("Caisson.Domain.Topology.TopologySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_topology_entity_diff_snapshots_snapshot_id");
                 });
 
             modelBuilder.Entity("Caisson.Domain.Topology.TopologySnapshot", b =>

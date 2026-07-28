@@ -112,5 +112,12 @@ jobs:
           dotnet ef database update   --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
           dotnet ef database update 0 --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
 
+      # Rides the DB-free mapping/diff/shaping/stable-key/cursor unit suites (which run with no database)
+      # alongside the Postgres-backed persistence, immutability and constraint tests.
       - name: Infrastructure integration tests
         run: dotnet test tests/Caisson.Infrastructure.Tests --no-build -c Release
+
+      # Control-plane API: RBAC matrix, correlation-id, pagination/problem-details, query round-trips and
+      # the read-only guard, hosted in-process via WebApplicationFactory against the Postgres service.
+      - name: API integration tests
+        run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release

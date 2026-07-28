@@ -48,6 +48,12 @@ public sealed class CaissonDbContext : DbContext
     /// <summary>Derived per-snapshot change summaries.</summary>
     public DbSet<TopologyChangeSummary> ChangeSummaries => Set<TopologyChangeSummary>();
 
+    /// <summary>Durable, append-only per-entity diffs between consecutive snapshots.</summary>
+    public DbSet<TopologyEntityDiff> EntityDiffs => Set<TopologyEntityDiff>();
+
+    /// <summary>Tamper-evident audit trail for discovery runs and API access.</summary>
+    public DbSet<TopologyAuditEvent> AuditEvents => Set<TopologyAuditEvent>();
+
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -83,23 +89,31 @@ public sealed class CaissonDbContext : DbContext
     }
 
     /// <summary>
-    /// Enforces the append-only invariant: snapshots and snapshot-scoped observed entities may be
-    /// inserted (and deleted, e.g. for retention/rollback), but never modified in place.
+    /// Enforces the append-only invariants:
+    /// <list type="bullet">
+    /// <item><description>Snapshots and snapshot-scoped observed entities may be inserted (and deleted,
+    /// e.g. for retention/rollback) but never <b>modified</b> in place.</description></item>
+    /// <item><description><see cref="IAppendOnly"/> records (audit events, per-entity diffs) are
+    /// tamper-evident: they may never be modified <b>or deleted</b> (NFR4). The database enforces this as
+    /// well via a trigger, so it holds even against raw SQL.</description></item>
+    /// </list>
     /// </summary>
     private void GuardAppendOnly()
     {
         foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.State != EntityState.Modified)
-            {
-                continue;
-            }
-
-            if (entry.Entity is ISnapshotScoped or TopologySnapshot)
+            if (entry.State is EntityState.Modified && entry.Entity is ISnapshotScoped or TopologySnapshot)
             {
                 throw new InvalidOperationException(
                     $"Observed state is append-only: '{entry.Entity.GetType().Name}' cannot be " +
                     "modified after it is persisted. Create a new snapshot instead.");
+            }
+
+            if (entry.State is EntityState.Modified or EntityState.Deleted && entry.Entity is IAppendOnly)
+            {
+                throw new InvalidOperationException(
+                    $"'{entry.Entity.GetType().Name}' is tamper-evident and append-only: it cannot be " +
+                    $"{entry.State.ToString().ToLowerInvariant()} after it is persisted (NFR4).");
             }
         }
     }

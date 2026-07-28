@@ -80,6 +80,45 @@ public sealed class ConstraintTests : IClassFixture<PostgresFixture>
             .Should().Be(2);
     }
 
+    [Fact]
+    public async Task Raw_sql_update_of_an_audit_event_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        var auditId = await SeedAuditEventAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync(
+            "UPDATE topology_audit_event SET result = 'tampered' WHERE id = {0}", auditId);
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    [Fact]
+    public async Task Raw_sql_delete_of_an_audit_event_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        var auditId = await SeedAuditEventAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync(
+            "DELETE FROM topology_audit_event WHERE id = {0}", auditId);
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    private async Task<Guid> SeedAuditEventAsync()
+    {
+        var auditId = Guid.NewGuid();
+        await using var context = _fixture.CreateContext();
+        context.AuditEvents.Add(new TopologyAuditEvent(
+            auditId, DateTime.UtcNow, ActorType.System, "system", "discovery.persisted", "snapshot",
+            Guid.NewGuid(), "success"));
+        await context.SaveChangesAsync();
+        return auditId;
+    }
+
     private async Task<(Guid RackId, Guid SnapshotId, Guid NicId)> SeedRackSnapshotAndNicAsync()
     {
         var rackId = Guid.NewGuid();

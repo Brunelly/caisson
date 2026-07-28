@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The read-only control-plane API host (story #7, ADR 0012). Inherits net8.0 + warnings-as-errors
+    from Directory.Build.props. References ONLY Caisson.Infrastructure (Domain/Correlation transitively)
+    and — deliberately — NO Caisson.Drivers.* assembly: the query surface is strictly read-only and must
+    never reach a device driver (NFR1, enforced by a reflection guard test).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Api</RootNamespace>
+    <AssemblyName>Caisson.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Formatting.Compact" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+  </ItemGroup>
+
+</Project>
