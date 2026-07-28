@@ -1,7 +1,10 @@
 using Caisson.Api.Auditing;
+using Caisson.Api.DependencyInjection;
 using Caisson.Api.Middleware;
+using Caisson.Api.Realtime.Hubs;
 using Caisson.Api.Security;
 using Caisson.Infrastructure.DependencyInjection;
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Orchestration.DependencyInjection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -35,6 +38,10 @@ builder.Services.AddSingleton(TimeProvider.System);
 // driver access is transitive through Caisson.Orchestration at runtime (the guard test stays green).
 builder.Services.AddCaissonOrchestration(builder.Configuration);
 
+// Live topology updates (story #9, ADR 0014): the SignalR hub, Redis backplane + per-instance relay,
+// heartbeat, metrics and Redis health. Degrades to single-instance SignalR when no Redis is configured.
+builder.Services.AddCaissonRealtime(builder.Configuration);
+
 // Correlation-id context (scoped) and the API-access audit writer.
 builder.Services.AddScoped<CorrelationContext>();
 builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<CorrelationContext>());
@@ -59,6 +66,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Audience = builder.Configuration["AzureAd:Audience"];
         options.TokenValidationParameters.RoleClaimType = RoleClaimsTransformation.RoleClaimType;
         options.TokenValidationParameters.NameClaimType = "name";
+
+        // WebSocket auth (story #9): browsers cannot set the Authorization header on the WS upgrade, so
+        // read the bearer token from the access_token query-string parameter for the topology hub. Without
+        // this, authenticated WS handshakes silently fail and the 401/403 hub ACs cannot be met.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken)
+                    && context.HttpContext.Request.Path.StartsWithSegments("/hubs/topology"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            },
+        };
     });
 
 // AuthZ: anonymous → 401 (fallback), authenticated-without-a-recognised-role → 403 (TopologyRead).
@@ -122,9 +147,25 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<TopologyHub>("/hubs/topology");
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
     .AllowAnonymous();
+
+// Live-updates startup visibility (story #9, NFR4): make it obvious to operators when cross-instance
+// relay is off because Redis is unconfigured.
+var realtimeOptions = app.Configuration.GetSection(RealtimeOptions.SectionName).Get<RealtimeOptions>() ?? new RealtimeOptions();
+var realtimeRedis = RealtimeOptions.ResolveRedisConnectionString(app.Configuration);
+if (realtimeOptions.Enabled && !string.IsNullOrWhiteSpace(realtimeRedis))
+{
+    app.Logger.LogInformation("Live topology updates enabled with Redis backplane (channel {Channel}).", realtimeOptions.EventsChannel);
+}
+else
+{
+    app.Logger.LogWarning(
+        "Live topology updates running WITHOUT Redis (single-instance, no cross-instance relay) — Realtime:Enabled={Enabled}, Redis configured={RedisConfigured}.",
+        realtimeOptions.Enabled, !string.IsNullOrWhiteSpace(realtimeRedis));
+}
 
 app.Run();
 
