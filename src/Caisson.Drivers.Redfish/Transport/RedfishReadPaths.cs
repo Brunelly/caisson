@@ -76,6 +76,15 @@ public static class RedfishReadPaths
             resource = resource[..cut];
         }
 
+        // A legitimate Redfish resource path never contains a backslash. .NET's Uri/HttpClient treat '\'
+        // as '/', so a device-supplied "Systems/..\..\AccountService" — whose single '/'-delimited segment
+        // hides the dot-segments from the split below — would collapse on the wire to an off-allowlist
+        // resource (e.g. /redfish/v1/AccountService). Reject any backslash, raw or percent-encoded, up front.
+        if (resource.Contains('\\') || Uri.UnescapeDataString(resource).Contains('\\'))
+        {
+            return false;
+        }
+
         // Hard-reject any dot-segment BEFORE the prefix check. HttpClient/Uri canonicalize the request path
         // just before it goes on the wire, collapsing "Systems/../AccountService" to "AccountService"; if we
         // validated the raw string we would admit a device-supplied @odata.id that then escapes the allowlisted
@@ -121,7 +130,10 @@ public static class RedfishReadPaths
 
     private static bool HasDotSegment(string resource)
     {
-        foreach (var segment in resource.Split('/'))
+        // Split on '\' as well as '/': .NET's Uri treats a backslash as a path separator, so a "..\.."
+        // sequence is a real traversal even though it contains no '/'. (Backslashes are also rejected
+        // outright in IsReadOnlyGet; splitting here keeps this helper correct as defence in depth.)
+        foreach (var segment in resource.Split('/', '\\'))
         {
             if (segment is "." or "..")
             {

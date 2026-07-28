@@ -67,6 +67,12 @@ public sealed class SafetyBoundaryTests
     // Percent-encoded dot-segments are rejected too (decoded before the segment check).
     [InlineData("/redfish/v1/Systems/%2e%2e/AccountService")]
     [InlineData("/redfish/v1/Systems/%2E%2E/AccountService")]
+    // Backslash-hidden dot-segments: a single '/'-split segment like "..\..\AccountService" hides the
+    // traversal, but .NET's Uri normalizes '\' to '/', collapsing it to an off-allowlist resource.
+    [InlineData("/redfish/v1/Systems/..\\..\\AccountService")]
+    [InlineData("/redfish/v1/Systems/1/..\\..\\SessionService")]
+    [InlineData("/redfish/v1/Systems\\..\\AccountService")]
+    [InlineData("/redfish/v1/Systems/1/%5c..%5c..%5cAccountService")]
     public void Allowlist_rejects_dot_segment_traversal(string path)
         => RedfishReadPaths.IsReadOnlyGet("GET", path).Should().BeFalse();
 
