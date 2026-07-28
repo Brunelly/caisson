@@ -36,6 +36,9 @@ public interface IDiscoveryJobService
     /// <summary>Returns a single job with its steps, or null if unknown.</summary>
     Task<DiscoveryJob?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
+    /// <summary>Returns when a run for the rack last succeeded, or null if never (AC4).</summary>
+    Task<DateTime?> GetLastSuccessAtUtcAsync(Guid rackId, CancellationToken cancellationToken);
+
     /// <summary>Returns the rack's discovery status summary (latest job + last success), or null if none.</summary>
     Task<DiscoveryStatusSummary?> GetStatusAsync(Guid rackId, CancellationToken cancellationToken);
 }

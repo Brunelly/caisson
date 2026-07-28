@@ -17,6 +17,14 @@ public interface IAuditEventWriter
     Task WriteReadAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Appends a <see cref="TopologyAuditEvent"/> for a control-plane write action (e.g. a discovery
+    /// trigger or cancel, story #8) with an explicit result. The audit table remains append-only.
+    /// </summary>
+    Task WriteActionAsync(
+        ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
+        string result, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -38,9 +46,15 @@ public sealed class AuditEventWriter : IAuditEventWriter
     }
 
     /// <inheritdoc />
-    public async Task WriteReadAsync(
+    public Task WriteReadAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
         CancellationToken cancellationToken)
+        => WriteActionAsync(user, rackId, action, targetType, targetId, "success", cancellationToken);
+
+    /// <inheritdoc />
+    public async Task WriteActionAsync(
+        ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
+        string result, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -53,7 +67,7 @@ public sealed class AuditEventWriter : IAuditEventWriter
             action,
             targetType,
             _correlation.CorrelationId,
-            result: "success",
+            result: result,
             rackId: rackId,
             snapshotId: null,
             targetId: targetId);

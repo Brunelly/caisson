@@ -1,5 +1,8 @@
 using System.Reflection;
+using Caisson.Api.Controllers;
+using Caisson.Api.Security;
 using FluentAssertions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Xunit;
@@ -7,12 +10,29 @@ using Xunit;
 namespace Caisson.Api.IntegrationTests;
 
 /// <summary>
-/// Reflection guard for the read-only safety boundary (NFR1): the API assembly references no driver
-/// assembly, and every controller action is GET-only. Runs with no database.
+/// Reflection guard for the read-only safety boundary (NFR1). The boundary is about drivers and
+/// HTTP-writes-to-devices, not control-plane HTTP verbs (ADR 0013): the API assembly still references no
+/// driver assembly, the read (topology/audit) controllers stay GET-only, and the only non-GET actions
+/// are the policy-gated discovery control-plane endpoints. Runs with no database.
 /// </summary>
 public sealed class ReadOnlyGuardTests
 {
     private static readonly Assembly ApiAssembly = typeof(Program).Assembly;
+
+    // Explicit per-controller allow-list of controllers permitted to expose non-GET actions (story #8).
+    private static readonly HashSet<string> NonGetControllerAllowList = new(StringComparer.Ordinal)
+    {
+        nameof(DiscoveryJobsController),
+        nameof(DiscoveryJobDetailController),
+        nameof(RackDiscoveryScheduleController),
+    };
+
+    // The policies a non-GET action must be gated by (fail-closed).
+    private static readonly HashSet<string> WritePolicies = new(StringComparer.Ordinal)
+    {
+        AuthorizationPolicies.DiscoveryTrigger,
+        AuthorizationPolicies.ScheduleManage,
+    };
 
     [Fact]
     public void Api_references_no_driver_assembly()
@@ -23,7 +43,7 @@ public sealed class ReadOnlyGuardTests
     }
 
     [Fact]
-    public void Every_controller_action_is_get_only()
+    public void Read_controllers_are_get_only_and_writes_are_confined_and_policy_gated()
     {
         var controllers = ApiAssembly.GetTypes()
             .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
@@ -33,21 +53,48 @@ public sealed class ReadOnlyGuardTests
 
         foreach (var controller in controllers)
         {
+            var isReadOnlyController = typeof(ReadOnlyControllerBase).IsAssignableFrom(controller);
+            var controllerPolicies = PolicyNames(controller.GetCustomAttributes());
+
             var actions = controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(m => !m.IsSpecialName);
 
             foreach (var action in actions)
             {
-                var verbs = action.GetCustomAttributes()
-                    .OfType<HttpMethodAttribute>()
-                    .ToList();
+                var attributes = action.GetCustomAttributes().ToList();
+                var verbs = attributes.OfType<HttpMethodAttribute>().ToList();
 
                 verbs.Should().NotBeEmpty(
                     "action {0}.{1} must declare an explicit HTTP verb", controller.Name, action.Name);
-                verbs.Should().OnlyContain(
-                    attribute => attribute is HttpGetAttribute,
-                    "action {0}.{1} must be GET-only (NFR1)", controller.Name, action.Name);
+
+                if (verbs.All(v => v is HttpGetAttribute))
+                {
+                    continue;
+                }
+
+                // A non-GET action: never on a read-only (topology/audit) controller ...
+                isReadOnlyController.Should().BeFalse(
+                    "action {0}.{1} must be GET-only on read controllers (NFR1)", controller.Name, action.Name);
+
+                // ... only on an allow-listed discovery controller ...
+                NonGetControllerAllowList.Should().Contain(
+                    controller.Name,
+                    "non-GET action {0}.{1} must live on an allow-listed discovery controller",
+                    controller.Name, action.Name);
+
+                // ... and always gated by a discovery write policy (fail-closed).
+                var policies = controllerPolicies.Concat(PolicyNames(attributes)).ToList();
+                policies.Should().Contain(
+                    p => WritePolicies.Contains(p),
+                    "non-GET action {0}.{1} must carry a DiscoveryTrigger/ScheduleManage policy",
+                    controller.Name, action.Name);
             }
         }
     }
+
+    private static IEnumerable<string> PolicyNames(IEnumerable<Attribute> attributes)
+        => attributes.OfType<AuthorizeAttribute>()
+            .Select(a => a.Policy)
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!);
 }

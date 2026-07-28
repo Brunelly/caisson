@@ -159,6 +159,12 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
 
     /// <inheritdoc />
+    public async Task<DateTime?> GetLastSuccessAtUtcAsync(Guid rackId, CancellationToken cancellationToken)
+        => await _context.DiscoveryJobs
+            .Where(j => j.RackId == rackId && j.Status == DiscoveryJobStatus.Succeeded)
+            .MaxAsync(j => (DateTime?)j.FinishedAtUtc, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<DiscoveryStatusSummary?> GetStatusAsync(Guid rackId, CancellationToken cancellationToken)
     {
         var latest = await _context.DiscoveryJobs
