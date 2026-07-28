@@ -174,9 +174,12 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
     }
 
     private static Task<SnapshotIngestionOutcome> Ingest(
-        CaissonDbContext context, Guid rackId, TopologyCorrelationInput input, TopologyCorrelationResult result)
+        CaissonDbContext context, Guid rackId, TopologyCorrelationInput input, TopologyCorrelationResult result,
+        LiveUpdates.ITopologyEventPublisher? publisher = null)
     {
-        var service = new TopologySnapshotIngestionService(context, new GuidTopologyIdGenerator());
+        var service = new TopologySnapshotIngestionService(
+            context, new GuidTopologyIdGenerator(), publisher ?? new LiveUpdates.NoOpTopologyEventPublisher(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TopologySnapshotIngestionService>.Instance);
         var request = new TopologyIngestionRequest(
             rackId, input, result, TriggerType.OnDemand, "svc-discovery", ActorType.ServiceAccount,
             "chr", "7.15", Guid.NewGuid(), SnapshotStatus.Completed, At, At);

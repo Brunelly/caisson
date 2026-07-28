@@ -6,7 +6,9 @@ using Caisson.Domain.Topology;
 using Caisson.Domain.ValueObjects;
 using Caisson.Drivers.Abstractions.Bmc;
 using Caisson.Drivers.Abstractions.Switches;
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence.Ingestion;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Caisson.Api.IntegrationTests;
 
@@ -49,13 +51,17 @@ internal static class SeedData
         SnapshotIngestionOutcome first, second;
         await using (var context = harness.CreateContext())
         {
-            var service = new TopologySnapshotIngestionService(context, new GuidTopologyIdGenerator());
+            var service = new TopologySnapshotIngestionService(
+                context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                NullLogger<TopologySnapshotIngestionService>.Instance);
             first = await service.IngestAsync(Request(rackId, Observed("node-1"), Correlation(), V1At));
         }
 
         await using (var context = harness.CreateContext())
         {
-            var service = new TopologySnapshotIngestionService(context, new GuidTopologyIdGenerator());
+            var service = new TopologySnapshotIngestionService(
+                context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                NullLogger<TopologySnapshotIngestionService>.Instance);
             second = await service.IngestAsync(Request(rackId, Observed("node-1-renamed"), Correlation(), V2At));
         }
 

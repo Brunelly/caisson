@@ -1,5 +1,6 @@
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Shaping;
@@ -24,6 +25,8 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
     private readonly TimeProvider _time;
     private readonly DiscoveryJobSignal _signal;
     private readonly DiscoveryCancellationRegistry _cancellation;
+    private readonly ITopologyEventPublisher _events;
+    private readonly ITopologyEventSequencer _sequencer;
     private readonly ILogger<DiscoveryJobService> _logger;
 
     public DiscoveryJobService(
@@ -32,6 +35,8 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         TimeProvider time,
         DiscoveryJobSignal signal,
         DiscoveryCancellationRegistry cancellation,
+        ITopologyEventPublisher events,
+        ITopologyEventSequencer sequencer,
         ILogger<DiscoveryJobService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -39,6 +44,8 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _signal = signal ?? throw new ArgumentNullException(nameof(signal));
         _cancellation = cancellation ?? throw new ArgumentNullException(nameof(cancellation));
+        _events = events ?? throw new ArgumentNullException(nameof(events));
+        _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -105,7 +112,35 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         _logger.LogInformation(
             "Discovery job queued jobId={JobId} rackId={RackId} mode={Mode} correlationId={CorrelationId} dryRun={DryRun}",
             job.Id, rackId, mode, correlationId, dryRun);
+
+        // Live update (story #9): the durable Created→Queued transition. Fail-open + belt-and-braces so a
+        // publish fault can never fail the enqueue (AC4/NFR3).
+        await PublishStatusAsync(
+            rackId, job.Id, DiscoveryJobStatus.Queued.ToString(), previousStatus: null, errorCode: null,
+            correlationId, cancellationToken);
+
         return new EnqueueResult(EnqueueDisposition.Created, job.Id);
+    }
+
+    private async Task PublishStatusAsync(
+        Guid rackId, Guid jobId, string status, string? previousStatus, string? errorCode,
+        Guid correlationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var seq = await _sequencer.NextAsync("job:" + jobId.ToString("N"), cancellationToken);
+            var @event = new DiscoveryJobStatusChangedEvent(
+                rackId, jobId, status, previousStatus, CurrentStep: null, errorCode,
+                _time.GetUtcNow(), seq, correlationId);
+            await _events.PublishJobStatusChangedAsync(@event, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "discovery-job-status-changed publish failed (swallowed) jobId={JobId} status={Status} correlationId={CorrelationId}",
+                jobId, status, correlationId);
+        }
     }
 
     /// <inheritdoc />

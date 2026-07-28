@@ -31,6 +31,8 @@
       of them naming Redis. SignalR/backplane wiring stays in Caisson.Api.
     -->
     <PackageReference Include="StackExchange.Redis" />
+    <!-- Bind RealtimeOptions from the Realtime configuration section (OptionsBuilder.Bind / Get<T>). -->
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 
 </Project>

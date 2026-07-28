@@ -1,6 +1,7 @@
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
+using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
@@ -26,6 +27,8 @@ public sealed class DiscoveryJobRunner : BackgroundService
     private readonly DiscoveryJobSignal _signal;
     private readonly DiscoveryCancellationRegistry _cancellation;
     private readonly TimeProvider _time;
+    private readonly ITopologyEventPublisher _events;
+    private readonly ITopologyEventSequencer _sequencer;
     private readonly IOptions<DiscoveryOrchestrationOptions> _options;
     private readonly ILogger<DiscoveryJobRunner> _logger;
 
@@ -34,6 +37,8 @@ public sealed class DiscoveryJobRunner : BackgroundService
         DiscoveryJobSignal signal,
         DiscoveryCancellationRegistry cancellation,
         TimeProvider time,
+        ITopologyEventPublisher events,
+        ITopologyEventSequencer sequencer,
         IOptions<DiscoveryOrchestrationOptions> options,
         ILogger<DiscoveryJobRunner> logger)
     {
@@ -41,6 +46,8 @@ public sealed class DiscoveryJobRunner : BackgroundService
         _signal = signal ?? throw new ArgumentNullException(nameof(signal));
         _cancellation = cancellation ?? throw new ArgumentNullException(nameof(cancellation));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _events = events ?? throw new ArgumentNullException(nameof(events));
+        _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -95,6 +102,9 @@ public sealed class DiscoveryJobRunner : BackgroundService
         var job = await context.DiscoveryJobs
             .Include(j => j.Steps)
             .FirstAsync(j => j.Id == claimedId, stoppingToken);
+
+        // Live update (story #9): the durable claim → InProgress transition.
+        await PublishStatusAsync(job, DiscoveryJobStatus.InProgress, previousStatus: DiscoveryJobStatus.Queued.ToString(), stoppingToken);
 
         using var cts = _cancellation.Register(claimedId, stoppingToken);
         try
@@ -188,6 +198,39 @@ RETURNING id AS ""Value""";
         _logger.LogInformation(
             "Discovery job finalized jobId={JobId} rackId={RackId} status={Status} correlationId={CorrelationId}",
             job.Id, job.RackId, job.Status, job.CorrelationId);
+
+        // Live update (story #9): the terminal transition, emitted right next to the audit write so events
+        // and audit stay consistent. Carries the operator-safe error code on a failed job.
+        await PublishStatusAsync(job, job.Status, previousStatus: DiscoveryJobStatus.InProgress.ToString(), cancellationToken);
+    }
+
+    private async Task PublishStatusAsync(
+        DiscoveryJob job, DiscoveryJobStatus status, string? previousStatus, CancellationToken cancellationToken)
+    {
+        // Belt-and-braces around the fail-open publisher so a publish fault can never abort or fail the
+        // discovery job (AC4/NFR3).
+        try
+        {
+            var seq = await _sequencer.NextAsync("job:" + job.Id.ToString("N"), cancellationToken);
+            var @event = new DiscoveryJobStatusChangedEvent(
+                job.RackId,
+                job.Id,
+                status.ToString(),
+                previousStatus,
+                CurrentStep: null,
+                status == DiscoveryJobStatus.Failed ? job.ErrorCode : null,
+                _time.GetUtcNow(),
+                seq,
+                job.CorrelationId);
+            await _events.PublishJobStatusChangedAsync(@event, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "discovery-job-status-changed publish failed (swallowed) jobId={JobId} status={Status} correlationId={CorrelationId}",
+                job.Id, status, job.CorrelationId);
+        }
     }
 
     private async Task WaitForWorkAsync(CancellationToken stoppingToken)
