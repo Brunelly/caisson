@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pure in-memory topology correlation engine (story #6, ADR 0010). NO EF Core / Npgsql /
+    System.Net.Http references — the engine is a deterministic, side-effect-free function (NFR1). It
+    consumes the story-3 driver info records (Caisson.Drivers.Abstractions) and reuses the story-2
+    domain value objects (Caisson.Domain), so it stays shareable with the future NativeAOT agent.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Correlation</RootNamespace>
+    <AssemblyName>Caisson.Correlation</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The engine and its index helpers are internal; the test project exercises them directly. -->
+    <InternalsVisibleTo Include="Caisson.Correlation.Tests" />
+  </ItemGroup>
+
+</Project>
