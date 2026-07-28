@@ -26,6 +26,16 @@ public sealed class DomainGuardTests
         "AccessKey", "AuthToken", "BearerToken",
     };
 
+    // The audit event's Target* fields name the read-only SUBJECT an audited action addressed (standard
+    // audit terminology, mandated by the story-7 data model: "each event includes ... target
+    // identifiers"). They are not remediation/desired-state config targets, so they are exempt from the
+    // "Target" remediation marker — nothing else in the model is.
+    private static readonly HashSet<string> AuditSubjectAllowList = new(StringComparer.Ordinal)
+    {
+        $"{nameof(TopologyAuditEvent)}.{nameof(TopologyAuditEvent.TargetType)}",
+        $"{nameof(TopologyAuditEvent)}.{nameof(TopologyAuditEvent.TargetId)}",
+    };
+
     public static IEnumerable<object[]> ObservedProperties()
     {
         foreach (var type in DomainAssembly.GetTypes().Where(t => t is { IsClass: true, IsEnum: false }))
@@ -41,6 +51,11 @@ public sealed class DomainGuardTests
     [MemberData(nameof(ObservedProperties))]
     public void No_property_implies_remediation_or_desired_state(string typeName, string propertyName)
     {
+        if (AuditSubjectAllowList.Contains($"{typeName}.{propertyName}"))
+        {
+            return;
+        }
+
         RemediationMarkers.Should().NotContain(
             marker => propertyName.Contains(marker, StringComparison.OrdinalIgnoreCase),
             "{0}.{1} must not imply write/remediation/desired-state intent (M0 is read-only)",
