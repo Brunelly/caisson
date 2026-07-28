@@ -19,7 +19,7 @@ import { TopologyStateService } from './state/topology-state.service';
   selector: 'app-topology-page',
   standalone: true,
   template: `
-    <section class="topology-page">
+    <section class="topology-page" role="main">
       @if (state.loading()) {
         <p role="status">Loading topology…</p>
       } @else if (state.error() === 'notFound') {

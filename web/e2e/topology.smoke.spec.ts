@@ -47,8 +47,11 @@ test.describe('Topology page smoke test', () => {
     await expect(option).toBeVisible();
     await option.click();
 
-    // AC3: the drill-down details panel opens for the selected entity.
-    const detailsPanel = page.getByRole('region').filter({ has: page.locator('h2') });
+    // AC3: the drill-down details panel opens for the selected entity. Scoped to the aside element
+    // (not just "a region with an h2") since the always-rendered legend is also a region with its own
+    // h2 ("Legend") — a `getByRole('region').filter({ has: page.locator('h2') })` locator matches both
+    // and throws a strict-mode violation.
+    const detailsPanel = page.locator('aside.details-panel');
     await expect(detailsPanel).toBeVisible();
     await expect(detailsPanel.locator('h2')).toContainText(searchLabelPart!);
 
