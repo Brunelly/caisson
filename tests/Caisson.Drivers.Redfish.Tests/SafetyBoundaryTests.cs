@@ -54,6 +54,22 @@ public sealed class SafetyBoundaryTests
     public void Allowlist_rejects_every_non_get_verb(string method)
         => RedfishReadPaths.IsReadOnlyGet(method, "/redfish/v1/Systems").Should().BeFalse();
 
+    [Theory]
+    // A device-supplied @odata.id must not escape the allowlisted subtree via "." / ".." dot-segments:
+    // HttpClient/Uri collapse these before the request is sent, so validating the raw string would otherwise
+    // admit a path that resolves to an off-allowlist resource such as /redfish/v1/AccountService.
+    [InlineData("/redfish/v1/Systems/../AccountService")]
+    [InlineData("/redfish/v1/Systems/1/../../AccountService")]
+    [InlineData("/redfish/v1/Managers/./../SessionService")]
+    [InlineData("/redfish/v1/Systems/..")]
+    [InlineData("/redfish/v1/Systems/./1")]
+    [InlineData("/redfish/v1/Systems/1/EthernetInterfaces/../../../SessionService")]
+    // Percent-encoded dot-segments are rejected too (decoded before the segment check).
+    [InlineData("/redfish/v1/Systems/%2e%2e/AccountService")]
+    [InlineData("/redfish/v1/Systems/%2E%2E/AccountService")]
+    public void Allowlist_rejects_dot_segment_traversal(string path)
+        => RedfishReadPaths.IsReadOnlyGet("GET", path).Should().BeFalse();
+
     [Fact]
     public async Task Client_rejects_an_action_path_before_any_io()
     {

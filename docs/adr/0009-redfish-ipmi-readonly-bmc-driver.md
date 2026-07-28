@@ -29,6 +29,13 @@ certificate validation override scoped to integration tests and disallowed in pr
   `IpmiReadCommands.IsReadOnly` allowlists only read subcommands (`mc info`, `fru print`, `lan print`,
   `sdr elist`/`sdr type`, `chassis status`) and hard-rejects any write token (`power`, `reset`, `raw`,
   `sol`, `user`, `sel clear`, `sensor set`, boot verbs). These are the code-reviewable NFR1 artifacts.
+  Because the driver navigates by following device-supplied `@odata.id` links, the allowlist is hardened
+  against two BMC-driven escapes: (1) `RedfishReadPaths.IsReadOnlyGet` hard-rejects any `.`/`..` dot-segment
+  (literal or percent-encoded) so a link such as `/redfish/v1/Systems/../AccountService` — which `HttpClient`
+  would canonicalize to an off-allowlist resource just before sending — is refused **before any I/O**; and
+  (2) the transport handler sets `AllowAutoRedirect=false`, so a device 3xx cannot steer a read-only GET to
+  an off-allowlist path or internal host (SSRF) after the pre-I/O check has passed. An integration test drives
+  a malicious-BMC profile and asserts the off-allowlist resource is never requested at all.
 - **TLS is validated, never blanket-accepted (CWE-295).** The three-way policy is reused verbatim from
   RouterOS: a trusted chain, a configured SHA-256 fingerprint pin (the recommended posture for the
   self-signed iLO certificate), or an explicit per-connection opt-in — otherwise rejected. TLS trust (pin /
@@ -38,9 +45,13 @@ certificate validation override scoped to integration tests and disallowed in pr
   login is a `POST` to `/SessionService/Sessions`, which would itself be a mutating call and blur the
   read-only boundary; Basic keeps every request a pure read.
 - **Redfish-first, per-method IPMI fallback; provenance via diagnostics/metrics/logs, not a widened contract.**
-  Each method attempts Redfish first and, on an unreachable/timeout/auth failure **or** structurally
+  Each method attempts Redfish first and, on an unreachable/timeout/protocol failure **or** structurally
   insufficient data (an empty or entirely MAC-less NIC list), falls back to the equivalent read-only IPMI
-  command(s), appending a `Warning` diagnostic for the Redfish failure reason and a `FallbackSource`
+  command(s). A Redfish credential rejection (401/403) is deliberately **not** fallback-eligible (AC3): since
+  one credential serves both transports a genuinely bad password fails IPMI too, so masking the auth failure
+  behind a lucky IPMI success would only hide a Redfish-only credential mistake — the auth failure surfaces
+  distinctly as `AuthenticationFailed` instead. The fallback appends a `Warning` diagnostic for the Redfish
+  failure reason and a `FallbackSource`
   diagnostic naming the section, tagging the metric `source=ipmi`, and emitting a secret-free fallback-trace
   log line. Following ADR 0008's precedent, `BmcSystemInventory`/`BmcBiosInfo` are **not** widened to carry a
   per-field `DataSource`; provenance lives in diagnostics + metrics + logs. One small additive
@@ -85,7 +96,9 @@ certificate validation override scoped to integration tests and disallowed in pr
 - The driver has no third-party dependencies beyond the interfaces-only DI/logging abstractions, staying
   AOT-friendly and licensing-clean; Redfish parsing is fully reflection-free.
 - Read-only safety is enforced twice per protocol (namespace + Redfish path allowlist + IPMI command
-  allowlist) and covered by unit tests, including a reflection guard that no driver method mutates.
+  allowlist) and covered by unit tests, including a reflection guard that no driver method mutates. The
+  allowlist additionally resists a hostile BMC: dot-segment traversal in a device-supplied link is rejected
+  before I/O and HTTP auto-redirect is disabled, both covered by unit and integration tests.
 - Discovery is resilient: expected failures map to `DriverError` codes, partial/missing data degrades to
   diagnostics, and Redfish gaps fall back to IPMI with data-source provenance — without failing the whole run.
 - `BmcNetworkInterfaceInfo.Mac` is now nullable across the abstraction; downstream consumers must treat a

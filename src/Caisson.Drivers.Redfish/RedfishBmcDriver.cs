@@ -21,7 +21,7 @@ namespace Caisson.Drivers.Redfish;
 /// <summary>
 /// The HP iLO / Redfish read-only <see cref="IBmcDiscoveryDriver"/> with a per-method IPMI fallback
 /// (story #5). Each method attempts Redfish first (HTTPS/JSON navigation through
-/// <see cref="IRedfishClient"/>); on an unreachable/timeout/auth failure or structurally-insufficient data
+/// <see cref="IRedfishClient"/>); on an unreachable/timeout/protocol failure or structurally-insufficient data
 /// it falls back to the read-only IPMI commands via <see cref="IIpmiCommandRunner"/>, recording the reason
 /// and data-source provenance in diagnostics, a metric <c>source</c> tag and a secret-free log line —
 /// without widening the shared Bmc records (ADR 0008/0009 precedent). Expected failures are converted to a
@@ -344,9 +344,14 @@ public sealed class RedfishBmcDriver : IBmcDiscoveryDriver
         }
     }
 
-    private static bool IsRedfishFallbackEligible(Exception ex) => ex is
-        HttpRequestException or SocketException or TimeoutException
-        or RedfishException or JsonException or IOException;
+    private static bool IsRedfishFallbackEligible(Exception ex)
+        // A credential rejection (401/403) is NOT fallback-eligible: it must surface distinctly as
+        // AuthenticationFailed rather than be masked by a successful IPMI read (AC3). One credential serves
+        // both transports, so a genuinely bad password fails IPMI too; excluding auth here means a Redfish-only
+        // credential mistake reads as "auth failed", not "success via IPMI".
+        => ex is not RedfishAuthenticationException
+            && ex is HttpRequestException or SocketException or TimeoutException
+                or RedfishException or JsonException or IOException;
 
     private static string DescribeFailure(Exception ex) => ex switch
     {

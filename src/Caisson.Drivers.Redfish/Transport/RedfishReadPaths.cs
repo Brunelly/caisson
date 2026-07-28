@@ -50,8 +50,11 @@ public static class RedfishReadPaths
     /// <summary>
     /// Returns <c>true</c> only when <paramref name="method"/> is <c>GET</c> and <paramref name="path"/> is
     /// an allowlisted, non-mutating Redfish resource path. Navigation that follows an <c>@odata.id</c> link
-    /// re-passes this guard, so a link a device hands back can never widen the boundary. A query string (a
-    /// <c>?</c>-suffixed path) is evaluated on its resource portion only.
+    /// re-passes this guard, and any <c>.</c>/<c>..</c> dot-segment is hard-rejected, so a link a device hands
+    /// back can never widen the boundary by traversal (a raw path such as
+    /// <c>/redfish/v1/Systems/../AccountService</c> would pass a naïve prefix check yet resolve, once
+    /// <see cref="Uri"/>/<see cref="System.Net.Http.HttpClient"/> collapse the dot-segments, to an off-allowlist
+    /// resource). A query string (a <c>?</c>-suffixed path) is evaluated on its resource portion only.
     /// </summary>
     public static bool IsReadOnlyGet(string method, string? path)
     {
@@ -71,6 +74,15 @@ public static class RedfishReadPaths
         if (cut >= 0)
         {
             resource = resource[..cut];
+        }
+
+        // Hard-reject any dot-segment BEFORE the prefix check. HttpClient/Uri canonicalize the request path
+        // just before it goes on the wire, collapsing "Systems/../AccountService" to "AccountService"; if we
+        // validated the raw string we would admit a device-supplied @odata.id that then escapes the allowlisted
+        // subtree. Rejecting "." and ".." segments (literal or percent-encoded) closes that traversal.
+        if (ContainsDotSegment(resource))
+        {
+            return false;
         }
 
         // Trim any trailing slash so "/redfish/v1/Systems/" and "/redfish/v1/Systems" are treated alike.
@@ -97,6 +109,28 @@ public static class RedfishReadPaths
     private static bool EndsWithOrContainsSettings(string resource)
         => resource.EndsWith(SettingsSegment, StringComparison.OrdinalIgnoreCase)
             || resource.Contains(SettingsSegment + "/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns <c>true</c> if any <c>/</c>-delimited segment of <paramref name="resource"/> is a <c>.</c> or
+    /// <c>..</c> dot-segment — checked on both the raw path and its percent-decoded form so an encoded
+    /// <c>%2e%2e</c> (or an encoded separator hiding one) is caught too. A legitimate Redfish resource path
+    /// never contains a dot-segment, so this is a safe, unconditional reject of every traversal attempt.
+    /// </summary>
+    private static bool ContainsDotSegment(string resource)
+        => HasDotSegment(resource) || HasDotSegment(Uri.UnescapeDataString(resource));
+
+    private static bool HasDotSegment(string resource)
+    {
+        foreach (var segment in resource.Split('/'))
+        {
+            if (segment is "." or "..")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool MatchesAllowedPrefix(string resource)
     {

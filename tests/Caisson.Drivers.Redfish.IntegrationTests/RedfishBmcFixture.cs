@@ -104,10 +104,21 @@ public sealed class RedfishBmcFixture : IAsyncLifetime
             return new RedfishEndpoint(_realHost, _realPort);
         }
 
+        var simulator = ResolveSimulator(profileName);
+        return new RedfishEndpoint(simulator.Host, simulator.Port);
+    }
+
+    /// <summary>
+    /// Starts a fresh simulator for <paramref name="profileName"/> and returns it directly, so a test can both
+    /// drive the driver against it and inspect <see cref="RedfishSimulator.RequestedPaths"/>. Simulator-only —
+    /// callers must self-skip under <see cref="UsingRealHardware"/>.
+    /// </summary>
+    public RedfishSimulator ResolveSimulator(string profileName)
+    {
         var simulator = new RedfishSimulator(RedfishSimulator.LoadProfile(profileName), Certificate);
         simulator.Start();
         _simulators.Add(simulator);
-        return new RedfishEndpoint(simulator.Host, simulator.Port);
+        return simulator;
     }
 
     /// <summary>An endpoint on a closed loopback port — models an unreachable BMC (connection refused).</summary>

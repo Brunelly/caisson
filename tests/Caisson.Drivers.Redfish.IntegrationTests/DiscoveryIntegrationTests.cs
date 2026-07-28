@@ -142,6 +142,29 @@ public sealed class DiscoveryIntegrationTests : IClassFixture<RedfishBmcFixture>
         runner.Invocations.Should().Contain("fru print");
     }
 
+    [Fact]
+    public async Task A_device_supplied_traversal_link_is_refused_and_never_requested()
+    {
+        if (_fixture.UsingRealHardware)
+        {
+            return; // The malicious-BMC profile is simulator-only.
+        }
+
+        // No IPMI fixtures — the discovery must fail outright, not be quietly rescued by a fallback.
+        using var provider = BuildProvider(new FixtureIpmiCommandRunner(new Dictionary<string, string>()));
+        var simulator = _fixture.ResolveSimulator("ilo-malicious-traversal");
+        var driver = CreateDriver(provider, new RedfishEndpoint(simulator.Host, simulator.Port));
+
+        // The Systems collection hands back an @odata.id of "/redfish/v1/Systems/../AccountService". Without the
+        // dot-segment reject, HttpClient would canonicalize that to "/redfish/v1/AccountService" and leak it.
+        var inventory = await driver.GetSystemInventoryAsync(CancellationToken.None);
+
+        inventory.Success.Should().BeFalse("the read-only allowlist must refuse to follow a traversal link");
+        simulator.RequestedPaths.Should().NotContain(
+            p => p.Contains("AccountService", StringComparison.Ordinal),
+            "the off-allowlist resource must never be requested — the boundary is enforced before any I/O");
+    }
+
     private IBmcDiscoveryDriver CreateDriver(ServiceProvider provider, RedfishEndpoint endpoint)
     {
         var registry = provider.GetRequiredService<IBmcDriverRegistry>();

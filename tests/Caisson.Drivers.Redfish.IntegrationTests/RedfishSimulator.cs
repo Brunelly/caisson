@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -23,6 +24,7 @@ public sealed class RedfishSimulator : IAsyncDisposable
     private readonly X509Certificate2 _serverCertificate;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
+    private readonly ConcurrentQueue<string> _requestedPaths = new();
     private Task? _acceptLoop;
 
     public RedfishSimulator(RedfishProfile profile, X509Certificate2 serverCertificate)
@@ -37,6 +39,14 @@ public sealed class RedfishSimulator : IAsyncDisposable
 
     /// <summary>The ephemeral port assigned once <see cref="Start"/> has run.</summary>
     public int Port { get; private set; }
+
+    /// <summary>
+    /// Every request-line path the simulator actually received, in order — exactly what
+    /// <see cref="System.Net.Http.HttpClient"/> put on the wire (so any <c>..</c> dot-segments have already
+    /// been collapsed). Lets a security test assert that a resource the read-only allowlist rejects was never
+    /// requested at all, rather than merely not returned.
+    /// </summary>
+    public IReadOnlyCollection<string> RequestedPaths => _requestedPaths.ToArray();
 
     /// <summary>Binds the listener and starts accepting connections in the background.</summary>
     public void Start()
@@ -166,6 +176,10 @@ public sealed class RedfishSimulator : IAsyncDisposable
     {
         int status;
         string body;
+
+        // Record what actually reached the server (post-canonicalization) so tests can prove an off-allowlist
+        // resource was never requested.
+        _requestedPaths.Enqueue(StripQuery(path));
 
         if (_profile.AuthFail)
         {

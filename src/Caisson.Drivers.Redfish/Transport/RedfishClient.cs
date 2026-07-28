@@ -35,6 +35,12 @@ public sealed class RedfishClient : IRedfishClient
 
         var handler = new SocketsHttpHandler
         {
+            // Redfish navigation is done explicitly by following @odata.id links, each re-validated by the
+            // read-only allowlist before I/O, so redirects are never needed. Disabling them stops a malicious
+            // or compromised BMC from using a 3xx to steer a read-only GET to an off-allowlist path or an
+            // internal host (SSRF) after the pre-I/O boundary check has already passed.
+            AllowAutoRedirect = false,
+
             // iLO ships a self-signed certificate. Validation is enforced by ValidateServerCertificate: a
             // fully trusted chain, a matching pinned fingerprint, or an explicit per-connection opt-in —
             // never a silent accept-all (CWE-295).

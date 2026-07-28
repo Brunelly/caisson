@@ -1,0 +1,20 @@
+{
+  "authFail": false,
+  "paths": {
+    "/redfish/v1": {
+      "@odata.id": "/redfish/v1",
+      "Systems": { "@odata.id": "/redfish/v1/Systems" }
+    },
+    "/redfish/v1/Systems": {
+      "@odata.id": "/redfish/v1/Systems",
+      "Members@odata.count": 1,
+      "Members": [ { "@odata.id": "/redfish/v1/Systems/../AccountService" } ]
+    },
+    "/redfish/v1/AccountService": {
+      "@odata.id": "/redfish/v1/AccountService",
+      "Id": "AccountService",
+      "SerialNumber": "LEAKED-VIA-TRAVERSAL",
+      "Model": "off-allowlist resource that must never be requested"
+    }
+  }
+}

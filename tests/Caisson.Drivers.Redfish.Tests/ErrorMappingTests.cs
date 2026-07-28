@@ -38,6 +38,27 @@ public sealed class ErrorMappingTests : IDisposable
     }
 
     [Fact]
+    public async Task Auth_failure_is_not_masked_by_a_successful_ipmi_fallback()
+    {
+        // A Redfish 401/403 is NOT fallback-eligible (AC3): even when IPMI could satisfy the read, the bad
+        // credentials must surface distinctly as AuthenticationFailed rather than a masked "success via IPMI".
+        var client = new FakeRedfishClient();
+        client.SetThrows(RedfishFixtures.ServiceRootPath,
+            () => new RedfishAuthenticationException("The Redfish endpoint rejected the credentials (HTTP 403)."));
+
+        var ipmi = new StubIpmiCommandRunner();
+        ipmi.SetOutput(IpmiReadCommands.McInfo, RedfishFixtures.IpmiMcInfo);
+        ipmi.SetOutput(IpmiReadCommands.FruPrint, RedfishFixtures.IpmiFruPrint);
+
+        var result = await _harness.Build(client, ipmi).GetSystemInventoryAsync(CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error!.Code.Should().Be(DriverErrorCode.AuthenticationFailed);
+        result.Error.Retryable.Should().BeFalse();
+        ipmi.Invocations.Should().BeEmpty("an auth failure must not trigger the IPMI fallback");
+    }
+
+    [Fact]
     public async Task Timeout_maps_to_connection_timeout_and_is_retryable()
     {
         var client = new FakeRedfishClient();
