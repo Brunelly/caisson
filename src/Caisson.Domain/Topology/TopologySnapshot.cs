@@ -23,6 +23,13 @@ public sealed class TopologySnapshot
     }
 
     /// <summary>Creates a new snapshot with its provenance/audit metadata.</summary>
+    /// <remarks>
+    /// <paramref name="version"/>, <paramref name="triggerType"/>, <paramref name="startedAtUtc"/> and
+    /// <paramref name="completedAtUtc"/> are optional-defaulted so story-2 callers keep compiling; the
+    /// story-7 ingestion path always supplies them (a monotonic per-rack <c>version</c> and full run
+    /// timing). <see cref="CreatedBy"/>/<see cref="Source"/>/<see cref="SourceVersion"/> already carry
+    /// triggeredBy and source-driver provenance.
+    /// </remarks>
     public TopologySnapshot(
         Guid id,
         Guid rackId,
@@ -33,7 +40,11 @@ public sealed class TopologySnapshot
         SnapshotStatus status,
         string? sourceVersion = null,
         string? errorCode = null,
-        string? errorMessage = null)
+        string? errorMessage = null,
+        int version = 0,
+        TriggerType triggerType = TriggerType.OnDemand,
+        DateTime? startedAtUtc = null,
+        DateTime? completedAtUtc = null)
     {
         Id = id;
         RackId = rackId;
@@ -45,6 +56,10 @@ public sealed class TopologySnapshot
         Status = status;
         ErrorCode = errorCode;
         ErrorMessage = errorMessage;
+        Version = version;
+        TriggerType = triggerType;
+        StartedAtUtc = startedAtUtc;
+        CompletedAtUtc = completedAtUtc;
     }
 
     /// <summary>Snapshot primary key; also breaks exact-timestamp ties for latest selection.</summary>
@@ -52,6 +67,22 @@ public sealed class TopologySnapshot
 
     /// <summary>The stable rack this snapshot belongs to.</summary>
     public Guid RackId { get; private set; }
+
+    /// <summary>
+    /// Monotonically increasing snapshot version for the rack (AC1). Story-7 ingestion assigns
+    /// <c>max(version) + 1</c> per rack in-transaction; a unique <c>(rack_id, version)</c> index is the
+    /// correctness backstop.
+    /// </summary>
+    public int Version { get; private set; }
+
+    /// <summary>How the discovery run that produced this snapshot was initiated.</summary>
+    public TriggerType TriggerType { get; private set; }
+
+    /// <summary>When the discovery run started, if recorded.</summary>
+    public DateTime? StartedAtUtc { get; private set; }
+
+    /// <summary>When the discovery run completed, if recorded.</summary>
+    public DateTime? CompletedAtUtc { get; private set; }
 
     /// <summary>When the snapshot was created (primary sort key for latest selection).</summary>
     public DateTime CreatedAtUtc { get; private set; }
