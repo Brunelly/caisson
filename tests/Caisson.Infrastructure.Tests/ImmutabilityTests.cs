@@ -51,6 +51,89 @@ public sealed class ImmutabilityTests : IClassFixture<PostgresFixture>
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    [Fact]
+    public async Task Mutating_a_persisted_audit_event_is_rejected()
+    {
+        await _fixture.MigrateAsync();
+        var auditId = await SeedAppendOnlyAsync();
+
+        await using var context = _fixture.CreateContext();
+        var audit = await context.AuditEvents.SingleAsync(a => a.Id == auditId);
+        context.Entry(audit).Property(a => a.Result).CurrentValue = "tampered";
+
+        var act = async () => await context.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Deleting_a_persisted_audit_event_is_rejected()
+    {
+        await _fixture.MigrateAsync();
+        var auditId = await SeedAppendOnlyAsync();
+
+        await using var context = _fixture.CreateContext();
+        var audit = await context.AuditEvents.SingleAsync(a => a.Id == auditId);
+        context.AuditEvents.Remove(audit);
+
+        var act = async () => await context.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Mutating_a_persisted_entity_diff_is_rejected()
+    {
+        await _fixture.MigrateAsync();
+        var (_, _, diffId) = await SeedSnapshotWithDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var diff = await context.EntityDiffs.SingleAsync(d => d.Id == diffId);
+        context.Entry(diff).Property(d => d.DiffPayloadJson).CurrentValue = "{\"tampered\":true}";
+
+        var act = async () => await context.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Deleting_a_persisted_entity_diff_is_rejected()
+    {
+        await _fixture.MigrateAsync();
+        var (_, _, diffId) = await SeedSnapshotWithDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var diff = await context.EntityDiffs.SingleAsync(d => d.Id == diffId);
+        context.EntityDiffs.Remove(diff);
+
+        var act = async () => await context.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    private async Task<Guid> SeedAppendOnlyAsync()
+    {
+        var auditId = Guid.NewGuid();
+        await using var context = _fixture.CreateContext();
+        context.AuditEvents.Add(new TopologyAuditEvent(
+            auditId, DateTime.UtcNow, ActorType.ServiceAccount, "svc", "discovery.persisted", "snapshot",
+            Guid.NewGuid(), "success"));
+        await context.SaveChangesAsync();
+        return auditId;
+    }
+
+    private async Task<(Guid RackId, Guid SnapshotId, Guid DiffId)> SeedSnapshotWithDiffAsync()
+    {
+        var (rackId, snapshotId) = await SeedAsync();
+        var diffId = Guid.NewGuid();
+        await using var context = _fixture.CreateContext();
+        context.EntityDiffs.Add(new TopologyEntityDiff(
+            diffId, rackId, snapshotId, TopologyEntityType.Server, "uuid-x", ChangeType.Added,
+            "{\"new\":{}}", DateTime.UtcNow, Guid.NewGuid()));
+        await context.SaveChangesAsync();
+        return (rackId, snapshotId, diffId);
+    }
+
     private async Task<(Guid RackId, Guid SnapshotId)> SeedAsync()
     {
         var rackId = Guid.NewGuid();

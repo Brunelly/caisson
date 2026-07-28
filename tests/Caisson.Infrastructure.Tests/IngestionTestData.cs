@@ -89,6 +89,74 @@ internal static class IngestionTestData
             new[] { unmappedPort });
     }
 
+    /// <summary>
+    /// A realistic-sized scenario (NFR2: 2 switches × 48 ports, 20 servers × 4 NICs) as a correlation
+    /// input plus a result that confidently maps every NIC to a distinct switch port. Used by the
+    /// ingestion round-trip integration test.
+    /// </summary>
+    public static (TopologyCorrelationInput Observed, TopologyCorrelationResult Correlation) Large()
+    {
+        const int switchCount = 2;
+        const int portsPerSwitch = 48;
+        const int serverCount = 20;
+        const int nicsPerServer = 4;
+
+        var switches = new List<SwitchTopologySnapshot>();
+        var bridgeBySwitch = new Dictionary<int, List<BridgeHostEntry>>();
+        for (var s = 0; s < switchCount; s++)
+        {
+            bridgeBySwitch[s] = new List<BridgeHostEntry>();
+        }
+
+        var servers = new List<ServerNicSnapshot>();
+        var mappings = new List<NicPortMapping>();
+
+        var flatNic = 0;
+        for (var srv = 0; srv < serverCount; srv++)
+        {
+            var nics = new List<BmcNetworkInterfaceInfo>();
+            for (var n = 0; n < nicsPerServer; n++)
+            {
+                var mac = MacAddressValue.Parse($"0000{srv:x4}{n:x4}");
+                nics.Add(new BmcNetworkInterfaceInfo($"eth{n}", mac, LinkState.Up));
+
+                var switchIndex = flatNic / portsPerSwitch;
+                var portIndex = flatNic % portsPerSwitch;
+                var portName = $"ether{portIndex + 1}";
+                bridgeBySwitch[switchIndex].Add(new BridgeHostEntry(portName, mac));
+                mappings.Add(new NicPortMapping(
+                    $"srv{srv}", $"eth{n}", mac,
+                    new PortCandidate($"sw{switchIndex}", portName, ConfidenceScore.From(0.9),
+                        new[] { 10 }, new[] { ReasonCode.MacLearnUnique })));
+                flatNic++;
+            }
+
+            servers.Add(new ServerNicSnapshot(
+                $"srv{srv}",
+                new BmcSystemInventory(BmcType.Redfish, $"10.0.1.{srv + 1}", $"uuid-{srv}", $"node-{srv}"),
+                nics));
+        }
+
+        for (var s = 0; s < switchCount; s++)
+        {
+            var ports = Enumerable.Range(1, portsPerSwitch)
+                .Select(p => new SwitchPortInfo($"ether{p}", true, 10, new[] { 10 }))
+                .ToList();
+            switches.Add(new SwitchTopologySnapshot(
+                $"sw{s}",
+                new SwitchDeviceInfo($"10.0.0.{s + 1}", $"SW-{s}", "CRS354", "7.15"),
+                ports,
+                new List<LldpNeighbourInfo>(),
+                bridgeBySwitch[s],
+                new List<VlanInfo> { new(10, "data") }));
+        }
+
+        var input = new TopologyCorrelationInput(switches, servers);
+        var result = new TopologyCorrelationResult(
+            mappings, Array.Empty<AmbiguousNicMapping>(), Array.Empty<UnmappedNic>(), Array.Empty<UnmappedPort>());
+        return (input, result);
+    }
+
     /// <summary>A deterministic run context (fixed timestamps, version 1).</summary>
     public static SnapshotRunContext RunContext(int version = 1)
     {
