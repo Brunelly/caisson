@@ -91,6 +91,7 @@ describe('TopologyPageComponent accessibility', () => {
       selectionStaleNotice: signal(false),
       connectionStatus: signal('live' as const),
       rackId: signal('rack-1'),
+      isLatest: signal(true),
       loadRackTopology: () => undefined,
       selectEntity: () => undefined,
       clearSelection: () => undefined,

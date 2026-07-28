@@ -1,9 +1,10 @@
 // Presentational D3 graph: server -> NIC -> switch/port -> VLAN, columnar layered layout (the graph is
 // not a strict tree — a switch's ports and a VLAN can each be reached from many NICs, which breaks
 // d3.hierarchy's single-parent assumption — so positions are computed directly rather than via
-// d3.hierarchy) plus d3-zoom for pan/zoom. `applySnapshot` re-runs the same keyed D3 join used for the
-// initial render, so a live refresh patches existing DOM nodes (enter/update/exit) instead of tearing
-// down and rebuilding the SVG — pan/zoom and any focused/selected element survive.
+// d3.hierarchy) plus d3-zoom for pan/zoom. The constructor's `effect()` re-runs the same keyed D3 join
+// used for the initial render whenever the `graph` input changes, so a live refresh (the page rebinds
+// `[graph]` to the refetched snapshot) patches existing DOM nodes (enter/update/exit) instead of tearing
+// down and rebuilding the SVG — pan/zoom and any focused/selected element survive (AC5, no full reload).
 import {
   Component,
   ElementRef,
@@ -110,11 +111,6 @@ export class TopologyGraphComponent {
 
       this.render(graph);
     });
-  }
-
-  /** Patches the current SVG in place with a freshly refetched graph (AC5 — no full reload). */
-  applySnapshot(graph: TopologyGraphModel): void {
-    this.render(graph);
   }
 
   /** Pans/zooms so the given node is centred in the viewport (search selection, AC2). */

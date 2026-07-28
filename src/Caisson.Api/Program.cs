@@ -101,12 +101,16 @@ builder.Services.AddAuthorizationBuilder()
 // allowed origins are config-driven (Cors:AllowedOrigins) and AllowAnyOrigin is never used. Only
 // appsettings.Development.json seeds a default (http://localhost:4200) — a production origin must come
 // from environment/Key Vault configuration, never a hard-coded value here.
+// Methods are restricted to GET (every topology/audit query endpoint) and POST (required for the
+// SignalR hub's negotiate handshake at /hubs/topology/negotiate — TopologySignalRService.buildConnection
+// does not set skipNegotiation, so the client always POSTs there before upgrading to a WebSocket) rather
+// than AllowAnyMethod(), so the preflight contract mirrors what the SPA actually calls cross-origin.
 const string AngularClientCorsPolicy = "AngularClient";
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options => options.AddPolicy(AngularClientCorsPolicy, policy => policy
     .WithOrigins(allowedOrigins)
     .AllowAnyHeader()
-    .AllowAnyMethod()
+    .WithMethods("GET", "POST")
     .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
 
 builder.Services.AddControllers();

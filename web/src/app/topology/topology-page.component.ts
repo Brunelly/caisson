@@ -29,7 +29,9 @@ import { TopologyStateService } from './state/topology-state.service';
       } @else if (state.snapshot(); as snapshot) {
         <header class="topology-header">
           <h1>Rack topology</h1>
-          <span class="badge badge-latest">Latest</span>
+          @if (state.isLatest()) {
+            <span class="badge badge-latest">Latest</span>
+          }
           <span class="snapshot-meta">
             Snapshot v{{ snapshot.version }} · {{ snapshot.createdAt | date: 'medium' }}
           </span>

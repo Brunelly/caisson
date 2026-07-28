@@ -74,6 +74,7 @@ describe('TopologyPageComponent', () => {
       selectionStaleNotice: signal(false),
       connectionStatus: signal('live' as const),
       rackId: signal('rack-1'),
+      isLatest: signal(true),
       loadRackTopology,
       selectEntity,
       clearSelection: () => undefined,

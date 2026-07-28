@@ -5,6 +5,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
+import type { EntityDiffDto } from '../model/topology-contracts';
 import { confidenceBandOf } from '../model/topology-graph-model';
 import type { NicGraphNode, TopologyGraphNode } from '../model/topology-graph-model';
 import { TopologyEntityService } from '../services/topology-entity.service';
@@ -100,7 +101,10 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
             <section class="details-panel__section">
               <h3>Candidate mappings</h3>
               <ul class="details-panel__candidates">
-                @for (candidate of nic.candidates; track candidate.portName) {
+                @for (
+                  candidate of nic.candidates;
+                  track candidate.switchStableKey + '|' + candidate.portName
+                ) {
                   <li>
                     <app-status-badge [kind]="confidenceBandOf(candidate.confidence)" />
                     {{ candidate.portName }} on
@@ -112,6 +116,25 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
               </ul>
             </section>
           }
+        }
+
+        @if (history().length > 0) {
+          <section class="details-panel__section">
+            <h3>Change history</h3>
+            <ul class="details-panel__history">
+              @for (
+                entry of history();
+                track entry.toSnapshotId ?? entry.fromSnapshotId + entry.changeType
+              ) {
+                <li>
+                  <span class="details-panel__history-change">{{ entry.changeType }}</span>
+                  <span class="details-panel__history-date">{{
+                    entry.createdAt | date: 'medium'
+                  }}</span>
+                </li>
+              }
+            </ul>
+          </section>
         }
       </aside>
     }
@@ -128,6 +151,7 @@ export class TopologyDetailsPanelComponent {
   protected readonly reasonLabel = reasonCodeLabel;
 
   private readonly latestFields = signal<Record<string, string | null> | null>(null);
+  protected readonly history = signal<EntityDiffDto[]>([]);
 
   private triggerElement: HTMLElement | null = null;
 
@@ -137,6 +161,10 @@ export class TopologyDetailsPanelComponent {
       const rackId = this.state.rackId();
       if (node && rackId) {
         this.triggerElement = (document.activeElement as HTMLElement) ?? null;
+        // Cleared up front (not left holding the previous entity's data) so a same-type reselection
+        // (e.g. NIC -> NIC) never briefly renders this node's labels against the last node's values.
+        this.latestFields.set(null);
+        this.history.set([]);
         this.loadLatestFields(rackId, node);
         queueMicrotask(() => this.headingRef()?.nativeElement.focus());
       }
@@ -189,6 +217,7 @@ export class TopologyDetailsPanelComponent {
     const stableKey = node.stableKey;
     this.entities.getEntity(rackId, entityType, stableKey).subscribe((result) => {
       this.latestFields.set(result.kind === 'ok' ? result.value.latest : null);
+      this.history.set(result.kind === 'ok' ? result.value.history : []);
     });
   }
 }

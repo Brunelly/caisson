@@ -1,9 +1,10 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   EntityDetailDto,
+  EntityDiffDto,
   PortAttachmentDto,
   SnapshotMetadataDto,
 } from '../model/topology-contracts';
@@ -12,15 +13,37 @@ import { TopologyEntityService } from '../services/topology-entity.service';
 import { TopologyStateService } from '../state/topology-state.service';
 import { TopologyDetailsPanelComponent } from './topology-details-panel.component';
 
-function attachment(portName: string, confidence: number): PortAttachmentDto {
+function attachment(
+  portName: string,
+  confidence: number,
+  switchStableKey = 'SW-1',
+  switchSerial: string | null = 'sw1',
+): PortAttachmentDto {
   return {
-    switchStableKey: 'SW-1',
-    switchSerial: 'sw1',
+    switchStableKey,
+    switchSerial,
     portName,
     confidence,
     band: confidence >= 0.8 ? 'High' : 'Medium',
     reasonCode: 'MultipleMacPorts',
     vlans: [10],
+  };
+}
+
+function historyEntry(
+  changeType: string,
+  createdAt: string,
+  toSnapshotId: string | null = 'snap-2',
+): EntityDiffDto {
+  return {
+    entityType: 'Nic',
+    entityStableKey: 'aabbccddeeff',
+    changeType,
+    payload: {},
+    fromSnapshotId: 'snap-1',
+    toSnapshotId,
+    createdAt,
+    correlationId: 'corr-1',
   };
 }
 
@@ -218,5 +241,101 @@ describe('TopologyDetailsPanelComponent', () => {
     expect(clearSelection).toHaveBeenCalled();
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
+  });
+
+  it('tracks candidates by switch + port so two same-named ports on different switches never collide', async () => {
+    const onSwitchA = attachment('ether1', 0.6, 'SW-A', 'swA');
+    const onSwitchB = attachment('ether1', 0.55, 'SW-B', 'swB');
+    selection.set({
+      ...ambiguousNic(),
+      bestAttachment: onSwitchA,
+      candidates: [onSwitchA, onSwitchB],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const items = fixture.nativeElement.querySelectorAll('.details-panel__candidates li');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('swA');
+    expect(items[1].textContent).toContain('swB');
+  });
+
+  it('renders the entity change history returned alongside its latest fields (AC3)', async () => {
+    getEntity.mockReturnValue(
+      of({
+        kind: 'ok',
+        value: {
+          entityType: 'Nic',
+          stableKey: 'k',
+          latest: { server: 'srv-01', name: 'eth0', linkState: 'Up' },
+          history: [
+            historyEntry('Modified', '2026-01-02T00:00:00Z'),
+            historyEntry('Added', '2026-01-01T00:00:00Z', null),
+          ],
+        } satisfies EntityDetailDto,
+      }),
+    );
+
+    selection.set(confirmedNic());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const items = fixture.nativeElement.querySelectorAll('.details-panel__history li');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toContain('Modified');
+    expect(items[1].textContent).toContain('Added');
+  });
+
+  it('renders no history section for an entity with no recorded changes', async () => {
+    selection.set(confirmedNic());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.details-panel__history')).toBeNull();
+  });
+
+  it("clears the previous entity's fields immediately on reselection, before the new fetch resolves", async () => {
+    const first = new Subject<{ kind: 'ok'; value: EntityDetailDto }>();
+    getEntity.mockImplementation(() => first);
+
+    selection.set(confirmedNic());
+    fixture.detectChanges();
+    first.next({
+      kind: 'ok',
+      value: {
+        entityType: 'Nic',
+        stableKey: 'k',
+        latest: { server: 'srv-01', name: 'eth0', linkState: 'Up' },
+        history: [],
+      },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('srv-01');
+
+    const second = new Subject<{ kind: 'ok'; value: EntityDetailDto }>();
+    getEntity.mockImplementation(() => second);
+    selection.set({ ...confirmedNic(), id: 'nic:other', stableKey: 'other-key' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('srv-01');
+
+    second.next({
+      kind: 'ok',
+      value: {
+        entityType: 'Nic',
+        stableKey: 'other-key',
+        latest: { server: 'srv-02', name: 'eth1', linkState: 'Down' },
+        history: [],
+      },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('srv-02');
   });
 });

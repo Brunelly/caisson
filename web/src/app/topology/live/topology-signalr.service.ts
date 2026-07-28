@@ -154,6 +154,10 @@ export class TopologySignalRService {
     connection.onreconnecting(() => {
       this.state.setConnectionStatus('disconnected');
       this.telemetry.reconnecting(this.currentRackId);
+      // The auto-reconnect policy never gives up (TopologyReconnectPolicy), so a sustained outage can
+      // sit in 'reconnecting' indefinitely — poll the query API meanwhile so data still refreshes.
+      // onreconnected()/onclose() both stop this; whichever fires first wins.
+      this.startPolling();
     });
 
     connection.onreconnected(() => {

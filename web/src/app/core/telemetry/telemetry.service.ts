@@ -1,7 +1,8 @@
 // Client-side observability (NFR6): structured events for troubleshooting API calls and (from story
 // #10 step 6) SignalR connect/disconnect/reconnect/snapshot-applied/error, correlated by correlation
-// id. Logs no MAC/host/credential data — only ids, urls (never bodies) and status.
-import { Injectable } from '@angular/core';
+// id. Logs no MAC/host/credential data — only ids, urls (never bodies, and never a raw entity stable
+// key — see auth.interceptor.ts's redactLoggableUrl) and status.
+import { Injectable, isDevMode } from '@angular/core';
 
 export interface TelemetryEvent {
   type: string;
@@ -53,8 +54,13 @@ export class TelemetryService {
       detail,
     };
     this.events.push(event);
-    // The only sink for M0; a real backend/telemetry-pipeline sink is a future story.
-    console.debug('[telemetry]', event);
+    // The only sink for M0; a real backend/telemetry-pipeline sink is a future story. Logged only in
+    // dev builds (NFR3: "client logs contain no ... MACs unless explicitly in debug build") — production
+    // builds keep events in `recent()` for any future in-app diagnostics view, but never print to the
+    // browser console.
+    if (isDevMode()) {
+      console.debug('[telemetry]', event);
+    }
   }
 
   /** Recent events, most-recent-last — for tests and any future in-app diagnostics view. */

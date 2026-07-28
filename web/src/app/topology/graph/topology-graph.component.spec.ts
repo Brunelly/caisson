@@ -1,4 +1,4 @@
-import { Component, viewChild } from '@angular/core';
+import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TopologyGraphDto } from '../model/topology-contracts';
@@ -60,10 +60,13 @@ function fixtureGraph(): TopologyGraphDto {
 @Component({
   standalone: true,
   imports: [TopologyGraphComponent],
-  template: `<app-topology-graph [graph]="graph" />`,
+  template: `<app-topology-graph [graph]="graph()" />`,
 })
 class HostComponent {
-  graph = deriveTopologyGraph(fixtureGraph());
+  // A real signal, not a plain field: mirrors TopologyStateService.graph() in the production
+  // `[graph]="state.graph()"` binding (topology-page.component.ts), so re-`set()`ing it here exercises
+  // the exact same signal-input reactivity a live SignalR refresh drives.
+  readonly graph = signal(deriveTopologyGraph(fixtureGraph()));
   readonly graphComponent = viewChild.required(TopologyGraphComponent);
 }
 
@@ -111,12 +114,14 @@ describe('TopologyGraphComponent', () => {
     expect(emitted).toBeDefined();
   });
 
-  it('applySnapshot patches existing nodes in place rather than re-mounting the SVG', async () => {
+  it('a live refresh (the graph input changing) patches existing nodes in place rather than re-mounting the SVG', async () => {
     const firstNodeBefore = svgEl().querySelector('g.node--server') as SVGGElement;
     expect(firstNodeBefore).toBeTruthy();
 
-    const refreshed = deriveTopologyGraph(fixtureGraph());
-    fixture.componentInstance.graphComponent().applySnapshot(refreshed);
+    // Mirrors the real live-update path: TopologyPageComponent rebinds `[graph]` to the refetched
+    // snapshot (topology-signalr.service.ts's reconcile()); nothing calls into the component directly.
+    fixture.componentInstance.graph.set(deriveTopologyGraph(fixtureGraph()));
+    fixture.detectChanges();
     await fixture.whenStable();
 
     const firstNodeAfter = svgEl().querySelector('g.node--server') as SVGGElement;
@@ -124,15 +129,73 @@ describe('TopologyGraphComponent', () => {
     expect(firstNodeAfter).toBe(firstNodeBefore);
   });
 
-  it('applySnapshot removes nodes no longer present in the new graph (exit join)', async () => {
-    const graphComponent = fixture.componentInstance.graphComponent();
+  it('a live refresh removes nodes no longer present in the new graph (exit join)', async () => {
     expect(svgEl().querySelectorAll('g.node').length).toBe(6);
 
     const emptyGraph: TopologyGraphDto = { ...fixtureGraph(), servers: [] };
-    graphComponent.applySnapshot(deriveTopologyGraph(emptyGraph));
+    fixture.componentInstance.graph.set(deriveTopologyGraph(emptyGraph));
+    fixture.detectChanges();
     await fixture.whenStable();
 
     expect(svgEl().querySelectorAll('g.node').length).toBe(0);
+  });
+
+  it('renders the ambiguous-state edge badge and node/edge classes (AC4)', async () => {
+    const ambiguousGraph: TopologyGraphDto = {
+      ...fixtureGraph(),
+      servers: [
+        {
+          ...fixtureGraph().servers[0],
+          nics: [
+            {
+              stableKey: 'nic-1',
+              name: 'eth0',
+              mac: 'aabbccddee01',
+              bestAttachment: {
+                switchStableKey: 'SW-1',
+                switchSerial: 'sw1',
+                portName: 'ether1',
+                confidence: 0.6,
+                band: 'Medium',
+                reasonCode: 'MultipleMacPorts',
+                vlans: [10],
+              },
+              candidates: [
+                {
+                  switchStableKey: 'SW-1',
+                  switchSerial: 'sw1',
+                  portName: 'ether1',
+                  confidence: 0.6,
+                  band: 'Medium',
+                  reasonCode: 'MultipleMacPorts',
+                  vlans: [10],
+                },
+                {
+                  switchStableKey: 'SW-1',
+                  switchSerial: 'sw1',
+                  portName: 'ether2',
+                  confidence: 0.55,
+                  band: 'Medium',
+                  reasonCode: 'MultipleMacPorts',
+                  vlans: [10],
+                },
+              ],
+              unmappedReasonCode: null,
+            },
+          ],
+        },
+      ],
+    };
+
+    fixture.componentInstance.graph.set(deriveTopologyGraph(ambiguousGraph));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(svgEl().querySelectorAll('.node--ambiguous').length).toBeGreaterThan(0);
+    expect(svgEl().querySelectorAll('.edge--ambiguous').length).toBeGreaterThan(0);
+    const badge = svgEl().querySelector('.edge-badge--ambiguous');
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent).toBe('▲');
   });
 
   it('panZoomToNode does not throw for a known or unknown node id', () => {

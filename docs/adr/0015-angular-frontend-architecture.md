@@ -19,7 +19,12 @@ against, so this ADR fixes the baseline future frontend work should follow.
   `NgModule`s in this codebase. `web/` is a sibling of `src/`/`tests/`, not nested inside them, so its
   own `node_modules`/`dist`/`.angular`/`coverage` are excluded from the **root** `.gitignore` (added in
   the same commit as `web/package.json`, ADR discipline for repository-bloat avoidance) as well as the
-  CLI-generated `web/.gitignore`.
+  CLI-generated `web/.gitignore`. Note that `--strict` on this Angular CLI version does **not** set
+  TypeScript's own `"strict": true` in `tsconfig.json` — it enables a narrower set of strict-adjacent
+  compiler/Angular-compiler flags (`noImplicitOverride`, `noPropertyAccessFromIndexSignature`,
+  `strictInjectionParameters`, `strictInputAccessModifiers`, etc., see `web/tsconfig.json`) plus stricter
+  build-budget defaults. `strictNullChecks`/`noImplicitAny` are **not** enabled; don't assume null-safety
+  is compiler-checked here.
 - **Layering mirrors the backend's layering discipline** (ADR 0001), translated to frontend idiom:
   `core/` (auth, HTTP interceptor, telemetry — cross-cutting, app-wide), `topology/` (the one feature
   module: page, graph, search, details panel, legend, services, state, live), `shared/` (design tokens,
@@ -68,8 +73,10 @@ against, so this ADR fixes the baseline future frontend work should follow.
   this data scale).
 - **Backend consequences carried by this story** (implemented ahead of the frontend, story #10 step 1):
   a config-driven, named CORS policy (`Cors:AllowedOrigins`, never `AllowAnyOrigin`, only
-  `appsettings.Development.json` seeding `http://localhost:4200`) was added to `Caisson.Api/Program.cs`
-  because none existed; and `TopologyGraphProjector`/`NicNodeDto` gained a nullable
+  `appsettings.Development.json` seeding `http://localhost:4200`, methods restricted to `GET` for the
+  query endpoints and `POST` for the SignalR hub's negotiate handshake rather than `AllowAnyMethod()`)
+  was added to `Caisson.Api/Program.cs` because none existed; and `TopologyGraphProjector`/`NicNodeDto`
+  gained a nullable
   `UnmappedReasonCode`, because the projector previously dropped an unmapped NIC's reason-code candidate
   row entirely, which would have made AC3 ("unmapped NIC shows a reason code/message") impossible to
   satisfy from the wire contract.

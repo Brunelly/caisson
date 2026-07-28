@@ -288,6 +288,37 @@ describe('TopologySignalRService', () => {
     expect(getLatest).toHaveBeenCalledTimes(1);
   });
 
+  it('degrades to polling while reconnecting (a sustained mid-session outage), not just on close', async () => {
+    await connectAndFlush();
+    getLatest.mockClear();
+
+    lastConnection!.triggerReconnecting();
+
+    // The auto-reconnect policy never gives up, so the connection can sit in 'Reconnecting' — with
+    // neither onclose() nor onreconnected() ever firing — for as long as the outage lasts.
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(getLatest).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(getLatest).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops polling once onreconnected fires after a reconnecting-triggered polling fallback', async () => {
+    await connectAndFlush();
+    getLatest.mockClear();
+
+    lastConnection!.triggerReconnecting();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(getLatest).toHaveBeenCalledTimes(1);
+
+    lastConnection!.triggerReconnected();
+    await Promise.resolve();
+    getLatest.mockClear();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(getLatest).not.toHaveBeenCalled();
+  });
+
   it('onclose marks disconnected and degrades to polling snapshots/latest', async () => {
     await connectAndFlush();
     getLatest.mockClear();
