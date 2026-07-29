@@ -5,9 +5,10 @@
 // a raw dictionary dump of anything not present on the DTO. Hosts the Apply action slot wired by step 4
 // (ApplyActionComponent).
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
+import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
 import { ApplyActionComponent } from '../apply/apply-action.component';
 import type { DriftItemDto } from '../model/drift-contracts';
 import { DriftReportService } from '../services/drift-report.service';
@@ -87,6 +88,8 @@ interface DetailEntry {
 export class DriftReportDetailsComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly reportService = inject(DriftReportService);
+  private readonly signalR = inject(TopologySignalRService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly currentRackId = signal<string | null>(null);
   protected readonly currentDriftItemId = signal<string | null>(null);
@@ -102,8 +105,14 @@ export class DriftReportDetailsComponent {
         this.currentRackId.set(rackId);
         this.currentDriftItemId.set(driftItemId);
         this.load(rackId, driftItemId);
+        // Story #67 step 5: the SAME TopologyHub connection carries DriftApplyJobStatusChanged (ADR
+        // 0032) — connecting here (idempotent for a same-rackId re-navigation) is what lets
+        // ApplyActionComponent's live status/polling-fallback work without a second connection.
+        this.signalR.connect(rackId);
       }
     });
+
+    this.destroyRef.onDestroy(() => this.signalR.disconnect());
   }
 
   /** Manual refresh affordance for the stale-drift 422 path (step 4): re-fetches the item so a

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { ToastService } from '../../shared/toast/toast.service';
+import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
+import { DriftApplyJobStatusService } from '../live/drift-apply-job-status.service';
 import type { DriftItemDto } from '../model/drift-contracts';
 import type { ApplyDriftCorrectionResult } from '../services/drift-apply.service';
 import { DriftApplyService } from '../services/drift-apply.service';
@@ -80,6 +82,8 @@ describe('ApplyActionComponent', () => {
         { provide: DriftReportService, useValue: { getItemById } },
         { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
         { provide: TelemetryService, useValue: new TelemetryService() },
+        { provide: TopologySignalRService, useValue: { trackJob: vi.fn() } },
+        { provide: DriftApplyJobStatusService, useValue: { statusFor: () => null } },
       ],
     });
 

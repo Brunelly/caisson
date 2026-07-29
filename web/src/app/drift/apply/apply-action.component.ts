@@ -5,11 +5,14 @@
 // primary guard). Disabled-until-settled (`submitting`) is the sole client double-submit guard, layered
 // on the backend's one-active-job-per-item dedup (ADR 0032) — there is no client idempotency key.
 import { Dialog } from '@angular/cdk/dialog';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { ToastService } from '../../shared/toast/toast.service';
+import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
+import { isTerminalDriftApplyJobStatus } from '../model/drift-contracts';
 import type { DriftItemDto } from '../model/drift-contracts';
+import { DriftApplyJobStatusService } from '../live/drift-apply-job-status.service';
 import { DriftApplyService } from '../services/drift-apply.service';
 import { DriftReportService } from '../services/drift-report.service';
 import type {
@@ -17,12 +20,14 @@ import type {
   ApplyConfirmationDialogResult,
 } from './apply-confirmation-dialog.component';
 import { ApplyConfirmationDialogComponent } from './apply-confirmation-dialog.component';
+import { JobStatusTimelineComponent } from './job-status-timeline.component';
 
 const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
 
 @Component({
   selector: 'app-apply-action',
   standalone: true,
+  imports: [JobStatusTimelineComponent],
   styleUrl: './apply-action.component.scss',
   template: `
     @if (permission.canApplyDrift()) {
@@ -34,7 +39,7 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
           </p>
           <button type="button" (click)="onRefreshClick()">Refresh</button>
         </div>
-      } @else if (isApplyable()) {
+      } @else if (isApplyable() && !activeJobId()) {
         <button
           type="button"
           class="apply-action__apply"
@@ -47,7 +52,13 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
       }
 
       @if (activeJobId(); as jobId) {
-        <p class="apply-action__job" role="status">Apply job {{ jobId }} submitted — Pending.</p>
+        <div class="apply-action__job" role="status">
+          <p>Apply job {{ jobId }}</p>
+          <app-job-status-timeline [status]="liveStatus() ?? 'Pending'" />
+          @if (isTerminal()) {
+            <p class="apply-action__outcome">{{ outcomeText() }}</p>
+          }
+        </div>
       }
     } @else {
       <p class="apply-action__no-permission">
@@ -72,10 +83,44 @@ export class ApplyActionComponent {
   private readonly reportService = inject(DriftReportService);
   private readonly toast = inject(ToastService);
   private readonly telemetry = inject(TelemetryService);
+  private readonly signalR = inject(TopologySignalRService);
+  private readonly jobStatus = inject(DriftApplyJobStatusService);
 
   protected readonly submitting = signal(false);
   protected readonly stale = signal(false);
   protected readonly activeJobId = signal<string | null>(null);
+
+  /** Reads DriftApplyJobStatusService only — never a raw hub event or poll response directly (ADR
+   * 0033). Updates automatically as TopologySignalRService forwards live events / polled results in. */
+  protected readonly liveStatus = computed(() => {
+    const jobId = this.activeJobId();
+    return jobId ? (this.jobStatus.statusFor(jobId)?.status ?? null) : null;
+  });
+
+  protected readonly isTerminal = computed(() => {
+    const status = this.liveStatus();
+    return status !== null && isTerminalDriftApplyJobStatus(status);
+  });
+
+  /** Terminal outcomes (Success/Stale drift rejected/Auto-rollback/Failed) are displayed explicitly. */
+  protected outcomeText(): string {
+    const jobId = this.activeJobId();
+    const snapshot = jobId ? this.jobStatus.statusFor(jobId) : null;
+    switch (snapshot?.status) {
+      case 'Completed':
+        return 'Success — the drift correction was applied and confirmed.';
+      case 'StaleDrift':
+        return 'Rejected — the drift item was stale by the time the job ran. Refresh and re-apply.';
+      case 'Failed':
+        return snapshot.reasonCode === 'AutoRolledBack'
+          ? 'Failed — the change was automatically rolled back (not confirmed in time).'
+          : 'Failed — the correction could not be applied.';
+      case 'Canceled':
+        return 'Canceled.';
+      default:
+        return '';
+    }
+  }
 
   protected isApplyable(): boolean {
     const item = this.item();
@@ -146,6 +191,7 @@ export class ApplyActionComponent {
         case 'existingJob':
           this.activeJobId.set(result.jobId);
           this.jobCreated.emit(result.jobId);
+          this.signalR.trackJob(result.jobId);
           this.toast.success(
             result.kind === 'created'
               ? 'Drift correction submitted.'

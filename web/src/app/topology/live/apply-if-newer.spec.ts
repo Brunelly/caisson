@@ -3,6 +3,7 @@ import {
   MAX_PLAUSIBLE_FORWARD_SEQ_JUMP,
   type WatermarkStore,
   applyIfNewer,
+  driftApplyJobStreamKey,
   jobStreamKey,
   snapshotStreamKey,
 } from './apply-if-newer';
@@ -66,6 +67,14 @@ describe('applyIfNewer', () => {
 
   it('snapshotStreamKey/jobStreamKey never collide for the same raw id', () => {
     expect(snapshotStreamKey('abc')).not.toBe(jobStreamKey('abc'));
+  });
+
+  it('driftApplyJobStreamKey is distinctly namespaced from jobStreamKey for the same raw id (story #67)', () => {
+    expect(driftApplyJobStreamKey('abc')).not.toBe(jobStreamKey('abc'));
+    applyIfNewer(store, jobStreamKey('abc'), { seq: 10, eventId: 'e1' });
+    expect(applyIfNewer(store, driftApplyJobStreamKey('abc'), { seq: 1, eventId: 'e2' })).toBe(
+      true,
+    );
   });
 
   describe('finding #2 (client half): implausible forward seq jump', () => {

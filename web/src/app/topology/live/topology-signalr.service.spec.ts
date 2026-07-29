@@ -4,6 +4,8 @@ import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
+import { DriftApplyJobStatusService } from '../../drift/live/drift-apply-job-status.service';
+import { DriftApplyService } from '../../drift/services/drift-apply.service';
 import type { DiscoveryStatusDto, SnapshotDetailDto } from '../model/topology-contracts';
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
@@ -118,9 +120,12 @@ describe('TopologySignalRService', () => {
   let service: TopologySignalRService;
   let getLatest: ReturnType<typeof vi.fn>;
   let getDiscoveryStatus: ReturnType<typeof vi.fn>;
+  let getJob: ReturnType<typeof vi.fn>;
   let applyRefreshedSnapshot: ReturnType<typeof vi.fn>;
   let setConnectionStatus: ReturnType<typeof vi.fn>;
   let setDiscoveryStatus: ReturnType<typeof vi.fn>;
+  let applyEvent: ReturnType<typeof vi.fn>;
+  let applyPolledDetail: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -131,9 +136,17 @@ describe('TopologySignalRService', () => {
     getDiscoveryStatus = vi.fn(() =>
       of({ kind: 'ok' as const, value: { rackId: 'rack-1' } as unknown as DiscoveryStatusDto }),
     );
+    getJob = vi.fn(() =>
+      of({
+        kind: 'ok' as const,
+        value: { jobId: 'job-1', rackId: 'rack-1', status: 'Executing' } as never,
+      }),
+    );
     applyRefreshedSnapshot = vi.fn();
     setConnectionStatus = vi.fn();
     setDiscoveryStatus = vi.fn();
+    applyEvent = vi.fn();
+    applyPolledDetail = vi.fn();
 
     TestBed.configureTestingModule({
       providers: [
@@ -146,6 +159,8 @@ describe('TopologySignalRService', () => {
           useValue: { applyRefreshedSnapshot, setConnectionStatus, setDiscoveryStatus },
         },
         { provide: TelemetryService, useValue: new TelemetryService() },
+        { provide: DriftApplyJobStatusService, useValue: { applyEvent, applyPolledDetail } },
+        { provide: DriftApplyService, useValue: { getJob } },
       ],
     });
 
@@ -373,6 +388,127 @@ describe('TopologySignalRService', () => {
     await Promise.resolve();
 
     expect(lastConnection!.invokeCalls).toEqual([]);
+  });
+
+  describe('DriftApplyJobStatusChanged (story #67 step 5)', () => {
+    function driftEvent(overrides: Record<string, unknown> = {}) {
+      return {
+        rackId: 'rack-1',
+        jobId: 'job-1',
+        status: 'Executing',
+        previousStatus: 'Revalidating',
+        currentStep: 'DeviceApply',
+        reasonCode: null,
+        errorCode: null,
+        timestamp: '2026-01-01T00:00:00Z',
+        seq: 1,
+        correlationId: 'corr-1',
+        ...overrides,
+      };
+    }
+
+    it('forwards an accepted event to DriftApplyJobStatusService.applyEvent', async () => {
+      await connectAndFlush();
+
+      lastConnection!.emit('DriftApplyJobStatusChanged', driftEvent());
+
+      expect(applyEvent).toHaveBeenCalledWith(driftEvent());
+    });
+
+    it('ignores a duplicate/older seq for the same jobId (idempotency)', async () => {
+      await connectAndFlush();
+
+      lastConnection!.emit('DriftApplyJobStatusChanged', driftEvent({ seq: 3 }));
+      lastConnection!.emit('DriftApplyJobStatusChanged', driftEvent({ seq: 2 })); // older
+      lastConnection!.emit('DriftApplyJobStatusChanged', driftEvent({ seq: 3 })); // exact duplicate
+
+      expect(applyEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores events for a rack other than the currently subscribed one', async () => {
+      await connectAndFlush('rack-1');
+
+      lastConnection!.emit('DriftApplyJobStatusChanged', driftEvent({ rackId: 'rack-other' }));
+
+      expect(applyEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not collide with a discovery job event sharing the same raw jobId (distinct watermark namespace)', async () => {
+      await connectAndFlush();
+
+      lastConnection!.emit('DiscoveryJobStatusChanged', {
+        eventId: 'e1',
+        rackId: 'rack-1',
+        jobId: 'shared-id',
+        status: 'InProgress',
+        seq: 5,
+        correlationId: 'corr-1',
+      });
+      lastConnection!.emit(
+        'DriftApplyJobStatusChanged',
+        driftEvent({ jobId: 'shared-id', seq: 1 }),
+      );
+
+      expect(applyEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('trackJob + polling fallback: on hub drop with an active non-terminal job, getJob is polled on the existing cadence', async () => {
+      await connectAndFlush();
+      service.trackJob('job-1');
+
+      lastConnection!.triggerClose();
+      expect(setConnectionStatus).toHaveBeenCalledWith('disconnected');
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(getJob).toHaveBeenCalledWith('rack-1', 'job-1');
+      expect(applyPolledDetail).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops polling a job once a poll observes a terminal status', async () => {
+      await connectAndFlush();
+      service.trackJob('job-1');
+      getJob.mockImplementation(() =>
+        of({
+          kind: 'ok' as const,
+          value: { jobId: 'job-1', rackId: 'rack-1', status: 'Completed' } as never,
+        }),
+      );
+
+      lastConnection!.triggerClose();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(getJob).toHaveBeenCalledTimes(1);
+
+      getJob.mockClear();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(getJob).not.toHaveBeenCalled(); // untracked after the terminal poll result
+    });
+
+    it('a terminal live event also untracks the job (no further polling needed even if the hub later drops)', async () => {
+      await connectAndFlush();
+      service.trackJob('job-1');
+
+      lastConnection!.emit(
+        'DriftApplyJobStatusChanged',
+        driftEvent({ status: 'Completed', seq: 1 }),
+      );
+
+      lastConnection!.triggerClose();
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      expect(getJob).not.toHaveBeenCalled();
+    });
+
+    it('onreconnected fires a one-time reconcile for any still-tracked job', async () => {
+      await connectAndFlush();
+      service.trackJob('job-1');
+      getJob.mockClear();
+
+      lastConnection!.triggerReconnecting();
+      lastConnection!.triggerReconnected();
+      await Promise.resolve();
+
+      expect(getJob).toHaveBeenCalledWith('rack-1', 'job-1');
+    });
   });
 
   it('disconnect unsubscribes, stops the connection, and clears timers', async () => {

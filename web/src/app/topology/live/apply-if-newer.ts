@@ -18,6 +18,13 @@ export function jobStreamKey(jobId: string): string {
   return `job:${jobId}`;
 }
 
+/** A distinctly-namespaced sibling to jobStreamKey (story #67) — DriftApplyJobStatusChanged rides the
+ * same hub/watermark store as DiscoveryJobStatusChanged, but keeping the two prefixes distinct avoids
+ * any ambiguity between a discovery job id and a drift-apply job id ever colliding in the same map. */
+export function driftApplyJobStreamKey(jobId: string): string {
+  return `driftApplyJob:${jobId}`;
+}
+
 // Finding #2 (client half): mirrors the server-side plausibility check
 // (RedisTopologyEventSubscriber.IsPlausibleAsync) at the same threshold. A forward jump this large is
 // more plausibly a forged/corrupted event than real traffic even after the server's own HMAC/plausibility

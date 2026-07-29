@@ -5,6 +5,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
 import type { DriftItemDto } from '../model/drift-contracts';
 import { DriftReportService } from '../services/drift-report.service';
 import { DriftReportDetailsComponent } from './drift-report-details.component';
@@ -44,6 +45,12 @@ describe('DriftReportDetailsComponent', () => {
         // ApplyActionComponent (hosted in the apply slot) transitively needs OidcSecurityService via
         // DriftPermissionService — no permission by default, so the Apply button doesn't render here.
         { provide: OidcSecurityService, useValue: { getPayloadFromAccessToken: () => of({}) } },
+        // Real TopologySignalRService would build a real HubConnection and attempt to actually
+        // connect() — stub it, mirroring topology-page.component.spec.ts's pattern.
+        {
+          provide: TopologySignalRService,
+          useValue: { connect: vi.fn(), disconnect: vi.fn(), trackJob: vi.fn() },
+        },
       ],
     }).compileComponents();
   });
