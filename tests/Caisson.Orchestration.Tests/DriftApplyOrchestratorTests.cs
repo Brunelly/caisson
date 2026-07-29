@@ -172,6 +172,97 @@ public sealed class DriftApplyOrchestratorTests
         _driver.CallCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Missing_rack_definition_fails_the_job_without_calling_the_driver()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => CurrentItem(job);
+        _rackDefinitions.Definition = null;
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Failed);
+        job.ErrorCode.Should().Be(DriftApplyErrorCodes.RackDefinitionMissing);
+        _driver.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Unresolvable_driver_fails_the_job_without_calling_any_driver()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => CurrentItem(job);
+        _registry.Factory = null;
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Failed);
+        job.ErrorCode.Should().Be(DriftApplyErrorCodes.DriverNotFound);
+        _driver.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Non_retryable_device_call_failure_fails_immediately_without_retrying()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => CurrentItem(job);
+        _driver.Behavior = _ => DriverResult<SetAccessVlanOutcome>.Fail(
+            new DriverError(DriverErrorCode.AuthenticationFailed, "bad credentials", Retryable: false),
+            TimeSpan.FromMilliseconds(5));
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Failed);
+        job.ErrorCode.Should().Be(DriftApplyErrorCodes.DeviceCallFailed);
+        job.ErrorCategory.Should().Be(DriftApplyErrorCategories.Infrastructure);
+        _driver.CallCount.Should().Be(1, "a non-retryable failure must not be retried");
+    }
+
+    [Fact]
+    public async Task Retryable_device_call_failure_retries_then_succeeds()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => CurrentItem(job);
+        _driver.Behavior = request => _driver.CallCount == 1
+            ? DriverResult<SetAccessVlanOutcome>.Fail(
+                new DriverError(DriverErrorCode.ConnectionTimeout, "timed out", Retryable: true), TimeSpan.FromMilliseconds(5))
+            : DriverResult<SetAccessVlanOutcome>.Ok(
+                FakeSwitchMutatingDriver.Outcome(SwitchChangeReasonCode.Applied), TimeSpan.FromMilliseconds(5));
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Completed);
+        _driver.CallCount.Should().Be(2, "the first transient failure must be retried, not fail the job");
+    }
+
+    [Fact]
+    public async Task Retryable_device_call_failure_exhausting_max_attempts_fails_the_job()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => CurrentItem(job);
+        _driver.Behavior = _ => DriverResult<SetAccessVlanOutcome>.Fail(
+            new DriverError(DriverErrorCode.ConnectionTimeout, "timed out", Retryable: true), TimeSpan.FromMilliseconds(5));
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Failed);
+        job.ErrorCode.Should().Be(DriftApplyErrorCodes.DeviceCallFailed);
+        _driver.CallCount.Should().Be(2, "MaxStepAttempts (2, per the Run() helper's options) bounds the retries");
+    }
+
+    [Fact]
+    public async Task Drift_item_missing_switch_and_port_details_marks_stale_drift_without_calling_the_driver()
+    {
+        var job = NewJob();
+        _store.ItemBehavior = (_, _) => BuildItem(
+            job, job.ExpectedAfterVlan.ToString(), job.ExpectedBeforeVlan?.ToString(), detailsJson: null);
+
+        await Run(job);
+
+        job.Status.Should().Be(DriftApplyJobStatus.StaleDrift);
+        job.ErrorCode.Should().Be(DriftApplyErrorCodes.DriftAnchorsMismatched);
+        _driver.CallCount.Should().Be(0);
+    }
+
     private async Task Run(DriftApplyJob job)
     {
         var orchestrator = new DriftApplyOrchestrator(
@@ -201,12 +292,14 @@ public sealed class DriftApplyOrchestratorTests
     private static DriftItem CurrentItem(DriftApplyJob job)
         => BuildItem(job, job.ExpectedAfterVlan.ToString(), job.ExpectedBeforeVlan?.ToString());
 
-    private static DriftItem BuildItem(DriftApplyJob job, string? expectedValue, string? actualValue)
+    private static DriftItem BuildItem(
+        DriftApplyJob job, string? expectedValue, string? actualValue,
+        string? detailsJson = "{\"switchName\":\"sw1\",\"portName\":\"ether1\"}")
         => new(
             Guid.NewGuid(), Guid.NewGuid(), job.DriftItemId, job.RackId, DriftType.AccessVlanMismatch,
             DriftSeverity.High, actionable: true, DriftSubjectType.SwitchPort, "v1|rack|sw1|ether1",
             expectedValue, actualValue, "why", DateTime.UtcNow,
-            "{\"switchName\":\"sw1\",\"portName\":\"ether1\"}");
+            detailsJson);
 
     private static RackDefinition Definition(string deviceKey = "sw1")
         => new(

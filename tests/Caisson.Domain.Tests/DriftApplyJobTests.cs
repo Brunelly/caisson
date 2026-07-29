@@ -40,6 +40,40 @@ public sealed class DriftApplyJobTests
     }
 
     [Fact]
+    public void Requested_by_over_the_bound_is_rejected()
+    {
+        var oversized = new string('a', DriftApplyJob.MaxActorLength + 1);
+
+        var act = () => new DriftApplyJob(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "v1|rack|sw1|ether1", oversized, ActorType.User,
+            Guid.NewGuid(), DateTime.UtcNow, Guid.NewGuid(), 10, 20);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("requestedBy");
+    }
+
+    [Fact]
+    public void Subject_key_is_required()
+    {
+        var act = () => new DriftApplyJob(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "", "operator@example.com", ActorType.User,
+            Guid.NewGuid(), DateTime.UtcNow, Guid.NewGuid(), 10, 20);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("subjectKey");
+    }
+
+    [Fact]
+    public void Subject_key_over_the_bound_is_rejected()
+    {
+        var oversized = new string('a', DriftApplyJob.MaxSubjectKeyLength + 1);
+
+        var act = () => new DriftApplyJob(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), oversized, "operator@example.com", ActorType.User,
+            Guid.NewGuid(), DateTime.UtcNow, Guid.NewGuid(), 10, 20);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("subjectKey");
+    }
+
+    [Fact]
     public void SeedSteps_attaches_revalidation_and_device_apply_in_declaration_order()
     {
         var job = NewJob();
@@ -83,6 +117,41 @@ public sealed class DriftApplyJobTests
     }
 
     [Fact]
+    public void MarkClaimed_claimed_by_instance_id_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxActorLength + 1);
+
+        var act = () => job.MarkClaimed(oversized, DateTime.UtcNow);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("claimedByInstanceId");
+    }
+
+    [Fact]
+    public void MarkRevalidating_transitions_status_and_refreshes_heartbeat()
+    {
+        var job = NewJob();
+        var at = DateTime.UtcNow;
+
+        job.MarkRevalidating(at);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Revalidating);
+        job.LastHeartbeatAtUtc.Should().Be(at);
+    }
+
+    [Fact]
+    public void MarkExecuting_transitions_status_and_refreshes_heartbeat()
+    {
+        var job = NewJob();
+        var at = DateTime.UtcNow;
+
+        job.MarkExecuting(at);
+
+        job.Status.Should().Be(DriftApplyJobStatus.Executing);
+        job.LastHeartbeatAtUtc.Should().Be(at);
+    }
+
+    [Fact]
     public void ResolveTarget_persists_switch_port_and_desired_vlan()
     {
         var job = NewJob();
@@ -92,6 +161,28 @@ public sealed class DriftApplyJobTests
         job.SwitchDeviceKey.Should().Be("sw1");
         job.PortName.Should().Be("ether1");
         job.DesiredVlanId.Should().Be(20);
+    }
+
+    [Fact]
+    public void ResolveTarget_switch_device_key_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxSwitchDeviceKeyLength + 1);
+
+        var act = () => job.ResolveTarget(oversized, "ether1", 20);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("switchDeviceKey");
+    }
+
+    [Fact]
+    public void ResolveTarget_port_name_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxPortNameLength + 1);
+
+        var act = () => job.ResolveTarget("sw1", oversized, 20);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("portName");
     }
 
     [Fact]
@@ -105,6 +196,39 @@ public sealed class DriftApplyJobTests
         job.DeviceConfirmed.Should().BeTrue();
         job.BeforeStateJson.Should().Be("{\"pvid\":10}");
         job.AfterStateJson.Should().Be("{\"pvid\":20}");
+    }
+
+    [Fact]
+    public void RecordDeviceOutcome_reason_code_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxErrorCodeLength + 1);
+
+        var act = () => job.RecordDeviceOutcome(oversized, confirmed: true, null, null);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("reasonCode");
+    }
+
+    [Fact]
+    public void RecordDeviceOutcome_before_state_json_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxStateJsonLength + 1);
+
+        var act = () => job.RecordDeviceOutcome("Applied", confirmed: true, oversized, null);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("beforeStateJson");
+    }
+
+    [Fact]
+    public void RecordDeviceOutcome_after_state_json_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxStateJsonLength + 1);
+
+        var act = () => job.RecordDeviceOutcome("Applied", confirmed: true, null, oversized);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("afterStateJson");
     }
 
     [Fact]
@@ -164,6 +288,28 @@ public sealed class DriftApplyJobTests
     }
 
     [Fact]
+    public void Fail_error_category_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxErrorCategoryLength + 1);
+
+        var act = () => job.Fail(DateTime.UtcNow, oversized, "SOME_ERROR", "boom");
+
+        act.Should().Throw<ArgumentException>().WithParameterName("errorCategory");
+    }
+
+    [Fact]
+    public void Fail_error_code_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxErrorCodeLength + 1);
+
+        var act = () => job.Fail(DateTime.UtcNow, "Infrastructure", oversized, "boom");
+
+        act.Should().Throw<ArgumentException>().WithParameterName("errorCode");
+    }
+
+    [Fact]
     public void MarkStaleDrift_sets_stale_drift_terminal_state_with_reason_and_details()
     {
         var job = NewJob();
@@ -176,6 +322,17 @@ public sealed class DriftApplyJobTests
         job.ErrorCode.Should().Be("DRIFT_ITEM_GONE");
         job.ErrorDetailsJson.Should().Contain("comparedDriftReportId");
         job.FinishedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void MarkStaleDrift_reason_code_over_the_bound_is_rejected()
+    {
+        var job = NewJob();
+        var oversized = new string('a', DriftApplyJob.MaxErrorCodeLength + 1);
+
+        var act = () => job.MarkStaleDrift(DateTime.UtcNow, oversized, "no longer current");
+
+        act.Should().Throw<ArgumentException>().WithParameterName("reasonCode");
     }
 
     [Fact]

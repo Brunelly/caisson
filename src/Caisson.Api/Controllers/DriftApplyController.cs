@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Caisson.Api.Auditing;
 using Caisson.Api.Contracts;
 using Caisson.Api.Middleware;
@@ -84,7 +85,7 @@ public sealed class DriftApplyController : DiscoveryControllerBase
         var (actorType, actorId) = ResolveActor();
         var result = await _jobs.RequestApplyAsync(item, actorId, actorType, _correlation.CorrelationId, cancellationToken);
 
-        var creationDetails = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+        var creationDetails = JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["permission"] = AuthorizationPolicies.DriftApply,
             ["correlationId"] = _correlation.CorrelationId,

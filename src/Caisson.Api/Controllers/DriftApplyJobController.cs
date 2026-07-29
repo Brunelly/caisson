@@ -41,6 +41,11 @@ public sealed class DriftApplyJobController : ReadOnlyControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<DriftApplyJobDetailDto>> GetById(Guid rackId, Guid jobId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var job = await _jobs.GetJobAsync(jobId, cancellationToken);
         if (job is null || job.RackId != rackId)
         {

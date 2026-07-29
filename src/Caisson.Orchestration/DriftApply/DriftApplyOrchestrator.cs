@@ -67,6 +67,12 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
 
         try
         {
+            // Trade-off: once SwitchDeviceKey is resolved, a resumed job (reclaimed long after its first
+            // revalidation) skips straight to DeviceApply without re-checking drift currency again — a
+            // deviation from AC3's "immediately before applying". This is safe because DeviceApplyAsync
+            // always targets the already-resolved desired state and the driver reports
+            // NoOpAlreadyDesiredState if the device is already correct; a cheap re-revalidation on resume
+            // would close this gap but was judged unnecessary given that safety net.
             if (job.SwitchDeviceKey is null)
             {
                 var previousStatus = job.Status.ToString();
@@ -220,7 +226,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
             job.CorrelationId, job.RequestedBy, job.ActorType);
 
         var start = _time.GetTimestamp();
-        var result = await driver.SetAccessVlanAsync(request, cancellationToken);
+        var result = await RunWithHeartbeatAsync(job, ct => driver.SetAccessVlanAsync(request, ct), cancellationToken);
         var durationMs = (long)_time.GetElapsedTime(start).TotalMilliseconds;
 
         if (!result.Success)
@@ -333,6 +339,53 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         job.Fail(Now, errorCategory, errorCode, message);
         await _store.SaveAsync(cancellationToken);
         return new JobAbortedException(errorCode);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> while a background <see cref="PeriodicTimer"/> refreshes the job
+    /// heartbeat every <c>HeartbeatStalenessSeconds / 3</c>, so a legitimately slow-but-alive device confirm
+    /// window (default 30s, close to the default 45s staleness threshold) cannot be reclaimed by another
+    /// runner instance mid-flight (mirrors <c>DiscoveryOrchestrator</c>'s fix for the same class of issue).
+    /// Deliberately scoped to just the driver call rather than the whole step (unlike Discovery's steps,
+    /// <see cref="DeviceApplyAsync"/> and <see cref="RevalidateAsync"/> both persist through the same
+    /// non-thread-safe <c>DbContext</c> as this loop's own <c>_store.SaveAsync</c> — wrapping their DB work
+    /// too would race two writers on one context). The loop is fully stopped and awaited before this method
+    /// returns (in <c>finally</c>), so it can never race the caller's own save immediately afterwards.
+    /// </summary>
+    private async Task<T> RunWithHeartbeatAsync<T>(
+        DriftApplyJob job, Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken)
+    {
+        using var heartbeatStop = new CancellationTokenSource();
+        using var heartbeatToken = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, heartbeatStop.Token);
+        var heartbeatTask = HeartbeatLoopAsync(job, heartbeatToken.Token);
+
+        try
+        {
+            return await action(cancellationToken);
+        }
+        finally
+        {
+            heartbeatStop.Cancel();
+            try
+            {
+                await heartbeatTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: the loop observes heartbeatStop and exits.
+            }
+        }
+    }
+
+    private async Task HeartbeatLoopAsync(DriftApplyJob job, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(Math.Max(1, _options.HeartbeatStalenessSeconds / 3)));
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            job.Heartbeat(Now);
+            await _store.SaveAsync(cancellationToken);
+        }
     }
 
     private async Task BackoffAsync(int attempt, CancellationToken cancellationToken)

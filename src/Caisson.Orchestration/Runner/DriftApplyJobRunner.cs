@@ -234,9 +234,17 @@ RETURNING id AS ""Value""";
             targetId: job.Id.ToString(),
             detailsJson: BuildTerminalAuditDetails(job));
 
+    /// <summary>
+    /// Mirrors <c>Caisson.Api.Security.CaissonRoles.DriftApply</c> / <c>AuthorizationPolicies.DriftApply</c>
+    /// (both "DriftApply"). Duplicated as a literal rather than referenced because <c>Caisson.Orchestration</c>
+    /// must not take a project reference on <c>Caisson.Api</c> (layering rule, ADR 0013).
+    /// </summary>
+    private const string DriftApplyPermissionName = "DriftApply";
+
     private static string? BuildTerminalAuditDetails(DriftApplyJob job)
         => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
         {
+            ["permission"] = DriftApplyPermissionName,
             ["driftItemId"] = job.DriftItemId,
             ["switchDeviceKey"] = job.SwitchDeviceKey,
             ["portName"] = job.PortName,

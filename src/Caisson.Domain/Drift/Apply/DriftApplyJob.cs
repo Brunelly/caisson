@@ -290,11 +290,7 @@ public sealed class DriftApplyJob
         ArgumentException.ThrowIfNullOrEmpty(errorCategory);
         ArgumentException.ThrowIfNullOrEmpty(errorCode);
         Status = DriftApplyJobStatus.Failed;
-        Finish(finishedAtUtc);
-        ErrorCategory = Bound(errorCategory, MaxErrorCategoryLength, nameof(errorCategory));
-        ErrorCode = Bound(errorCode, MaxErrorCodeLength, nameof(errorCode));
-        ErrorMessage = TruncateMessage(errorMessage);
-        ErrorDetailsJson = BoundDetails(errorDetailsJson);
+        SetError(finishedAtUtc, errorCategory, errorCode, nameof(errorCode), errorMessage, errorDetailsJson);
     }
 
     /// <summary>
@@ -306,11 +302,7 @@ public sealed class DriftApplyJob
     {
         ArgumentException.ThrowIfNullOrEmpty(reasonCode);
         Status = DriftApplyJobStatus.StaleDrift;
-        Finish(finishedAtUtc);
-        ErrorCategory = "StaleDrift";
-        ErrorCode = Bound(reasonCode, MaxErrorCodeLength, nameof(reasonCode));
-        ErrorMessage = TruncateMessage(errorMessage);
-        ErrorDetailsJson = BoundDetails(errorDetailsJson);
+        SetError(finishedAtUtc, "StaleDrift", reasonCode, nameof(reasonCode), errorMessage, errorDetailsJson);
     }
 
     private void ClearError()
@@ -319,6 +311,17 @@ public sealed class DriftApplyJob
         ErrorCode = null;
         ErrorMessage = null;
         ErrorDetailsJson = null;
+    }
+
+    private void SetError(
+        DateTime finishedAtUtc, string errorCategory, string errorCode, string errorCodeParamName,
+        string? errorMessage, string? errorDetailsJson)
+    {
+        Finish(finishedAtUtc);
+        ErrorCategory = Bound(errorCategory, MaxErrorCategoryLength, nameof(errorCategory));
+        ErrorCode = Bound(errorCode, MaxErrorCodeLength, errorCodeParamName);
+        ErrorMessage = TruncateMessage(errorMessage);
+        ErrorDetailsJson = BoundDetails(errorDetailsJson);
     }
 
     private void Finish(DateTime finishedAtUtc)
