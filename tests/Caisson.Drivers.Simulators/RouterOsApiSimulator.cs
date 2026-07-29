@@ -315,6 +315,26 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
 
         switch (command)
         {
+            case "/interface/print":
+            case "/interface/ethernet/print":
+                {
+                    // Not on the write allowlist, but the simulator serves them too when stateful so the
+                    // READ driver can observe the same seeded ports for the read/write parity check (AC5)
+                    // — the allowlist boundary is enforced client-side, not by the simulator.
+                    rows = new List<Dictionary<string, string>>();
+                    foreach (var port in state.Ports.Keys)
+                    {
+                        rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            ["name"] = port,
+                            ["running"] = "true",
+                            ["disabled"] = "false",
+                        });
+                    }
+
+                    return true;
+                }
+
             case "/interface/bridge/port/print":
                 {
                     var filters = ParseQueryFilters(words);
