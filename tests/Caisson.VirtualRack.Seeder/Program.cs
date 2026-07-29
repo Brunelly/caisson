@@ -53,13 +53,14 @@ var rackDefinitionTemplate = new RackDefinition(
     {
         new DeviceDefinition(
             VirtualRackDefinition.SwitchId, "MikroTik", null, DriverConnectionKind.RouterOsApi,
-            switchSimulator.Host, switchSimulator.Port, TimeSpan.FromSeconds(5), "sw1-creds"),
+            switchSimulator.Host, switchSimulator.Port, TimeSpan.FromSeconds(5), "sw1_creds",
+            UseTls: false, AllowPlaintext: true),
     },
     new[]
     {
         new DeviceDefinition(
             VirtualRackDefinition.ServerId, "HPE", null, DriverConnectionKind.Redfish,
-            bmcSimulator.Host, bmcSimulator.Port, TimeSpan.FromSeconds(5), "srv1-creds"),
+            bmcSimulator.Host, bmcSimulator.Port, TimeSpan.FromSeconds(5), "srv1_creds"),
     });
 
 var builder = Host.CreateApplicationBuilder(args);

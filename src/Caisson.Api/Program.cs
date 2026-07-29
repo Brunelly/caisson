@@ -7,6 +7,7 @@ using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Orchestration.DependencyInjection;
+using Caisson.Orchestration.RackDefinitions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -45,6 +46,13 @@ builder.Services.AddSingleton(TimeProvider.System);
 // pipeline, job/schedule services and the background runner + scheduler. The API names no driver type;
 // driver access is transitive through Caisson.Orchestration at runtime (the guard test stays green).
 builder.Services.AddCaissonOrchestration(builder.Configuration);
+
+// Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
+// colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
+// to boot rather than run with an ambiguous or silently-ignored security setting.
+var rackDefinitions = builder.Configuration.GetSection(RackDefinitionOptions.SectionName).Get<RackDefinitionOptions>()
+    ?? new RackDefinitionOptions();
+RackDefinitionValidation.Validate(rackDefinitions);
 
 // Live topology updates (story #9, ADR 0014): the SignalR hub, Redis backplane + per-instance relay,
 // heartbeat, metrics and Redis health. Degrades to single-instance SignalR when no Redis is configured.

@@ -44,7 +44,15 @@ public interface IRouterOsApiClient : IAsyncDisposable
 /// </param>
 public sealed record RouterOsConnectionSettings(
     string Host, int Port, bool UseTls, string Username, string Password, TimeSpan Timeout,
-    string? CertificateThumbprint = null, bool AllowUntrustedCertificate = false);
+    string? CertificateThumbprint = null, bool AllowUntrustedCertificate = false)
+{
+    /// <summary>
+    /// Overrides the compiler-generated record <c>ToString()</c> — which would otherwise print every
+    /// positional member, including <see cref="Password"/> — so an accidental <c>settings.ToString()</c>
+    /// (e.g. in a debugger watch or a future log call) can never leak the credential.
+    /// </summary>
+    public override string ToString() => $"{Host}:{Port} as {Username} (UseTls={UseTls})";
+}
 
 /// <summary>A RouterOS protocol-level failure (a <c>!trap</c>/<c>!fatal</c> reply or a malformed sentence).</summary>
 public class RouterOsApiException : Exception

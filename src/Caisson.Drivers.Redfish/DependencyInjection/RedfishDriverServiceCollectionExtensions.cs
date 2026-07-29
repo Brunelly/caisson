@@ -29,7 +29,10 @@ public static class RedfishDriverServiceCollectionExtensions
         // requiring the open-generic ILogger<> from AddLogging().
         services.TryAddSingleton<IIpmiCommandRunner>(provider =>
             new ProcessIpmiCommandRunner(
-                provider.GetRequiredService<ILoggerFactory>().CreateLogger<ProcessIpmiCommandRunner>()));
+                provider.GetRequiredService<ILoggerFactory>().CreateLogger<ProcessIpmiCommandRunner>(),
+                Environment.GetEnvironmentVariable("CAISSON_IPMITOOL_PATH") is { Length: > 0 } configured
+                    ? configured
+                    : ProcessIpmiCommandRunner.DefaultExecutablePath));
         services.AddBmcDriver<RedfishBmcDriverFactory>();
 
         return services;

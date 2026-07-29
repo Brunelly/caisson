@@ -65,6 +65,29 @@ public sealed class TlsCertificateValidationTests
         client.ValidateServerCertificate(this, cert, chain: null, Untrusted).Should().BeTrue();
     }
 
+    [Fact]
+    public void A_pinned_certificate_that_chains_to_a_trusted_root_is_still_rejected_on_a_pin_mismatch()
+    {
+        // The pin is the SOLE authority once configured (finding #1): a certificate the platform validator
+        // would accept outright (SslPolicyErrors.None, as an active MITM presenting a trusted-but-wrong
+        // certificate would) must still be rejected when it does not match the configured pin.
+        using var cert = SelfSigned();
+        var wrongPin = new string('a', 64);
+        var client = ClientFor(SettingsWith(thumbprint: wrongPin, allowUntrusted: false));
+
+        client.ValidateServerCertificate(this, cert, chain: null, SslPolicyErrors.None).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_pinned_certificate_matching_the_pin_is_accepted_even_with_SslPolicyErrors_None()
+    {
+        using var cert = SelfSigned();
+        var pin = Fingerprint(cert);
+        var client = ClientFor(SettingsWith(thumbprint: pin, allowUntrusted: false));
+
+        client.ValidateServerCertificate(this, cert, chain: null, SslPolicyErrors.None).Should().BeTrue();
+    }
+
     private static RouterOsApiClient ClientFor(RouterOsConnectionSettings settings)
         => new(settings, NullLogger.Instance);
 

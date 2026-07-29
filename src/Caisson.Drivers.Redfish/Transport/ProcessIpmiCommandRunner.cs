@@ -15,15 +15,64 @@ namespace Caisson.Drivers.Redfish.Transport;
 /// </summary>
 public sealed class ProcessIpmiCommandRunner : IIpmiCommandRunner
 {
-    private const string Executable = "ipmitool";
+    /// <summary>The default, pinned absolute path to the <c>ipmitool</c> binary. See docs/redfish-discovery.md.</summary>
+    public const string DefaultExecutablePath = "/usr/bin/ipmitool";
 
     private readonly ILogger<ProcessIpmiCommandRunner> _logger;
+    private readonly string _executablePath;
+    private readonly bool _executableUsable;
 
-    /// <summary>Creates the runner with its logger.</summary>
+    /// <summary>Creates the runner with its logger, resolving <see cref="DefaultExecutablePath"/> once.</summary>
     public ProcessIpmiCommandRunner(ILogger<ProcessIpmiCommandRunner> logger)
+        : this(logger, DefaultExecutablePath)
+    {
+    }
+
+    /// <summary>
+    /// Creates the runner with a configurable absolute <paramref name="executablePath"/>, resolved once
+    /// here rather than left to PATH lookup at spawn time (finding #23): the resolved path is verified to
+    /// exist and to not be group/world-writable, so a compromised or misconfigured host cannot substitute
+    /// a different binary at the well-known name. Verification failure never throws — it routes to the
+    /// same clean <c>Available: false</c> path as a genuinely missing binary.
+    /// </summary>
+    public ProcessIpmiCommandRunner(ILogger<ProcessIpmiCommandRunner> logger, string executablePath)
     {
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         _logger = logger;
+        _executablePath = executablePath;
+        _executableUsable = VerifyExecutable(executablePath, logger);
+    }
+
+    private static bool VerifyExecutable(string path, ILogger logger)
+    {
+        if (!Path.IsPathRooted(path))
+        {
+            logger.LogWarning(
+                "The configured ipmitool path '{Path}' is not absolute; the IPMI fallback will be unavailable.", path);
+            return false;
+        }
+
+        if (!File.Exists(path))
+        {
+            logger.LogWarning(
+                "The configured ipmitool path '{Path}' does not exist; the IPMI fallback will be unavailable.", path);
+            return false;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            var mode = File.GetUnixFileMode(path);
+            if ((mode & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0)
+            {
+                logger.LogWarning(
+                    "The configured ipmitool path '{Path}' is group- or world-writable ({Mode}); refusing to " +
+                    "run it. The IPMI fallback will be unavailable.", path, mode);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <inheritdoc />
@@ -41,17 +90,25 @@ public sealed class ProcessIpmiCommandRunner : IIpmiCommandRunner
                 $"The ipmitool subcommand '{string.Join(' ', argv)}' is not on the read-only allowlist and will not be run.");
         }
 
+        if (!_executableUsable)
+        {
+            return new IpmiCommandResult(Available: false, ExitCode: -1, string.Empty, string.Empty);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linked.CancelAfter(settings.Timeout);
 
-        var startInfo = new ProcessStartInfo(Executable)
+        var startInfo = new ProcessStartInfo(_executablePath)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+            // Fixed, non-CWD-dependent working directory (the resolved binary's own directory) so the
+            // spawned process's relative-path resolution can never be influenced by the caller's CWD.
+            WorkingDirectory = Path.GetDirectoryName(_executablePath) ?? Path.GetTempPath(),
         };
 
         // Connection flags first, then the read-only subcommand. -E reads the password from IPMI_PASSWORD,
@@ -70,6 +127,9 @@ public sealed class ProcessIpmiCommandRunner : IIpmiCommandRunner
             startInfo.ArgumentList.Add(arg);
         }
 
+        // A minimal, explicit environment rather than the inherited process environment — only what
+        // ipmitool needs (the password, via IPMI_PASSWORD) is passed through.
+        startInfo.Environment.Clear();
         startInfo.Environment["IPMI_PASSWORD"] = settings.Password;
 
         using var process = new Process { StartInfo = startInfo };
@@ -83,7 +143,7 @@ public sealed class ProcessIpmiCommandRunner : IIpmiCommandRunner
         }
         catch (Win32Exception)
         {
-            // ipmitool is not installed / not on PATH — a clean "unavailable", not a failure.
+            // ipmitool could not be spawned — a clean "unavailable", not a failure.
             _logger.LogWarning(
                 "ipmitool is not available on this host; the IPMI fallback for {Host} cannot run.", settings.Host);
             return new IpmiCommandResult(Available: false, ExitCode: -1, string.Empty, string.Empty);

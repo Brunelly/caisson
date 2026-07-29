@@ -34,6 +34,27 @@ public static class RedfishReadPaths
     private const string SettingsSegment = "/Settings";
 
     /// <summary>
+    /// Upper bound on an accepted path length. Real Redfish resource paths are short (a few dozen
+    /// characters); this generous cap exists only to bound the cost of validating and logging a
+    /// device-supplied <c>@odata.id</c>, not to accommodate any legitimate long path.
+    /// </summary>
+    private const int MaxPathLength = 512;
+
+    /// <summary>Truncation length for a path projected into a log line or exception message.</summary>
+    private const int MaxLoggedPathLength = 256;
+
+    /// <summary>
+    /// The positive character allow-list for a Redfish resource path: letters, digits, and the small set
+    /// of punctuation that legitimately appears in a path/query — <c>/ . _ - : % ? & = , ~ # $</c> (the
+    /// trailing <c>$</c> is required for OData query options such as <c>$select</c>/<c>$filter</c>).
+    /// Anything outside this set (in particular control characters such as CR/LF) is rejected outright,
+    /// closing off log-injection via a crafted <c>@odata.id</c> (the control-character check below is
+    /// redundant with this allow-list but kept as explicit, self-documenting defence in depth).
+    /// </summary>
+    private static bool IsAllowedPathCharacter(char c)
+        => char.IsAsciiLetterOrDigit(c) || c is '/' or '.' or '_' or '-' or ':' or '%' or '?' or '&' or '=' or ',' or '~' or '#' or '$';
+
+    /// <summary>
     /// The allowlisted resource-path prefixes. Every accepted path must equal, or begin with one of, these
     /// prefixes; combined with the <c>/Actions/</c> and <c>/Settings</c> rejections this scopes the driver
     /// to service-root navigation plus system/manager/chassis inventory and the read-only sub-resources of a
@@ -64,6 +85,20 @@ public static class RedfishReadPaths
         }
 
         if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        // Reject an implausibly long path and any control character (CR/LF in particular — a device that
+        // returns a crafted @odata.id must never be able to inject a fake log line or exception message)
+        // before doing anything else with it. The positive allow-list below is the primary defence; this
+        // is a fast, explicit up-front reject.
+        if (path.Length > MaxPathLength || path.Any(char.IsControl))
+        {
+            return false;
+        }
+
+        if (!path.All(IsAllowedPathCharacter))
         {
             return false;
         }
@@ -142,6 +177,37 @@ public static class RedfishReadPaths
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Projects a device-supplied path into a form safe to embed in a log line or exception message: CR/LF
+    /// (and any other control character) stripped, then truncated to <see cref="MaxLoggedPathLength"/>. Used
+    /// even for paths that already passed <see cref="IsReadOnlyGet"/> so a future change to that allowlist
+    /// can never reopen the log-injection path here silently.
+    /// </summary>
+    public static string SanitizeForLog(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder(Math.Min(path.Length, MaxLoggedPathLength));
+        foreach (var c in path)
+        {
+            if (builder.Length >= MaxLoggedPathLength)
+            {
+                builder.Append("...(truncated)");
+                break;
+            }
+
+            if (!char.IsControl(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static bool MatchesAllowedPrefix(string resource)

@@ -57,39 +57,58 @@ read-only boundary.
 
 ## TLS transport and certificate trust
 
-The RouterOS plaintext API (TCP 8728) sends the API password over the wire in cleartext immediately after
-connecting, so it is protected only against a passive eavesdropper. **Prefer the TLS transport (port 8729)
-in any environment where an on-path attacker is plausible.** The driver logs a secret-free warning whenever
-a password will be sent over a non-TLS connection, so a plaintext choice is always a conscious one.
+TLS (port 8729) is now the **default, fail-closed transport** (ADR 0020): `UseTls` defaults to `true` and
+is derived explicitly rather than inferred from the port, so a TLS API reachable on a non-standard port is
+expressible. The legacy plaintext API (TCP 8728), which sends the API password over the wire in cleartext
+immediately after connecting, requires an explicit `AllowPlaintext = true` opt-in — omitting it fails
+driver creation outright, and every plaintext connection now logs at `Error` (not `Warning`), since it can
+only happen as a conscious operator decision. A rack definition that pairs a configured `TLS_FINGERPRINT`
+with a non-TLS switch fails startup (the pin would otherwise be silently unenforced).
 
 CHR ships a self-signed certificate, so a fully trusted chain is unavailable. Rather than blanket-accepting
 any certificate (which would leave TLS defenceless against an active man-in-the-middle who could intercept
 the cleartext login, CWE-295), the driver enforces one of three outcomes and **never** silently accepts:
 
-1. a fully trusted chain (a proper CA-issued cert) is accepted;
-2. otherwise, if a **SHA-256 fingerprint pin** is configured, the certificate is accepted only on an exact
-   match — the recommended posture for CHR;
-3. otherwise, an untrusted certificate is accepted only when the operator has **explicitly opted in**.
+1. if a **SHA-256 fingerprint pin** is configured, it is the SOLE authority — the certificate is accepted
+   only on an exact match, checked BEFORE anything else, so a certificate that happens to chain to a
+   trusted root can never bypass a configured pin (ADR 0019). This is the recommended posture for CHR;
+2. otherwise, a fully trusted chain (a proper CA-issued cert) is accepted, with revocation checking enabled;
+3. otherwise, an untrusted certificate is accepted only when the operator has **explicitly opted in**, and
+   only outside `ASPNETCORE_ENVIRONMENT=Production` — the host refuses to create the driver if this opt-in
+   is set under Production (finding #24).
 
 TLS trust is configured via environment variables keyed by the credentials reference (same slug rule as
-credentials), falling back to a global default:
+credentials); the fingerprint pin falls back to a global default, but the untrusted-certificate opt-in does
+**not** — it is per-slug only, so the blast radius of ever setting it is exactly one device:
 
 ```
 # Pin the self-signed CHR certificate (openssl x509 -fingerprint -sha256; separators/case ignored):
 export CAISSON_SWITCH_{REF}_TLS_FINGERPRINT=AB:CD:...:EF   # or CAISSON_SWITCH_TLS_FINGERPRINT
 
-# Or, only where you accept the MITM risk, opt in to accepting an untrusted certificate:
-export CAISSON_SWITCH_{REF}_TLS_ALLOW_UNTRUSTED=true       # or CAISSON_SWITCH_TLS_ALLOW_UNTRUSTED
+# Or, only where you accept the MITM risk (refused outright under Production):
+export CAISSON_SWITCH_{REF}_TLS_ALLOW_UNTRUSTED=true        # per-slug only — no global fallback
 ```
 
 With neither set, TLS to a self-signed CHR is **rejected** — configure a fingerprint pin to use it securely.
 
+Wire caps guard against a compromised or misbehaving device amplifying wire bytes into heap: at most 4096
+words and 16 MiB of aggregate word bytes per sentence (`RouterOsSentence`), and at most 100,000 `!re` rows
+per reply (`RouterOsApiClient.MaxRowsPerReply`) — on top of the existing 8 MiB per-word cap. A query's
+sub-commands (e.g. `GetPortsAsync`'s four RouterOS calls) now share ONE overall per-device-timeout budget
+via a linked `CancellationTokenSource`, rather than each getting its own full timeout window.
+
 ## Credentials
 
-`SwitchConnectionOptions.CredentialsRef` is an opaque reference, never the secret. The default
-`EnvSwitchCredentialResolver` reads `CAISSON_SWITCH_{REF}_USERNAME`/`_PASSWORD` (the reference upper-cased,
-non-alphanumerics → `_`), falling back to the global `CAISSON_SWITCH_USERNAME`/`_PASSWORD`. In CI these come
-from GitHub Actions secrets. Secrets are never written to logs or `DriverError.Message`.
+`SwitchConnectionOptions.CredentialsRef` is an opaque reference, never the secret, and must match
+`^[A-Za-z0-9_]{1,64}$` (validated at driver-creation time and again, for the whole configuration, by
+`RackDefinitionValidation` at startup) — an empty reference is rejected outright rather than silently
+falling back to the global credential, and the strict charset makes the env-var slug derivation injective
+(two references that used to normalize to the same slug via a stripped separator, e.g. `rack1-sw` and
+`rack1.sw`, are no longer both valid). The default `EnvSwitchCredentialResolver` reads
+`CAISSON_SWITCH_{REF}_USERNAME`/`_PASSWORD` (the reference upper-cased), falling back to the global
+`CAISSON_SWITCH_USERNAME`/`_PASSWORD`. In CI these come from GitHub Actions secrets. Secrets are never
+written to logs or `DriverError.Message`. Every credential-bearing settings/record type overrides
+`ToString()` to omit the password, so an accidental `.ToString()` can never leak it.
 
 ## Running the tests
 

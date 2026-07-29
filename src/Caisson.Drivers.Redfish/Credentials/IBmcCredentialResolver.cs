@@ -17,7 +17,15 @@ public interface IBmcCredentialResolver
 /// <summary>Resolved BMC credentials. Held only in memory for the lifetime of a connection.</summary>
 /// <param name="Username">The BMC/iLO account username.</param>
 /// <param name="Password">The BMC/iLO account password.</param>
-public sealed record BmcCredentials(string Username, string Password);
+public sealed record BmcCredentials(string Username, string Password)
+{
+    /// <summary>
+    /// Overrides the compiler-generated record <c>ToString()</c> — which would otherwise print every
+    /// positional member, including <see cref="Password"/> — so an accidental <c>credentials.ToString()</c>
+    /// can never leak the secret.
+    /// </summary>
+    public override string ToString() => $"BmcCredentials {{ Username = {Username} }}";
+}
 
 /// <summary>Raised when a <c>CredentialsRef</c> cannot be resolved. Its message never contains secret material.</summary>
 public sealed class BmcCredentialResolutionException : Exception

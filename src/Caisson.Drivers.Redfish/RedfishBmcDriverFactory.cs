@@ -4,6 +4,7 @@ using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Drivers.Redfish.Credentials;
 using Caisson.Drivers.Redfish.Observability;
 using Caisson.Drivers.Redfish.Transport;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Caisson.Drivers.Redfish;
@@ -31,15 +32,17 @@ public sealed class RedfishBmcDriverFactory : IBmcDriverFactory
     private readonly IIpmiCommandRunner _ipmiRunner;
     private readonly RedfishMetrics _metrics;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IHostEnvironment _environment;
     private readonly Func<string, string?> _readEnvironment;
 
-    /// <summary>Creates the factory with its injected credential resolver, IPMI runner, metrics and logger factory.</summary>
+    /// <summary>Creates the factory with its injected credential resolver, IPMI runner, metrics, logger factory and host environment.</summary>
     public RedfishBmcDriverFactory(
         IBmcCredentialResolver credentialResolver,
         IIpmiCommandRunner ipmiRunner,
         RedfishMetrics metrics,
-        ILoggerFactory loggerFactory)
-        : this(credentialResolver, ipmiRunner, metrics, loggerFactory, Environment.GetEnvironmentVariable)
+        ILoggerFactory loggerFactory,
+        IHostEnvironment environment)
+        : this(credentialResolver, ipmiRunner, metrics, loggerFactory, environment, Environment.GetEnvironmentVariable)
     {
     }
 
@@ -49,18 +52,21 @@ public sealed class RedfishBmcDriverFactory : IBmcDriverFactory
         IIpmiCommandRunner ipmiRunner,
         RedfishMetrics metrics,
         ILoggerFactory loggerFactory,
+        IHostEnvironment environment,
         Func<string, string?> readEnvironment)
     {
         ArgumentNullException.ThrowIfNull(credentialResolver);
         ArgumentNullException.ThrowIfNull(ipmiRunner);
         ArgumentNullException.ThrowIfNull(metrics);
         ArgumentNullException.ThrowIfNull(loggerFactory);
+        ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(readEnvironment);
 
         _credentialResolver = credentialResolver;
         _ipmiRunner = ipmiRunner;
         _metrics = metrics;
         _loggerFactory = loggerFactory;
+        _environment = environment;
         _readEnvironment = readEnvironment;
     }
 
@@ -71,15 +77,35 @@ public sealed class RedfishBmcDriverFactory : IBmcDriverFactory
     public IBmcDiscoveryDriver Create(BmcConnectionOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        CredentialReferenceSlug.Validate(options.CredentialsRef, options.Host);
 
         var port = options.Port ?? DefaultPort;
         var timeout = options.Timeout > TimeSpan.Zero ? options.Timeout : DefaultTimeout;
 
         // TLS trust is resolved once, up front (it carries no secret): an optional SHA-256 certificate
-        // fingerprint pin, or an explicit opt-in to accept an untrusted certificate.
+        // fingerprint pin, or an explicit opt-in to accept an untrusted certificate. AllowUntrustedCertificate
+        // is deliberately read from the per-slug variable ONLY — no global fallback — so the blast radius of
+        // ever setting it is exactly one device (finding #24).
         var slug = CredentialReferenceSlug.Normalize(options.CredentialsRef);
         var fingerprint = ReadEnv($"{EnvPrefix}_{slug}_TLS_FINGERPRINT", $"{EnvPrefix}_TLS_FINGERPRINT");
-        var allowUntrusted = IsTruthy(ReadEnv($"{EnvPrefix}_{slug}_TLS_ALLOW_UNTRUSTED", $"{EnvPrefix}_TLS_ALLOW_UNTRUSTED"));
+        var allowUntrusted = IsTruthy(_readEnvironment($"{EnvPrefix}_{slug}_TLS_ALLOW_UNTRUSTED"));
+
+        if (allowUntrusted)
+        {
+            if (_environment.IsProduction())
+            {
+                throw new InvalidOperationException(
+                    $"{EnvPrefix}_{slug}_TLS_ALLOW_UNTRUSTED is set for device '{options.Host}' under " +
+                    "ASPNETCORE_ENVIRONMENT=Production. Disabling TLS certificate validation is only permitted " +
+                    "outside Production — refusing to create this BMC driver rather than risk a silent MITM.");
+            }
+
+            var logger = _loggerFactory.CreateLogger<RedfishBmcDriverFactory>();
+            logger.LogError(
+                "TLS certificate validation is explicitly disabled for BMC device {DeviceHost} " +
+                "({EnvPrefix}_{Slug}_TLS_ALLOW_UNTRUSTED). This is only safe outside Production.",
+                options.Host, EnvPrefix, slug);
+        }
 
         // Credentials are resolved lazily, once per connection, so a missing secret surfaces as a driver
         // error at discovery time rather than a DI-time failure. One credential serves Redfish and IPMI.

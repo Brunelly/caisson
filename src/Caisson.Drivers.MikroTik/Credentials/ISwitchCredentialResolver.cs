@@ -16,7 +16,15 @@ public interface ISwitchCredentialResolver
 /// <summary>Resolved switch credentials. Held only in memory for the lifetime of a connection.</summary>
 /// <param name="Username">The RouterOS API username.</param>
 /// <param name="Password">The RouterOS API password.</param>
-public sealed record SwitchCredentials(string Username, string Password);
+public sealed record SwitchCredentials(string Username, string Password)
+{
+    /// <summary>
+    /// Overrides the compiler-generated record <c>ToString()</c> — which would otherwise print every
+    /// positional member, including <see cref="Password"/> — so an accidental <c>credentials.ToString()</c>
+    /// can never leak the secret.
+    /// </summary>
+    public override string ToString() => $"SwitchCredentials {{ Username = {Username} }}";
+}
 
 /// <summary>Raised when a <c>CredentialsRef</c> cannot be resolved. Its message never contains secret material.</summary>
 public sealed class CredentialResolutionException : Exception

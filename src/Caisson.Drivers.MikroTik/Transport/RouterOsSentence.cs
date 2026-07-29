@@ -27,6 +27,21 @@ internal static class RouterOsSentence
     /// </summary>
     internal const int MaxWordLength = 8 * 1024 * 1024;
 
+    /// <summary>
+    /// Upper bound on the number of words in a single sentence. Even with each word capped by
+    /// <see cref="MaxWordLength"/>, a peer that never sends the zero-length terminator can otherwise force
+    /// an unbounded number of small allocations; a real RouterOS reply sentence is at most a few dozen
+    /// attribute words.
+    /// </summary>
+    internal const int MaxWordsPerSentence = 4096;
+
+    /// <summary>
+    /// Upper bound on the sum of word lengths within a single sentence — the aggregate-byte budget that
+    /// sits alongside the per-word <see cref="MaxWordLength"/> cap, so a sentence of many words each just
+    /// under the per-word cap cannot still amplify to an unbounded heap allocation.
+    /// </summary>
+    internal const int MaxSentenceBytes = 16 * 1024 * 1024;
+
     /// <summary>Writes <paramref name="words"/> as one framed sentence, followed by its zero-length terminator.</summary>
     public static async Task WriteAsync(Stream stream, IReadOnlyList<string> words, CancellationToken cancellationToken)
     {
@@ -52,6 +67,7 @@ internal static class RouterOsSentence
     public static async Task<IReadOnlyList<string>> ReadAsync(Stream stream, CancellationToken cancellationToken)
     {
         var words = new List<string>();
+        var totalBytes = 0L;
         while (true)
         {
             var length = await ReadLengthAsync(stream, cancellationToken).ConfigureAwait(false);
@@ -66,6 +82,19 @@ internal static class RouterOsSentence
             {
                 throw new RouterOsApiException(
                     $"RouterOS word length {length} is outside the permitted 0..{MaxWordLength} range and was rejected.");
+            }
+
+            if (words.Count >= MaxWordsPerSentence)
+            {
+                throw new RouterOsApiException(
+                    $"RouterOS sentence exceeded the {MaxWordsPerSentence}-word cap and was rejected.");
+            }
+
+            totalBytes += length;
+            if (totalBytes > MaxSentenceBytes)
+            {
+                throw new RouterOsApiException(
+                    $"RouterOS sentence exceeded the {MaxSentenceBytes}-byte aggregate cap and was rejected.");
             }
 
             var bytes = await ReadExactAsync(stream, length, cancellationToken).ConfigureAwait(false);

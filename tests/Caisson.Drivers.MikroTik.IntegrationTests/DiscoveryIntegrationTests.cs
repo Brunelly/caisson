@@ -8,6 +8,7 @@ using Caisson.Drivers.MikroTik.Credentials;
 using Caisson.Drivers.MikroTik.DependencyInjection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Xunit;
 using Xunit.Abstractions;
@@ -151,7 +152,11 @@ public sealed class DiscoveryIntegrationTests : IClassFixture<RouterOsChrFixture
         registry.TryResolve(query, out var factory).Should().BeTrue();
 
         var endpoint = _fixture.ResolveEndpoint(profile);
-        var options = new SwitchConnectionOptions(endpoint.Host, endpoint.Port, TimeSpan.FromSeconds(2), "core-switch");
+        // The CHR fixture (real or simulated) speaks the plaintext RouterOS API, so the explicit
+        // AllowPlaintext opt-in is required now that TLS is the fail-closed default (finding #8).
+        var options = new SwitchConnectionOptions(
+            endpoint.Host, endpoint.Port, TimeSpan.FromSeconds(2), "core_switch",
+            UseTls: false, AllowPlaintext: true);
         return factory!.Create(options);
     }
 
@@ -159,6 +164,7 @@ public sealed class DiscoveryIntegrationTests : IClassFixture<RouterOsChrFixture
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(new XunitLoggerFactory(_output));
+        services.AddSingleton<IHostEnvironment>(new TestHostEnvironment());
         // Registered before AddMikroTik... so its TryAdd does not override our test-scoped resolver.
         services.AddSingleton<ISwitchCredentialResolver>(_ => new EnvSwitchCredentialResolver(_fixture.EnvLookup));
         services.AddMikroTikRouterOsSwitchDriver();

@@ -69,32 +69,57 @@ unavailable. Rather than blanket-accepting any certificate (which would leave TL
 active man-in-the-middle, CWE-295), the driver enforces one of three outcomes and **never** silently
 accepts:
 
-1. a fully trusted chain (a proper CA-issued cert) is accepted;
-2. otherwise, if a **SHA-256 fingerprint pin** is configured, the certificate is accepted only on an exact
-   match — the recommended posture for iLO;
-3. otherwise, an untrusted certificate is accepted only when the operator has **explicitly opted in**.
+1. if a **SHA-256 fingerprint pin** is configured, it is the SOLE authority — the certificate is accepted
+   only on an exact match, and this is checked BEFORE anything else, so a certificate that happens to chain
+   to a trusted root can never bypass a configured pin (ADR 0019). This is the recommended posture for iLO;
+2. otherwise, a fully trusted chain (a proper CA-issued cert) is accepted, with revocation checking enabled;
+3. otherwise, an untrusted certificate is accepted only when the operator has **explicitly opted in**, and
+   only outside `ASPNETCORE_ENVIRONMENT=Production` — the host refuses to create the driver if this opt-in
+   is set under Production (finding #24).
 
 TLS trust is configured via environment variables keyed by the credentials reference (same slug rule as
-credentials), falling back to a global default:
+credentials); the fingerprint pin falls back to a global default, but the untrusted-certificate opt-in does
+**not** — it is per-slug only, so the blast radius of ever setting it is exactly one device:
 
 ```
 # Pin the self-signed iLO certificate (openssl x509 -fingerprint -sha256; separators/case ignored):
 export CAISSON_BMC_{REF}_TLS_FINGERPRINT=AB:CD:...:EF   # or CAISSON_BMC_TLS_FINGERPRINT
 
-# Or, only where you accept the MITM risk (integration tests only, disallowed in production):
-export CAISSON_BMC_{REF}_TLS_ALLOW_UNTRUSTED=true       # or CAISSON_BMC_TLS_ALLOW_UNTRUSTED
+# Or, only where you accept the MITM risk (integration tests only; refused outright under Production):
+export CAISSON_BMC_{REF}_TLS_ALLOW_UNTRUSTED=true        # per-slug only — no global fallback
 ```
 
 With neither set, TLS to a self-signed iLO is **rejected** — configure a fingerprint pin to use it securely.
 
+A response body is capped at 8 MiB (`RedfishClient.MaxResponseBytes`), enforced by counting bytes as they
+stream rather than trusting `Content-Length` alone (which a chunked response omits) — a compromised or
+misbehaving BMC cannot force an unbounded allocation. A device-supplied `@odata.id` path is rejected if it
+contains a control character or exceeds 512 characters, and is only ever logged in a sanitised
+(CR/LF-stripped, truncated) form, closing off log injection via a crafted resource id.
+
 ## Credentials
 
-`BmcConnectionOptions.CredentialsRef` is an opaque reference, never the secret. The default
-`EnvBmcCredentialResolver` reads `CAISSON_BMC_{REF}_USERNAME`/`_PASSWORD` (the reference upper-cased,
-non-alphanumerics → `_`), falling back to the global `CAISSON_BMC_USERNAME`/`_PASSWORD`. In CI these come
-from GitHub Actions secrets. One credential serves both Redfish Basic auth and IPMI lanplus. Secrets are
-never written to logs or `DriverError.Message`; the IPMI password is passed to `ipmitool` via the
-`IPMI_PASSWORD` environment variable (`-E`), never on the argument vector.
+`BmcConnectionOptions.CredentialsRef` is an opaque reference, never the secret, and must match
+`^[A-Za-z0-9_]{1,64}$` (validated at driver-creation time and again, for the whole configuration, by
+`RackDefinitionValidation` at startup) — an empty reference is rejected outright rather than silently
+falling back to the global credential, and the strict charset makes the env-var slug derivation injective.
+The default `EnvBmcCredentialResolver` reads `CAISSON_BMC_{REF}_USERNAME`/`_PASSWORD` (the reference
+upper-cased), falling back to the global `CAISSON_BMC_USERNAME`/`_PASSWORD`. In CI these come from GitHub
+Actions secrets. One credential serves both Redfish Basic auth and IPMI lanplus. Secrets are never written
+to logs or `DriverError.Message`; the IPMI password is passed to `ipmitool` via the `IPMI_PASSWORD`
+environment variable (`-E`), never on the argument vector. Every credential-bearing settings/record type
+overrides `ToString()` to omit the password, so an accidental `.ToString()` (a debugger watch, a future log
+call) can never leak it.
+
+## The `ipmitool` binary
+
+`ProcessIpmiCommandRunner` resolves `ipmitool` to a **configurable absolute path**, pinned to
+`/usr/bin/ipmitool` by default (override with `CAISSON_IPMITOOL_PATH`), resolved once at construction —
+never a bare `ipmitool` looked up on `PATH` at spawn time. The resolved path is verified to exist and to
+not be group- or world-writable; either failure routes to the same clean `Available: false` result as a
+genuinely missing binary (never a crash). The child process runs with an explicit `WorkingDirectory` (the
+binary's own directory) and a minimal environment containing only `IPMI_PASSWORD` — not the full inherited
+process environment.
 
 ## Running the tests
 

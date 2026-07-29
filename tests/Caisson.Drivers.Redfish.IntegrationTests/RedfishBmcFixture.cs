@@ -23,7 +23,7 @@ public sealed class RedfishBmcFixture : IAsyncLifetime
     public const string IpmiHostEnvVar = "CAISSON_IPMI_HOST";
 
     /// <summary>The credentials reference the tests bind; a fixed slug for the simulator's env lookup.</summary>
-    public const string CredentialsRef = "ilo-node";
+    public const string CredentialsRef = "ilo_node";
 
     private const string SimulatorUsername = "ilo-ro";
     private const string SimulatorPassword = "sim-only-password";

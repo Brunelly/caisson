@@ -18,7 +18,7 @@ public sealed class ErrorMappingTests
     private readonly RouterOsMetrics _metrics = new();
 
     private RouterOsSwitchDriver DriverFor(FakeRouterOsApiClient client)
-        => new("10.0.0.1", () => client, _metrics, new CapturingLogger<RouterOsSwitchDriver>());
+        => new("10.0.0.1", () => client, TimeSpan.FromSeconds(2), _metrics, new CapturingLogger<RouterOsSwitchDriver>());
 
     [Fact]
     public async Task Auth_failure_maps_to_authentication_failed_and_is_not_retryable()

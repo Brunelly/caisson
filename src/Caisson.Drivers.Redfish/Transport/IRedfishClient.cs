@@ -48,7 +48,15 @@ public interface IRedfishClient : IDisposable
 /// </param>
 public sealed record RedfishConnectionSettings(
     string Host, int Port, string Username, string Password, TimeSpan Timeout,
-    string? CertificateThumbprint = null, bool AllowUntrustedCertificate = false);
+    string? CertificateThumbprint = null, bool AllowUntrustedCertificate = false)
+{
+    /// <summary>
+    /// Overrides the compiler-generated record <c>ToString()</c> — which would otherwise print every
+    /// positional member, including <see cref="Password"/> — so an accidental <c>settings.ToString()</c>
+    /// (e.g. in a debugger watch or a future log call) can never leak the credential.
+    /// </summary>
+    public override string ToString() => $"{Host}:{Port} as {Username}";
+}
 
 /// <summary>A Redfish protocol-level failure (a non-success HTTP status or an unexpected response).</summary>
 public class RedfishException : Exception

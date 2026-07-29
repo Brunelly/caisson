@@ -59,7 +59,9 @@ public sealed class DeviceDiscoveryService : IDeviceDiscoveryService
             }
 
             var driver = factory.Create(
-                new SwitchConnectionOptions(device.Host, device.Port, device.Timeout, device.CredentialsRef));
+                new SwitchConnectionOptions(
+                    device.Host, device.Port, device.Timeout, device.CredentialsRef,
+                    device.UseTls, device.AllowPlaintext));
 
             var deviceInfo = await InvokeAsync(
                 context, device.DeviceKey, DiscoveryStepName.SwitchDiscovery, "device-info",

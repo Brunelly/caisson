@@ -1,4 +1,5 @@
 using Caisson.Drivers.MikroTik;
+using Caisson.Drivers.MikroTik.Credentials;
 using Caisson.Drivers.MikroTik.Observability;
 using Caisson.Drivers.MikroTik.Transport;
 using FluentAssertions;
@@ -28,7 +29,7 @@ public sealed class RedactionTests
             OnConnect = () => throw new RouterOsAuthenticationException(
                 $"login rejected for password={Password} ref={CredentialsRef}"),
         };
-        var driver = new RouterOsSwitchDriver("10.0.0.1", () => client, metrics, logger);
+        var driver = new RouterOsSwitchDriver("10.0.0.1", () => client, TimeSpan.FromSeconds(2), metrics, logger);
 
         var result = await driver.GetDeviceInfoAsync(CancellationToken.None);
 
@@ -56,5 +57,23 @@ public sealed class RedactionTests
         rows.Should().BeEmpty();
         logger.AllText.Should().NotBeEmpty();
         logger.AllText.Should().NotContain(Password);
+    }
+
+    [Fact]
+    public void RouterOsConnectionSettings_ToString_never_contains_the_password()
+    {
+        var settings = new RouterOsConnectionSettings(
+            "10.0.0.1", 8729, UseTls: true, "reader", Password, TimeSpan.FromSeconds(2));
+
+        settings.ToString().Should().NotContain(Password);
+        settings.ToString().Should().Contain("reader");
+    }
+
+    [Fact]
+    public void SwitchCredentials_ToString_never_contains_the_password()
+    {
+        var credentials = new SwitchCredentials("reader", Password);
+
+        credentials.ToString().Should().NotContain(Password);
     }
 }

@@ -28,6 +28,7 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
 
     private readonly string _host;
     private readonly Func<IRouterOsApiClient> _clientFactory;
+    private readonly TimeSpan _budget;
     private readonly RouterOsMetrics _metrics;
     private readonly ILogger<RouterOsSwitchDriver> _logger;
 
@@ -35,6 +36,7 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
     public RouterOsSwitchDriver(
         string host,
         Func<IRouterOsApiClient> clientFactory,
+        TimeSpan budget,
         RouterOsMetrics metrics,
         ILogger<RouterOsSwitchDriver> logger)
     {
@@ -45,6 +47,7 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
 
         _host = host;
         _clientFactory = clientFactory;
+        _budget = budget > TimeSpan.Zero ? budget : TimeSpan.FromSeconds(10);
         _metrics = metrics;
         _logger = logger;
     }
@@ -120,14 +123,21 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
             ["Query"] = query,
         });
 
+        // A single linked CTS is the overall per-call budget, shared across every sub-command this query
+        // issues (e.g. GetPortsAsync's four commands), mirroring RedfishBmcDriver.ExecuteAsync. Without
+        // this, each sub-command's own per-command timeout (applied inside RouterOsApiClient) gave a
+        // multi-command query one full timeout window PER command instead of one overall budget.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(_budget);
+
         var stopwatch = Stopwatch.StartNew();
         var diagnostics = new List<DriverDiagnostic>();
         IRouterOsApiClient? client = null;
         try
         {
             client = _clientFactory();
-            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            var value = await body(client, diagnostics, cancellationToken).ConfigureAwait(false);
+            await client.ConnectAsync(budget.Token).ConfigureAwait(false);
+            var value = await body(client, diagnostics, budget.Token).ConfigureAwait(false);
 
             stopwatch.Stop();
             _metrics.RecordSuccess(query, stopwatch.Elapsed);
@@ -195,6 +205,8 @@ public sealed class RouterOsSwitchDriver : ISwitchDiscoveryDriver
             DriverErrorCode.AuthenticationFailed, "RouterOS credentials could not be resolved.", Retryable: false),
         TimeoutException => new DriverError(
             DriverErrorCode.ConnectionTimeout, "The RouterOS device did not respond within the timeout.", Retryable: true),
+        OperationCanceledException => new DriverError(
+            DriverErrorCode.ConnectionTimeout, "RouterOS discovery exceeded its overall time budget.", Retryable: true),
         SocketException socket => socket.SocketErrorCode switch
         {
             SocketError.ConnectionRefused => new DriverError(
