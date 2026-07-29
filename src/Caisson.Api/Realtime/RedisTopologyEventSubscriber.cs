@@ -133,6 +133,9 @@ public sealed class RedisTopologyEventSubscriber : BackgroundService
                 case DiscoveryJobStatusChangedEvent status:
                     await _hub.Clients.Group(TopologyGroups.ForRack(status.RackId)).DiscoveryJobStatusChanged(status);
                     break;
+                case DriftApplyJobStatusChangedEvent driftApplyStatus:
+                    await _hub.Clients.Group(TopologyGroups.ForRack(driftApplyStatus.RackId)).DriftApplyJobStatusChanged(driftApplyStatus);
+                    break;
                 case HeartbeatEvent heartbeat:
                     await _hub.Clients.All.Heartbeat(heartbeat);
                     break;
@@ -160,6 +163,7 @@ public sealed class RedisTopologyEventSubscriber : BackgroundService
         {
             SnapshotUpdatedEvent snapshot => ((Guid?)snapshot.RackId, (long?)snapshot.Seq),
             DiscoveryJobStatusChangedEvent status => (status.RackId, status.Seq),
+            DriftApplyJobStatusChangedEvent driftApplyStatus => (driftApplyStatus.RackId, driftApplyStatus.Seq),
             _ => (null, null),
         };
 

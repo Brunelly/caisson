@@ -35,6 +35,13 @@ public sealed class DomainGuardTests
     // read-only-boundary checks in Caisson.Domain.Tests.DriftGuardTests.
     private const string DriftNamespace = "Caisson.Domain.Drift";
 
+    // Story #65: Caisson.Domain.Drift.Apply is the first genuinely write/remediation model in the domain
+    // — DriftApplyJob legitimately carries "Desired"-named fields (DesiredVlanId) because it IS the
+    // apply/remediation job the M0 "no desired-state fields" guardrail was written to keep OUT of
+    // observed state. A distinct namespace (not folded into DriftNamespace above) so the exemption's
+    // rationale stays explicit and scoped to exactly the new write-path entities.
+    private const string DriftApplyNamespace = "Caisson.Domain.Drift.Apply";
+
     // Substrings that would signal write/remediation/desired-state intent leaking into observed state.
     private static readonly string[] RemediationMarkers =
     {
@@ -130,6 +137,13 @@ public sealed class DomainGuardTests
         "DesiredStateRevisionDetailDto.AuthorWhenUtc",
         // Story #64: same *.StableKey/EntityStableKey rationale — a natural-key identifier, not a secret.
         "DriftItem.SubjectKey",
+        // Story #65: DeviceDefinition.DeviceKey's stable identifier, resolved during revalidation — same
+        // *.ExternalDeviceKey/StableKey rationale as the entries above, not an authentication secret.
+        "DriftApplyJob.SwitchDeviceKey",
+        // Story #65: same false positive on the API contract DTO that surfaces the job's resolved target.
+        "DriftApplyJobDetailDto.SwitchDeviceKey",
+        // Story #65: same *.SubjectKey rationale as DriftItem.SubjectKey above, not a secret.
+        "DriftApplyJob.SubjectKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()
@@ -153,7 +167,8 @@ public sealed class DomainGuardTests
     {
         foreach (var type in DomainAssembly.GetTypes()
                      .Where(t => t is { IsClass: true, IsEnum: false }
-                         && t.Namespace != DesiredStateNamespace && t.Namespace != DriftNamespace))
+                         && t.Namespace != DesiredStateNamespace && t.Namespace != DriftNamespace
+                         && t.Namespace != DriftApplyNamespace))
         {
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {

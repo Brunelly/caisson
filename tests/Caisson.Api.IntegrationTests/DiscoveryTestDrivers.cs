@@ -2,6 +2,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.ValueObjects;
 using Caisson.Drivers.Abstractions.Bmc;
 using Caisson.Drivers.Abstractions.Identity;
+using Caisson.Drivers.Abstractions.Mutating;
 using Caisson.Drivers.Abstractions.ReadOnly;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Drivers.Abstractions.Results;
@@ -94,4 +95,59 @@ internal sealed class TestBmcDriver : IBmcDiscoveryDriver
 
     public Task<DriverResult<BmcBiosInfo>> GetBiosInfoAsync(CancellationToken cancellationToken)
         => Task.FromResult(DriverResult<BmcBiosInfo>.Ok(new BmcBiosInfo(), TimeSpan.Zero));
+}
+
+/// <summary>
+/// Deterministic write-capable driver factory for the story-65 drift-apply API tests. Vendor "Mock"
+/// mirrors <see cref="TestSwitchDriverFactory"/>'s read-side shape, resolved instead of a real RouterOS
+/// device. <see cref="Behavior"/> must be set by the test before the orchestrator is driven, since a
+/// scenario's device outcome is scripted per test.
+/// </summary>
+internal sealed class TestSwitchMutatingDriverFactory : ISwitchMutatingDriverFactory
+{
+    public DriverDescriptor Descriptor { get; } = new("Mock", null, DriverConnectionKind.Ssh, "1.0.0-test");
+
+    public Func<SetAccessVlanRequest, DriverResult<SetAccessVlanOutcome>>? Behavior { get; set; }
+
+    public int CallCount { get; private set; }
+
+    public ISwitchMutatingDriver Create(SwitchMutatingConnectionOptions options) => new TestSwitchMutatingDriver(this);
+
+    internal DriverResult<SetAccessVlanOutcome> Invoke(SetAccessVlanRequest request)
+    {
+        CallCount++;
+        return (Behavior ?? throw new InvalidOperationException(
+            "TestSwitchMutatingDriverFactory.Behavior was not configured before the driver was invoked."))(request);
+    }
+}
+
+internal sealed class TestSwitchMutatingDriver : ISwitchMutatingDriver
+{
+    private readonly TestSwitchMutatingDriverFactory _factory;
+
+    public TestSwitchMutatingDriver(TestSwitchMutatingDriverFactory factory) => _factory = factory;
+
+    public DriverDescriptor Descriptor => _factory.Descriptor;
+
+    public Task<DriverResult<SetAccessVlanOutcome>> SetAccessVlanAsync(SetAccessVlanRequest request, CancellationToken cancellationToken)
+        => Task.FromResult(_factory.Invoke(request));
+}
+
+/// <summary>Builds secret-free <see cref="SetAccessVlanOutcome"/> fixtures for the story-65 API tests.</summary>
+internal static class TestSwitchChangeOutcomes
+{
+    public static DriverResult<SetAccessVlanOutcome> Ok(SetAccessVlanRequest request, SwitchChangeReasonCode reasonCode, bool confirmed = true)
+    {
+        var before = new SwitchAccessVlanState(request.PortName, 10, Array.Empty<int>());
+        var after = new SwitchAccessVlanState(request.PortName, request.DesiredVlanId, Array.Empty<int>());
+        var verification = new VerificationResult(confirmed, request.DesiredVlanId, confirmed ? request.DesiredVlanId : 10, null);
+        var audit = new SwitchChangeAuditRecord(
+            request.CorrelationId, "10.0.0.1", request.PortName, request.DesiredVlanId, DryRun: false,
+            ConfirmWindowSeconds: 30, before, after, reasonCode, verification, DateTimeOffset.UtcNow,
+            request.ActorType, request.RequestedBy);
+        var outcome = new SetAccessVlanOutcome(
+            "10.0.0.1", request.PortName, request.DesiredVlanId, request.CorrelationId, DryRun: false,
+            new SwitchChangePlan(Array.Empty<SwitchChangeStep>()), before, after, verification, confirmed, reasonCode, audit);
+        return DriverResult<SetAccessVlanOutcome>.Ok(outcome, TimeSpan.FromMilliseconds(1));
+    }
 }

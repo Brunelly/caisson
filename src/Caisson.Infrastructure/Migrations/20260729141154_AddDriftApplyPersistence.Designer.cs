@@ -3,6 +3,7 @@ using System;
 using Caisson.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Caisson.Infrastructure.Migrations
 {
     [DbContext(typeof(CaissonDbContext))]
-    partial class CaissonDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260729141154_AddDriftApplyPersistence")]
+    partial class AddDriftApplyPersistence
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -740,12 +743,6 @@ namespace Caisson.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
-
-                    b.Property<string>("SubjectKey")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("subject_key");
 
                     b.Property<string>("SwitchDeviceKey")
                         .HasMaxLength(256)

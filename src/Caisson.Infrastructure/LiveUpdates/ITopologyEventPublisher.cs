@@ -20,6 +20,9 @@ public interface ITopologyEventPublisher
     /// <summary>Publishes a discovery-job-status-changed event. Never throws (see the type contract).</summary>
     Task PublishJobStatusChangedAsync(DiscoveryJobStatusChangedEvent @event, CancellationToken cancellationToken = default);
 
+    /// <summary>Publishes a drift-apply-job-status-changed event (story #65, AC7). Never throws (see the type contract).</summary>
+    Task PublishDriftApplyJobStatusChangedAsync(DriftApplyJobStatusChangedEvent @event, CancellationToken cancellationToken = default);
+
     /// <summary>Publishes a heartbeat event. Never throws (see the type contract).</summary>
     Task PublishHeartbeatAsync(HeartbeatEvent @event, CancellationToken cancellationToken = default);
 }

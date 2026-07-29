@@ -142,6 +142,36 @@ public static class DriftQueries
     }
 
     /// <summary>
+    /// Resolves whether drift STILL currently holds for one subject (story #65, AC3's "Both" check):
+    /// finds the rack's LATEST computed report (not just any report ever containing the id — unlike
+    /// <see cref="ItemByDriftItemIdAsync"/>, which resolves a stable id even across retention/rescans),
+    /// then looks for an item of the given type on that exact subject key within THAT report only.
+    /// Because <see cref="DriftItem.DriftItemId"/> is itself a hash of the subject plus expected/actual
+    /// values, "found in the latest report" and "still matches the anchors" are the same fact: a
+    /// content-hash lookup can never observe "found but different", so revalidation must re-resolve by
+    /// subject, not by the original id, to detect a since-changed expected/actual pair.
+    /// </summary>
+    public static async Task<DriftItem?> LatestItemBySubjectAsync(
+        this CaissonDbContext context, Guid rackId, DriftSubjectType subjectType, string subjectKey, DriftType driftType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrEmpty(subjectKey);
+
+        var report = await context.LatestReportForRackAsync(rackId, cancellationToken);
+        if (report is null)
+        {
+            return null;
+        }
+
+        return await context.DriftItems.AsNoTracking()
+            .FirstOrDefaultAsync(
+                i => i.DriftReportId == report.Id && i.SubjectType == subjectType
+                    && i.SubjectKey == subjectKey && i.DriftType == driftType,
+                cancellationToken);
+    }
+
+    /// <summary>
     /// Resolves a drift item by its stable, content-hashed <see cref="DriftItem.DriftItemId"/>, scoped to
     /// its rack. The same <c>DriftItemId</c> may legitimately appear in more than one report (ADR 0029),
     /// so this resolves the item belonging to the LATEST report that contains it.

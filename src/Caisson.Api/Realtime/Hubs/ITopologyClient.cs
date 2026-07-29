@@ -15,6 +15,9 @@ public interface ITopologyClient
     /// <summary>A discovery job for a subscribed rack changed status.</summary>
     Task DiscoveryJobStatusChanged(DiscoveryJobStatusChangedEvent @event);
 
+    /// <summary>A drift-apply job for a subscribed rack changed status (story #65, AC7).</summary>
+    Task DriftApplyJobStatusChanged(DriftApplyJobStatusChangedEvent @event);
+
     /// <summary>A liveness heartbeat (every 10s) so clients can detect staleness.</summary>
     Task Heartbeat(HeartbeatEvent @event);
 }
