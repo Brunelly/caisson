@@ -4,10 +4,13 @@
 // snapshot context, ambiguous candidates with confidence/band/reason, and unmapped reason (AC3).
 import { DatePipe } from '@angular/common';
 import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import type { DriftItemDto } from '../../drift/model/drift-contracts';
+import { DriftSeverityBadgeComponent } from '../../drift/shared/drift-severity-badge.component';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { EntityDiffDto } from '../model/topology-contracts';
 import { confidenceBandOf } from '../model/topology-graph-model';
-import type { NicGraphNode, TopologyGraphNode } from '../model/topology-graph-model';
+import type { NicGraphNode, PortGraphNode, TopologyGraphNode } from '../model/topology-graph-model';
 import { TopologyEntityService } from '../services/topology-entity.service';
 import { TopologyStateService } from '../state/topology-state.service';
 import { reasonCodeLabel } from './reason-code-labels';
@@ -49,7 +52,7 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
 @Component({
   selector: 'app-topology-details-panel',
   standalone: true,
-  imports: [DatePipe, StatusBadgeComponent],
+  imports: [DatePipe, RouterLink, StatusBadgeComponent, DriftSeverityBadgeComponent],
   styleUrl: './topology-details-panel.component.scss',
   template: `
     @if (state.selection(); as node) {
@@ -118,6 +121,28 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
           }
         }
 
+        @if (isPort(node); as port) {
+          @if (driftItemFor(port); as driftItem) {
+            <section class="details-panel__section details-panel__drift">
+              <h3>Drift detected</h3>
+              <p class="details-panel__drift-badges">
+                <span>{{ driftItem.driftType }}</span>
+                <app-drift-severity-badge [severity]="driftItem.severity" />
+              </p>
+              <p>{{ driftItem.why }}</p>
+              <p class="details-panel__drift-detected">
+                Detected {{ driftItem.createdAt | date: 'medium' }}
+              </p>
+              <a
+                class="details-panel__drift-link"
+                [routerLink]="['/racks', state.rackId(), 'drift', 'items', driftItem.driftItemId]"
+              >
+                View drift report item
+              </a>
+            </section>
+          }
+        }
+
         @if (history().length > 0) {
           <section class="details-panel__section">
             <h3>Change history</h3>
@@ -173,6 +198,23 @@ export class TopologyDetailsPanelComponent {
 
   protected isNic(node: TopologyGraphNode): NicGraphNode | null {
     return node.type === 'nic' ? node : null;
+  }
+
+  protected isPort(node: TopologyGraphNode): PortGraphNode | null {
+    return node.type === 'port' ? node : null;
+  }
+
+  /** Story #67: the full DriftItemDto for a drifted port, joined via the overlay's driftItemId — the
+   * overlay entry itself only carries {driftItemId, driftType, severity} (see
+   * drift/model/drift-topology-overlay.ts), so `why`/`createdAt` come from the state service's raw
+   * driftItems() list, loaded alongside the topology graph. Reuses the existing selection flow rather
+   * than building a second competing details surface. */
+  protected driftItemFor(port: PortGraphNode): DriftItemDto | null {
+    const entry = this.state.driftOverlay().get(port.id);
+    if (!entry) {
+      return null;
+    }
+    return this.state.driftItems().find((item) => item.driftItemId === entry.driftItemId) ?? null;
   }
 
   protected headingFor(node: TopologyGraphNode): string {

@@ -133,6 +133,15 @@ export function vlanStableKey(vlanId: number): string {
   return vlanId.toString(10);
 }
 
+/** Mirrors Caisson.Domain.Topology.Diffing.StableKeys.EscapeSegment exactly (order matters: '%' is
+ * escaped before '|', so a literal '%' in a name is never mistaken for a partially-escaped '|').
+ * Needed by story #67's drift-topology overlay (drift/model/drift-topology-overlay.ts), which must
+ * anchor-match a raw switch *name* (from a drift item's details bag) against an already-escaped
+ * `switchStableKey` without ever parsing/reconstructing a full stable key. */
+export function escapeStableKeySegment(segment: string): string {
+  return segment.replace(/%/g, '%25').replace(/\|/g, '%7C');
+}
+
 export function classifyNic(nic: NicNodeDto): MappingState {
   if (!nic.bestAttachment) {
     return 'unmapped';

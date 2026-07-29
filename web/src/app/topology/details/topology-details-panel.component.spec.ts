@@ -1,14 +1,17 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DriftItemDto } from '../../drift/model/drift-contracts';
+import type { DriftOverlayEntry } from '../../drift/model/drift-topology-overlay';
 import type {
   EntityDetailDto,
   EntityDiffDto,
   PortAttachmentDto,
   SnapshotMetadataDto,
 } from '../model/topology-contracts';
-import type { NicGraphNode } from '../model/topology-graph-model';
+import type { NicGraphNode, PortGraphNode } from '../model/topology-graph-model';
 import { TopologyEntityService } from '../services/topology-entity.service';
 import { TopologyStateService } from '../state/topology-state.service';
 import { TopologyDetailsPanelComponent } from './topology-details-panel.component';
@@ -86,15 +89,49 @@ function unmappedNic(): NicGraphNode {
   };
 }
 
+function portNode(): PortGraphNode {
+  return {
+    id: 'port:SW-1/ether5',
+    type: 'port',
+    stableKey: 'SW-1|ether5',
+    switchId: 'switch:SW-1',
+    name: 'ether5',
+    state: 'confirmed',
+    label: 'ether5',
+  };
+}
+
+function driftItem(overrides: Partial<DriftItemDto> = {}): DriftItemDto {
+  return {
+    driftItemId: 'drift-item-1',
+    driftReportId: 'report-1',
+    driftType: 'AccessVlanMismatch',
+    severity: 'High',
+    actionable: true,
+    subjectType: 'SwitchPort',
+    subjectKey: 'v1|rack|SW-1|ether5',
+    expectedValue: '200',
+    actualValue: '100',
+    why: 'Access VLAN mismatch on SW-1/ether5',
+    details: { switchName: 'SW-1', portName: 'ether5' },
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
 describe('TopologyDetailsPanelComponent', () => {
   let fixture: ComponentFixture<TopologyDetailsPanelComponent>;
-  let selection: ReturnType<typeof signal<NicGraphNode | null>>;
+  let selection: ReturnType<typeof signal<NicGraphNode | PortGraphNode | null>>;
   let clearSelection: ReturnType<typeof vi.fn>;
   let getEntity: ReturnType<typeof vi.fn>;
 
-  function setup(selectionStaleNotice = false) {
+  function setup(
+    selectionStaleNotice = false,
+    driftOverlay: ReadonlyMap<string, DriftOverlayEntry> = new Map(),
+    driftItems: DriftItemDto[] = [],
+  ) {
     TestBed.resetTestingModule();
-    selection = signal<NicGraphNode | null>(null);
+    selection = signal<NicGraphNode | PortGraphNode | null>(null);
     clearSelection = vi.fn(() => selection.set(null));
     getEntity = vi.fn(() =>
       of({
@@ -117,12 +154,15 @@ describe('TopologyDetailsPanelComponent', () => {
         createdAt: '2026-01-01T00:00:00Z',
       } as unknown as SnapshotMetadataDto),
       selectionStaleNotice: signal(selectionStaleNotice),
+      driftOverlay: signal(driftOverlay),
+      driftItems: signal(driftItems),
       clearSelection,
     };
 
     TestBed.configureTestingModule({
       imports: [TopologyDetailsPanelComponent],
       providers: [
+        provideRouter([]),
         { provide: TopologyStateService, useValue: stateStub },
         { provide: TopologyEntityService, useValue: { getEntity } },
       ],
@@ -337,5 +377,59 @@ describe('TopologyDetailsPanelComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('srv-02');
+  });
+
+  describe('drift section (story #67)', () => {
+    it('renders drift type, severity badge, why, detected date, and a link to the drift report item for a drifted port', async () => {
+      const port = portNode();
+      const overlay = new Map<string, DriftOverlayEntry>([
+        [
+          port.id,
+          { driftItemId: 'drift-item-1', driftType: 'AccessVlanMismatch', severity: 'High' },
+        ],
+      ]);
+      setup(false, overlay, [driftItem()]);
+
+      selection.set(port);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const section = fixture.nativeElement.querySelector('.details-panel__drift');
+      expect(section).toBeTruthy();
+      expect(section.textContent).toContain('AccessVlanMismatch');
+      expect(section.textContent).toContain('High severity');
+      expect(section.textContent).toContain('Access VLAN mismatch on SW-1/ether5');
+
+      const link: HTMLAnchorElement = section.querySelector('.details-panel__drift-link');
+      expect(link).toBeTruthy();
+      expect(link.getAttribute('href')).toBe('/racks/rack-1/drift/items/drift-item-1');
+    });
+
+    it('renders no drift section for a port with no overlay entry', async () => {
+      setup(false, new Map(), []);
+      selection.set(portNode());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.details-panel__drift')).toBeNull();
+    });
+
+    it('renders no drift section for a non-port selection even when the overlay is non-empty', async () => {
+      const overlay = new Map<string, DriftOverlayEntry>([
+        [
+          'port:SW-1/ether5',
+          { driftItemId: 'drift-item-1', driftType: 'AccessVlanMismatch', severity: 'High' },
+        ],
+      ]);
+      setup(false, overlay, [driftItem()]);
+      selection.set(confirmedNic());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.details-panel__drift')).toBeNull();
+    });
   });
 });
