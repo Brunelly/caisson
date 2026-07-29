@@ -192,7 +192,12 @@ public static class StableKeys
     /// themselves are unambiguous on decode (decoding is never actually performed — keys are opaque and
     /// compared only for equality — but the encoding stays reversible in principle).
     /// </summary>
-    private static string EscapeSegment(string segment)
+    /// <remarks>
+    /// Internal (not private) so <c>Caisson.Domain.Drift.Diffing.DriftSubjectKeys</c> (story #64) can
+    /// reuse the same segment-collision defence for the versioned drift subject-key scheme, rather than
+    /// duplicating this escaping logic.
+    /// </remarks>
+    internal static string EscapeSegment(string segment)
         => segment.Replace("%", "%25", StringComparison.Ordinal).Replace("|", "%7C", StringComparison.Ordinal);
 
     private static string Coalesce(string entity, params string?[] candidates)

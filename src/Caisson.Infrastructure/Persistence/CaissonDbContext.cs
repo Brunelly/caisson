@@ -1,5 +1,6 @@
 using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
+using Caisson.Domain.Drift;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
 
@@ -82,6 +83,12 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Append-only desired-state schema validation errors.</summary>
     public DbSet<DesiredStateValidationError> DesiredStateValidationErrors => Set<DesiredStateValidationError>();
+
+    /// <summary>Mutable, upsertable per-(rack, desired revision, observed snapshot) drift reports (story #64).</summary>
+    public DbSet<DriftReport> DriftReports => Set<DriftReport>();
+
+    /// <summary>Drift findings belonging to a <see cref="DriftReport"/>.</summary>
+    public DbSet<DriftItem> DriftItems => Set<DriftItem>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
