@@ -23,6 +23,10 @@ public static class DriftServiceCollectionExtensions
         services.AddOptions<DriftComputationOptions>().Bind(configuration.GetSection(DriftComputationOptions.SectionName));
         services.TryAddScoped<IDriftComputationService, DriftComputationService>();
 
+        // Fail-open default (mirrors AddCaissonPersistence's NoOpTopologyEventPublisher default):
+        // AddCaissonDrift overrides this with the real bounded-channel signal when Orchestration is wired.
+        services.TryAddSingleton<IDriftRecomputeSignal, NoOpDriftRecomputeSignal>();
+
         return services;
     }
 }

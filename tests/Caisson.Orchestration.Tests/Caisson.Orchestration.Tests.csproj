@@ -21,6 +21,11 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="coverlet.collector" />
+    <!-- DriftSchedulerTests exercises DriftScheduler.TickAsync against a real Postgres (mirrors
+         Caisson.Infrastructure.Tests.PostgresFixture) — TickAsync's LatestVersionPerRackAsync uses
+         FromSqlRaw, which an in-memory provider cannot serve. -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 
 </Project>

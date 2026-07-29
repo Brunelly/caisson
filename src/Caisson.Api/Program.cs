@@ -69,6 +69,10 @@ builder.Services.AddCaissonOrchestration(builder.Configuration);
 // and webhook drainer background services, and the shared idempotent RunAsync entry point.
 builder.Services.AddCaissonGitIngestion(builder.Configuration);
 
+// Drift computation (story #64, ADR 0030): the compute service, the real event-signal, and the
+// scheduler/event-runner/retention-pruner background services.
+builder.Services.AddCaissonDrift(builder.Configuration);
+
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
 // to boot rather than run with an ambiguous or silently-ignored security setting.

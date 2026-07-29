@@ -56,6 +56,7 @@ internal static class SeedData
         {
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             first = await service.IngestAsync(Request(rackId, Observed("node-1"), Correlation(), V1At));
         }
@@ -64,6 +65,7 @@ internal static class SeedData
         {
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             second = await service.IngestAsync(Request(rackId, Observed("node-1-renamed"), Correlation(), V2At));
         }

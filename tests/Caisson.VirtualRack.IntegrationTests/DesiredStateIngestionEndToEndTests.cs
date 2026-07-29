@@ -148,6 +148,7 @@ public sealed class DesiredStateIngestionEndToEndTests : IAsyncLifetime
 
         var service = new DesiredStateIngestionService(
             context, git, new GuidTopologyIdGenerator(), TimeProvider.System, options, new GitIngestionMetrics(),
+            new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
             NullLogger<DesiredStateIngestionService>.Instance);
 
         return await service.RunAsync(IngestionTriggerType.Poll, webhookDeliveryId: null, Guid.NewGuid(), default);

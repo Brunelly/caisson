@@ -6,6 +6,7 @@ using Caisson.Domain.DesiredState;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Git.ReadOnly;
@@ -46,6 +47,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
     private readonly TimeProvider _time;
     private readonly IOptions<GitIngestionOptions> _options;
     private readonly GitIngestionMetrics _metrics;
+    private readonly IDriftRecomputeSignal _driftSignal;
     private readonly ILogger<DesiredStateIngestionService> _logger;
 
     public DesiredStateIngestionService(
@@ -55,6 +57,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         TimeProvider time,
         IOptions<GitIngestionOptions> options,
         GitIngestionMetrics metrics,
+        IDriftRecomputeSignal driftSignal,
         ILogger<DesiredStateIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -63,6 +66,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        _driftSignal = driftSignal ?? throw new ArgumentNullException(nameof(driftSignal));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -308,7 +312,36 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _context.DesiredSwitchIntents.AddRange(materialized.Switches);
         _context.DesiredPortIntents.AddRange(materialized.Ports);
         _context.AuditEvents.Add(audit);
+
+        await EnqueueDriftRecomputeAsync(document.RackSlug, run.CorrelationId, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Story #64, AC4: nudge a low-latency drift recompute for the rack this revision belongs to, resolved
+    /// from the git-ingested <c>rackSlug</c> to the observed-state <c>Rack.Id</c> the drift engine keys on.
+    /// A rack slug with no aliased observed-state <c>Rack</c> row yet has nothing to compute drift against,
+    /// so it is silently skipped rather than treated as an error. The rack-lookup query can genuinely
+    /// fail (e.g. a transient DB fault); that must never abort desired-state ingestion (AC4), so it is
+    /// caught here — <see cref="IDriftRecomputeSignal.Enqueue"/> itself never throws.
+    /// </summary>
+    private async Task EnqueueDriftRecomputeAsync(string rackSlug, Guid correlationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rack = await _context.Racks.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.ExternalKey == rackSlug, cancellationToken);
+            if (rack is not null)
+            {
+                _driftSignal.Enqueue(rack.Id);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex, "Drift recompute enqueue failed (swallowed) rackSlug={RackSlug} correlationId={CorrelationId}",
+                rackSlug, correlationId);
+        }
     }
 
     /// <summary>

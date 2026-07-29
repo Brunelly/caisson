@@ -246,6 +246,7 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
     {
         var service = new TopologySnapshotIngestionService(
             context, new GuidTopologyIdGenerator(), publisher ?? new LiveUpdates.NoOpTopologyEventPublisher(),
+            new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TopologySnapshotIngestionService>.Instance);
         var request = new TopologyIngestionRequest(
             rackId, input, result, TriggerType.OnDemand, "svc-discovery", ActorType.ServiceAccount,

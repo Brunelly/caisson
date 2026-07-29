@@ -321,5 +321,6 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
             TimeProvider.System,
             Options.Create(new GitIngestionOptions { Enabled = true, RepoUrl = RepoUrl }),
             new GitIngestionMetrics(),
+            new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
             NullLogger<DesiredStateIngestionService>.Instance);
 }
