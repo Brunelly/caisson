@@ -6,6 +6,7 @@ using System.Text.Json;
 using Caisson.Api.Contracts;
 using Caisson.Domain.DesiredState;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace Caisson.Api.IntegrationTests;
@@ -91,6 +92,210 @@ public sealed class DesiredStateApiTests
         body!.RackSlug.Should().Be(rackSlug);
         body.Rack.Switches.Should().ContainSingle();
         body.Rack.Switches[0].Ports.Should().ContainSingle().Which.AccessVlan.Should().Be(77);
+    }
+
+    [SkippableTheory]
+    [InlineData("Admin")]
+    [InlineData("Operator")]
+    [InlineData("ReadOnly")]
+    [InlineData("ServiceAccount")]
+    public async Task Every_read_role_can_read_the_new_revision_endpoints(string role)
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-rbac-" + Guid.NewGuid().ToString("N");
+        var (versionId, commitSha) = await SeedActiveVersionAsync(rackSlug);
+
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions", role))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions/{versionId}", role))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions/by-commit/{commitSha}", role))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [SkippableFact]
+    public async Task Revision_endpoints_are_unauthorized_for_anonymous_and_forbidden_for_an_unrecognised_role()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-rbac-neg-" + Guid.NewGuid().ToString("N");
+
+        (await _factory.CreateClient().GetAsync($"/api/desired-state/racks/{rackSlug}/revisions"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions", "SomeUnrecognisedRole"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [SkippableFact]
+    public async Task Active_desired_state_sets_a_strong_etag_and_honours_if_none_match()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-etag-" + Guid.NewGuid().ToString("N");
+        await SeedActiveVersionAsync(rackSlug);
+
+        var first = await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/active", "ReadOnly");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        var etag = first.Headers.ETag?.Tag;
+        etag.Should().NotBeNullOrEmpty();
+
+        var matched = await SendWithIfNoneMatchAsync($"/api/desired-state/racks/{rackSlug}/active", etag!);
+        matched.StatusCode.Should().Be(HttpStatusCode.NotModified);
+
+        var stale = await SendWithIfNoneMatchAsync($"/api/desired-state/racks/{rackSlug}/active", "\"stale-etag\"");
+        stale.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [SkippableFact]
+    public async Task Revision_by_id_and_by_commit_return_the_full_payload_and_404_across_racks_with_a_machine_readable_code()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackA = "rack-detail-a-" + Guid.NewGuid().ToString("N");
+        var rackB = "rack-detail-b-" + Guid.NewGuid().ToString("N");
+        var (versionId, commitSha) = await SeedActiveVersionAsync(rackA);
+        await SeedActiveVersionAsync(rackB);
+
+        var byId = await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackA}/revisions/{versionId}", "ReadOnly");
+        byId.StatusCode.Should().Be(HttpStatusCode.OK);
+        var detail = await byId.Content.ReadFromJsonAsync<DesiredStateRevisionDetailDto>();
+        detail!.RackSlug.Should().Be(rackA);
+        detail.CommitSha.Should().Be(commitSha);
+
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackA}/revisions/by-commit/{commitSha}", "ReadOnly"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Cross-rack: neither the id nor the commit belonging to rack A resolves under rack B (NFR1).
+        var crossById = await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackB}/revisions/{versionId}", "ReadOnly");
+        crossById.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackB}/revisions/by-commit/{commitSha}", "ReadOnly"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var problem = await crossById.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("code").GetString().Should().Be("DESIRED_STATE_REVISION_NOT_FOUND");
+    }
+
+    [SkippableFact]
+    public async Task Active_desired_state_404_carries_the_machine_readable_not_found_code()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        var response = await SendAsAsync(HttpMethod.Get, "/api/desired-state/racks/no-such-rack/active", "ReadOnly");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        problem.GetProperty("code").GetString().Should().Be("DESIRED_STATE_NOT_FOUND");
+    }
+
+    [SkippableFact]
+    public async Task Revision_list_JSON_excludes_the_payload_while_by_id_includes_it()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-listshape-" + Guid.NewGuid().ToString("N");
+        var (versionId, _) = await SeedActiveVersionAsync(rackSlug);
+
+        var listBody = await (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions", "ReadOnly"))
+            .Content.ReadAsStringAsync();
+        listBody.Should().NotContain("desiredStateJson", "the history list must be metadata-only (AC3, NFR3)");
+
+        var detailBody = await (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions/{versionId}", "ReadOnly"))
+            .Content.ReadAsStringAsync();
+        detailBody.Should().Contain("desiredStateJson");
+    }
+
+    [SkippableFact]
+    public async Task Revision_history_pagination_round_trips_with_no_duplicates_or_gaps()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-history-page-" + Guid.NewGuid().ToString("N");
+        var seededIds = new List<Guid>();
+        for (var i = 0; i < 5; i++)
+        {
+            var (versionId, _) = await SeedActiveVersionAsync(rackSlug, DateTime.UtcNow.AddSeconds(i));
+            seededIds.Add(versionId);
+        }
+
+        var seen = new List<Guid>();
+        string? cursor = null;
+        do
+        {
+            var url = $"/api/desired-state/racks/{rackSlug}/revisions?pageSize=2"
+                + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            var response = await SendAsAsync(HttpMethod.Get, url, "Admin");
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var page = await response.Content.ReadFromJsonAsync<PagedResult<DesiredStateRevisionMetadataDto>>();
+            seen.AddRange(page!.Items.Select(i => i.Id));
+            cursor = page.NextCursor;
+        }
+        while (cursor is not null && seen.Count < seededIds.Count);
+
+        seen.Should().BeEquivalentTo(seededIds, "keyset pagination must return every seeded revision exactly once");
+        seen.Should().OnlyHaveUniqueItems();
+    }
+
+    [SkippableTheory]
+    [InlineData("POST")]
+    [InlineData("PUT")]
+    [InlineData("DELETE")]
+    [InlineData("PATCH")]
+    public async Task No_non_get_verb_exists_on_any_desired_state_revision_route(string method)
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-verb-" + Guid.NewGuid().ToString("N");
+        var routes = new[]
+        {
+            $"/api/desired-state/racks/{rackSlug}/active",
+            $"/api/desired-state/racks/{rackSlug}/revisions",
+            $"/api/desired-state/racks/{rackSlug}/revisions/{Guid.NewGuid()}",
+            $"/api/desired-state/racks/{rackSlug}/revisions/by-commit/some-sha",
+        };
+
+        foreach (var route in routes)
+        {
+            var response = await SendAsAsync(new HttpMethod(method), route, "Admin");
+            response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
+        }
+    }
+
+    [SkippableFact]
+    public async Task Reading_a_revision_writes_a_desired_state_read_audit_event()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+        var rackSlug = "rack-audit-" + Guid.NewGuid().ToString("N");
+        var (versionId, _) = await SeedActiveVersionAsync(rackSlug);
+
+        (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions/{versionId}", "ReadOnly"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Audit is written off the request path (ChannelAuditEventWriter/AuditEventBackgroundWriter,
+        // finding #5) and is eventually — not synchronously — consistent, so poll rather than read once.
+        var audit = await PollForAuditEventAsync("desired-state.revision.read", versionId.ToString());
+        audit.Should().NotBeNull("every desired-state revision read must write an audit event (AC5)");
+    }
+
+    private async Task<Caisson.Domain.Topology.TopologyAuditEvent?> PollForAuditEventAsync(string action, string? targetId)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var context = _factory.CreateDbContext();
+            var found = await context.AuditEvents.SingleOrDefaultAsync(a => a.Action == action && a.TargetId == targetId);
+            if (found is not null)
+            {
+                return found;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+
+        return null;
+    }
+
+    private async Task<HttpResponseMessage> SendWithIfNoneMatchAsync(string url, string etag)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add(TestAuthHandler.UserHeader, "tester");
+        request.Headers.Add(TestAuthHandler.RolesHeader, "ReadOnly");
+        request.Headers.TryAddWithoutValidation("If-None-Match", etag);
+        return await _factory.CreateClient().SendAsync(request);
     }
 
     [SkippableFact]
@@ -204,18 +409,24 @@ public sealed class DesiredStateApiTests
         => "sha256=" + Convert.ToHexString(
             HMACSHA256.HashData(Encoding.UTF8.GetBytes(FixedGitIngestionSecretsResolver.Secret), body)).ToLowerInvariant();
 
-    private async Task SeedActiveVersionAsync(string rackSlug)
+    private async Task<(Guid VersionId, string CommitSha)> SeedActiveVersionAsync(
+        string rackSlug, DateTime? createdAtUtc = null)
     {
+        var commitSha = "api-test-sha-" + Guid.NewGuid().ToString("N");
+        var createdAt = createdAtUtc ?? DateTime.UtcNow;
+
         await using var context = _factory.CreateDbContext();
         var run = new DesiredStateIngestionRun(
             Guid.NewGuid(), IngestionTriggerType.Poll, DateTime.UtcNow, "https://example.com/repo.git", "main",
             Guid.NewGuid());
-        run.RecordCommit("api-test-sha", "author", DateTime.UtcNow, "message");
+        run.RecordCommit(commitSha, "author", DateTime.UtcNow, "message");
         run.Succeed(DateTime.UtcNow);
         context.DesiredStateIngestionRuns.Add(run);
 
         var version = new DesiredStateVersion(
-            Guid.NewGuid(), rackSlug, "api-test-sha", run.Id, DateTime.UtcNow, "hash-" + rackSlug);
+            Guid.NewGuid(), rackSlug, commitSha, run.Id, createdAt, "hash-" + commitSha,
+            "{\"rackSlug\":\"" + rackSlug + "\",\"switches\":[]}", DesiredStateSchema.CurrentSchemaVersion,
+            "desired-state-ingestion", "author", "author@example.com", createdAt);
         var rack = new DesiredRackIntent(Guid.NewGuid(), version.Id, rackSlug, rackSlug);
         var switchIntent = new DesiredSwitchIntent(Guid.NewGuid(), rack.Id, "sw-a", $"{rackSlug}|sw-a");
         var port = new DesiredPortIntent(Guid.NewGuid(), switchIntent.Id, "eth0", $"{rackSlug}|sw-a|eth0", 77);
@@ -225,6 +436,8 @@ public sealed class DesiredStateApiTests
         context.DesiredSwitchIntents.Add(switchIntent);
         context.DesiredPortIntents.Add(port);
         await context.SaveChangesAsync();
+
+        return (version.Id, commitSha);
     }
 
     private async Task<List<Guid>> SeedRunsAsync(string marker, int count)

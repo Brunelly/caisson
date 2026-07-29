@@ -27,6 +27,18 @@ public sealed class DesiredStateVersionConfiguration : IEntityTypeConfiguration<
         builder.Property(v => v.IsActive).IsRequired();
         builder.Property(v => v.ContentHash).IsRequired().HasMaxLength(64);
 
+        // Story #63: the full materialised payload (never selected by the metadata-only history query,
+        // NFR3) plus revision provenance. Author fields stay nullable end-to-end (AC1: git may omit them).
+        builder.Property(v => v.DesiredStateJson)
+            .IsRequired()
+            .HasColumnType("jsonb")
+            .HasMaxLength(DesiredStateSchema.MaxDesiredStateJsonLength);
+        builder.Property(v => v.SchemaVersion).IsRequired();
+        builder.Property(v => v.IngestedBy).IsRequired().HasMaxLength(DesiredStateSchema.MaxIngestedByLength);
+        builder.Property(v => v.AuthorName).HasMaxLength(DesiredStateSchema.MaxAuthorNameLength);
+        builder.Property(v => v.AuthorEmail).HasMaxLength(DesiredStateSchema.MaxAuthorEmailLength);
+        builder.Property(v => v.AuthorWhenUtc).HasColumnType("timestamp with time zone");
+
         // Restrict, not cascade: a version references the run that produced it, but the run's own
         // lifecycle (mutable, non-append-only) must never ripple into deleting historical versions.
         builder.HasOne<DesiredStateIngestionRun>()
@@ -39,5 +51,12 @@ public sealed class DesiredStateVersionConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(v => new { v.RackSlug, v.CreatedAtUtc, v.Id })
             .IsDescending(false, true, true)
             .HasDatabaseName("ix_desired_state_version_rack_slug_created_at_id");
+
+        // Story #63: serves the by-commit lookup and states the per-rack SHA-idempotency invariant
+        // (one ingested version per rack per commit) at the DB level. Not unique: a rack file that is
+        // unchanged since its last ingested commit is intentionally skipped (no new row), so this index
+        // is a lookup aid, not a uniqueness guard.
+        builder.HasIndex(v => new { v.RackSlug, v.CommitSha })
+            .HasDatabaseName("ix_desired_state_version_rack_slug_commit_sha");
     }
 }

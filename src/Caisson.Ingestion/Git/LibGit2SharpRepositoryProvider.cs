@@ -48,7 +48,7 @@ public sealed class LibGit2SharpRepositoryProvider : IGitRepositoryProvider
                     ?? throw new InvalidOperationException(
                         $"Branch 'origin/{branch}' was not found after fetching '{_repoUrl}'.");
                 var tip = branchRef.Tip;
-                return new GitCommitInfo(tip.Sha, tip.Author.Name, tip.Author.When.UtcDateTime, tip.Message);
+                return new GitCommitInfo(tip.Sha, tip.Author.Name, tip.Author.When.UtcDateTime, tip.Message, tip.Author.Email);
             },
             cancellationToken).ConfigureAwait(false);
     }

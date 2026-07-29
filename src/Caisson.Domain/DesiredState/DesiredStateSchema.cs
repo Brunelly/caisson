@@ -69,6 +69,29 @@ public static partial class DesiredStateSchema
     public const int MaxErrorSummaryLength = 2048;
 
     /// <summary>
+    /// The current desired-state payload schema version stamped on every newly-persisted
+    /// <see cref="DesiredStateVersion"/> (story #63, AC1). Bumping this is a forward-compatible signal
+    /// for future readers; it does not itself trigger a migration.
+    /// </summary>
+    public const int CurrentSchemaVersion = 1;
+
+    /// <summary>Maximum length of a revision's captured git commit author name (story #63, AC1).</summary>
+    public const int MaxAuthorNameLength = 256;
+
+    /// <summary>Maximum length of a revision's captured git commit author email (story #63, AC1).</summary>
+    public const int MaxAuthorEmailLength = 256;
+
+    /// <summary>
+    /// Maximum length, in characters, of a revision's serialized <c>DesiredStateJson</c> payload (story
+    /// #63, AC1) — mirrors <see cref="MaxYamlDocumentBytes"/>, the ceiling already established for the
+    /// parsed in-memory document this payload is materialised from.
+    /// </summary>
+    public const int MaxDesiredStateJsonLength = MaxYamlDocumentBytes;
+
+    /// <summary>Maximum length of the ingesting service principal's identity string (story #63, AC1).</summary>
+    public const int MaxIngestedByLength = 128;
+
+    /// <summary>
     /// DNS-label-shaped rack slug: lowercase alphanumeric segments separated by single hyphens, no
     /// leading/trailing hyphen (mirrors the <c>desired-state/racks/&lt;rackSlug&gt;.yaml</c> path
     /// convention, AC1 examples).

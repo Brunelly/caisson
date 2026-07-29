@@ -38,10 +38,20 @@ public static class CursorCodec
     public static string Encode(DateTime timestampUtc, Guid id, Guid rackId, string endpoint)
     {
         ArgumentException.ThrowIfNullOrEmpty(endpoint);
+        return EncodeCore(timestampUtc, id, rackId.ToString("N"), endpoint);
+    }
 
-        var payload = timestampUtc.Ticks.ToString(CultureInfo.InvariantCulture) + "|" + id.ToString("N");
-        var mac = ComputeMac(payload, rackId, endpoint);
-        return ToBase64Url(Encoding.UTF8.GetBytes(payload + "|" + mac));
+    /// <summary>
+    /// As the Guid-rack overload, but binding the cursor's HMAC to a string <paramref name="subject"/>
+    /// instead (story #63) — desired-state revision history is scoped by string <c>rackSlug</c>, not the
+    /// Guid observed-state <c>Rack.Id</c>, so a cursor issued for one rack slug can never be replayed
+    /// against another rack's pagination.
+    /// </summary>
+    public static string Encode(DateTime timestampUtc, Guid id, string subject, string endpoint)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(subject);
+        ArgumentException.ThrowIfNullOrEmpty(endpoint);
+        return EncodeCore(timestampUtc, id, subject, endpoint);
     }
 
     /// <summary>
@@ -52,6 +62,28 @@ public static class CursorCodec
         string? cursor, Guid rackId, string endpoint, out DateTime timestampUtc, out Guid id)
     {
         ArgumentException.ThrowIfNullOrEmpty(endpoint);
+        return TryDecodeCore(cursor, rackId.ToString("N"), endpoint, out timestampUtc, out id);
+    }
+
+    /// <summary>As the Guid-rack overload, but verifying the HMAC against a string <paramref name="subject"/> (story #63).</summary>
+    public static bool TryDecode(
+        string? cursor, string subject, string endpoint, out DateTime timestampUtc, out Guid id)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(subject);
+        ArgumentException.ThrowIfNullOrEmpty(endpoint);
+        return TryDecodeCore(cursor, subject, endpoint, out timestampUtc, out id);
+    }
+
+    private static string EncodeCore(DateTime timestampUtc, Guid id, string subject, string endpoint)
+    {
+        var payload = timestampUtc.Ticks.ToString(CultureInfo.InvariantCulture) + "|" + id.ToString("N");
+        var mac = ComputeMac(payload, subject, endpoint);
+        return ToBase64Url(Encoding.UTF8.GetBytes(payload + "|" + mac));
+    }
+
+    private static bool TryDecodeCore(
+        string? cursor, string subject, string endpoint, out DateTime timestampUtc, out Guid id)
+    {
         timestampUtc = default;
         id = default;
 
@@ -78,7 +110,7 @@ public static class CursorCodec
         }
 
         var payload = parts[0] + "|" + parts[1];
-        var expectedMac = ComputeMac(payload, rackId, endpoint);
+        var expectedMac = ComputeMac(payload, subject, endpoint);
         if (!FixedTimeEquals(expectedMac, parts[2]))
         {
             return false;
@@ -97,9 +129,9 @@ public static class CursorCodec
         return true;
     }
 
-    private static string ComputeMac(string payload, Guid rackId, string endpoint)
+    private static string ComputeMac(string payload, string subject, string endpoint)
     {
-        var canonical = rackId.ToString("N") + "|" + endpoint + "|" + payload;
+        var canonical = subject + "|" + endpoint + "|" + payload;
         var mac = HMACSHA256.HashData(HmacKey.Value, Encoding.UTF8.GetBytes(canonical));
         return Convert.ToHexString(mac.AsSpan(0, MacBytes)).ToLowerInvariant();
     }

@@ -105,6 +105,21 @@ public sealed class DomainGuardTests
         "DesiredRackIntentDto.StableKey",
         "DesiredSwitchIntentDto.StableKey",
         "DesiredPortIntentDto.StableKey",
+        // Story #63: the git commit author's name/email/timestamp on the persisted revision and its read
+        // DTOs — same "Author contains Auth" false positive as DesiredStateIngestionRun.CommitAuthor
+        // above, not an authentication credential.
+        "DesiredStateVersion.AuthorName",
+        "DesiredStateVersion.AuthorEmail",
+        "DesiredStateVersion.AuthorWhenUtc",
+        "DesiredStateActiveDto.AuthorName",
+        "DesiredStateActiveDto.AuthorEmail",
+        "DesiredStateActiveDto.AuthorWhenUtc",
+        "DesiredStateRevisionMetadataDto.AuthorName",
+        "DesiredStateRevisionMetadataDto.AuthorEmail",
+        "DesiredStateRevisionMetadataDto.AuthorWhenUtc",
+        "DesiredStateRevisionDetailDto.AuthorName",
+        "DesiredStateRevisionDetailDto.AuthorEmail",
+        "DesiredStateRevisionDetailDto.AuthorWhenUtc",
     };
 
     public static IEnumerable<object[]> ObservedProperties()

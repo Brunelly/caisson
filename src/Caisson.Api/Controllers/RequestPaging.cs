@@ -59,4 +59,43 @@ internal static class RequestPaging
 
         return true;
     }
+
+    /// <summary>
+    /// As the Guid-rack overload, but binding the cursor to a string <paramref name="rackSlug"/> (story
+    /// #63) — desired-state revision history is scoped by string <c>rackSlug</c>, not the Guid
+    /// observed-state <c>Rack.Id</c>, so a history cursor issued for one rack can never be replayed
+    /// against another rack's pagination.
+    /// </summary>
+    public static bool TryResolve(
+        int? pageSize,
+        string? cursor,
+        string rackSlug,
+        string endpoint,
+        out int limit,
+        out KeysetPosition? after,
+        out (string Field, string Message)? error)
+    {
+        limit = pageSize ?? DefaultPageSize;
+        after = null;
+        error = null;
+
+        if (pageSize is { } size && (size < 1 || size > MaxPageSize))
+        {
+            error = (nameof(pageSize), $"pageSize must be between 1 and {MaxPageSize}.");
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            if (!CursorCodec.TryDecode(cursor, rackSlug, endpoint, out var ts, out var id))
+            {
+                error = (nameof(cursor), "cursor is not a valid pagination cursor.");
+                return false;
+            }
+
+            after = new KeysetPosition(ts, id);
+        }
+
+        return true;
+    }
 }

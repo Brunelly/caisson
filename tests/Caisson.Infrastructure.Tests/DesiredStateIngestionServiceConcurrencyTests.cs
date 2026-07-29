@@ -116,6 +116,25 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
 
         var tree = await verify.ActiveVersionWithTreeAsync("rack-valid");
         tree!.Ports.Should().ContainSingle().Which.AccessVlan.Should().Be(42);
+
+        // Story #63, AC1: the new revision-metadata fields are populated (author is nullable-tolerant —
+        // FakeGitRepositoryProvider's NextCommit still carries a plain author name). Parsed rather than
+        // substring-matched: Postgres's jsonb column re-canonicalizes on storage (different key order/
+        // whitespace than the serializer's own output), so only the round-tripped VALUE is asserted.
+        using (var payload = System.Text.Json.JsonDocument.Parse(active.DesiredStateJson))
+        {
+            payload.RootElement.GetProperty("rackSlug").GetString().Should().Be("rack-valid");
+        }
+
+        active.SchemaVersion.Should().Be(DesiredStateSchema.CurrentSchemaVersion);
+        active.IngestedBy.Should().NotBeNullOrEmpty();
+        active.AuthorName.Should().Be("author");
+
+        // Story #63, AC5: the ingestion audit event is written in the same atomic save as the version.
+        var audit = await verify.AuditEvents.SingleAsync(a => a.TargetId == active.Id.ToString());
+        audit.Action.Should().Be("desired-state.revision.ingested");
+        audit.TargetType.Should().Be("desired-state-version");
+        audit.CorrelationId.Should().Be(run.CorrelationId);
     }
 
     [Fact]
@@ -242,6 +261,10 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
         await using var finalVerify = _fixture.CreateContext();
         (await finalVerify.ActiveVersionForRackAsync(rackSlug))!.Id.Should().Be(firstVersionId);
         (await finalVerify.DesiredStateVersions.CountAsync(v => v.RackSlug == rackSlug)).Should().Be(1);
+
+        // Story #63, AC5: an unchanged-content replay must not double-write the ingestion audit event.
+        (await finalVerify.AuditEvents.CountAsync(
+            a => a.Action == "desired-state.revision.ingested" && a.TargetId == firstVersionId.ToString())).Should().Be(1);
     }
 
     [Fact]

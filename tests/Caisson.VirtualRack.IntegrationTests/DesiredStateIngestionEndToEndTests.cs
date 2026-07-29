@@ -81,6 +81,18 @@ public sealed class DesiredStateIngestionEndToEndTests : IAsyncLifetime
         ports[VirtualRackDefinition.AmbiguousPortA].AccessVlan.Should().Be(VirtualRackDefinition.AmbiguousVlanA);
         ports[VirtualRackDefinition.AmbiguousPortB].AccessVlan.Should().Be(VirtualRackDefinition.AmbiguousVlanB);
         ports[VirtualRackDefinition.UnmappedPort].AccessVlan.Should().Be(VirtualRackDefinition.UnmappedPortVlan);
+
+        // Story #63, AC1: real LibGit2Sharp commit author name/email plumb through end-to-end, the
+        // payload is a non-empty materialised snapshot, and schema/ingestedBy are stamped.
+        tree.Version.AuthorName.Should().Be("Caisson Test");
+        tree.Version.AuthorEmail.Should().Be("test@example.com");
+        tree.Version.DesiredStateJson.Should().NotBeNullOrWhiteSpace();
+        tree.Version.SchemaVersion.Should().Be(DesiredStateSchema.CurrentSchemaVersion);
+        tree.Version.IngestedBy.Should().NotBeNullOrWhiteSpace();
+
+        // Story #63, AC5: the ingestion audit event is persisted alongside the version.
+        var audit = await context.AuditEvents.SingleAsync(a => a.TargetId == tree.Version.Id.ToString());
+        audit.Action.Should().Be("desired-state.revision.ingested");
     }
 
     [SkippableFact]
