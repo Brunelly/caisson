@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
     <!-- Story-8 discovery job concurrency tests exercise the shared enqueue seam + claim (ADR 0013). -->
     <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <!-- Story #62 desired-state ingestion concurrency tests exercise the shared idempotent RunAsync
+         seam against a real Postgres, mirroring the DiscoveryJobConcurrencyTests pattern above. -->
+    <ProjectReference Include="..\..\src\Caisson.Ingestion\Caisson.Ingestion.csproj" />
   </ItemGroup>
 
   <ItemGroup>

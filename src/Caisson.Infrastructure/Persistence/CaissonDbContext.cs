@@ -1,3 +1,4 @@
+using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
@@ -63,6 +64,24 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Per-rack recurring discovery schedules.</summary>
     public DbSet<RackDiscoverySchedule> RackDiscoverySchedules => Set<RackDiscoverySchedule>();
+
+    /// <summary>Git-backed desired-state ingestion runs (story #62).</summary>
+    public DbSet<DesiredStateIngestionRun> DesiredStateIngestionRuns => Set<DesiredStateIngestionRun>();
+
+    /// <summary>Append-only per-rack-per-commit desired-state versions.</summary>
+    public DbSet<DesiredStateVersion> DesiredStateVersions => Set<DesiredStateVersion>();
+
+    /// <summary>Append-only rack-level desired-state intent nodes.</summary>
+    public DbSet<DesiredRackIntent> DesiredRackIntents => Set<DesiredRackIntent>();
+
+    /// <summary>Append-only switch-level desired-state intent nodes.</summary>
+    public DbSet<DesiredSwitchIntent> DesiredSwitchIntents => Set<DesiredSwitchIntent>();
+
+    /// <summary>Append-only port-level desired-state intent nodes.</summary>
+    public DbSet<DesiredPortIntent> DesiredPortIntents => Set<DesiredPortIntent>();
+
+    /// <summary>Append-only desired-state schema validation errors.</summary>
+    public DbSet<DesiredStateValidationError> DesiredStateValidationErrors => Set<DesiredStateValidationError>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

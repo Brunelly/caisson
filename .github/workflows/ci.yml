@@ -86,6 +86,12 @@ jobs:
       - name: Domain unit tests
         run: dotnet test tests/Caisson.Domain.Tests --no-build -c Release
 
+      # Story #62: DB-free git adapter/YAML parser/validator/materialiser/HMAC/scheduler/runner tests —
+      # no Postgres, no real Git repository (a fake IGitRepositoryProvider covers the DB-touching
+      # concurrency/partial-accept cases, which live in the Infrastructure integration tests below).
+      - name: Desired-state ingestion unit tests
+        run: dotnet test tests/Caisson.Ingestion.Tests --no-build -c Release
+
       - name: Driver abstraction unit tests
         run: dotnet test tests/Caisson.Drivers.Abstractions.Tests --no-build -c Release
 

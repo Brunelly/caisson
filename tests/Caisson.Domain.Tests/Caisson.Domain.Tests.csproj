@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\Caisson.Api\Caisson.Api.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Ingestion\Caisson.Ingestion.csproj" />
   </ItemGroup>
 
   <ItemGroup>

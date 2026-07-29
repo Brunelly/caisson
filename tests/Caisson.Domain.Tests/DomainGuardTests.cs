@@ -6,7 +6,7 @@ using Xunit;
 namespace Caisson.Domain.Tests;
 
 /// <summary>
-/// M0 guardrails enforced by reflection (NFR5 and the read-only scope): the observed-state model must
+/// M0 guardrails enforced by reflection (NFR5 and the read-only scope): the OBSERVED-state model must
 /// contain no remediation/desired-state fields and no credential/secret/PII-shaped fields. Finding #27
 /// broadens the no-credentials sweep beyond <c>Caisson.Domain</c> to the contract/DTO/options types of
 /// <c>Caisson.Api</c>, <c>Caisson.Infrastructure</c> and <c>Caisson.Orchestration</c> — the layers that
@@ -16,9 +16,18 @@ namespace Caisson.Domain.Tests;
 /// be explicitly reviewed and added to <see cref="ReviewedNonSecretProperties"/> rather than silently
 /// passing — so a genuinely new secret-shaped property fails loudly instead of blending in.
 /// </summary>
+/// <remarks>
+/// Story #62 deliberately introduces a real, first-class desired-state model under the
+/// <c>Caisson.Domain.DesiredState</c> namespace. That namespace is exempt from the remediation-marker
+/// sweep below (M0's "no desired-state fields at all" guardrail only ever applied to OBSERVED state —
+/// see <c>CLAUDE.md</c>'s Guardrails section) but is NOT exempt from the credential/secret sweep, and
+/// gets its own read-only-boundary and secret-marker checks in <see cref="Caisson.Domain.Tests.DesiredStateGuardTests"/>.
+/// </remarks>
 public sealed class DomainGuardTests
 {
     private static readonly Assembly DomainAssembly = typeof(TopologySnapshot).Assembly;
+
+    private const string DesiredStateNamespace = "Caisson.Domain.DesiredState";
 
     // Substrings that would signal write/remediation/desired-state intent leaking into observed state.
     private static readonly string[] RemediationMarkers =
@@ -83,6 +92,19 @@ public sealed class DomainGuardTests
         // Framework/ASP.NET Core auth wiring flags and scheme names — not secret VALUES.
         "JwtBearerOptions.Authority",
         "AuthenticationSchemeOptions.ClaimsIssuer",
+        // Story #62 desired-state model: "CommitAuthor" incidentally contains "Auth" (commit-AUTH-or) —
+        // it is the Git commit's author name, not an authentication credential.
+        "DesiredStateIngestionRun.CommitAuthor",
+        // Story #62 desired-state tree stable identifiers — same rationale as the other *.StableKey
+        // entries above, not authentication secrets.
+        "DesiredRackIntent.StableKey",
+        "DesiredSwitchIntent.StableKey",
+        "DesiredPortIntent.StableKey",
+        // Story #62 API contracts: same two false positives, now on the DTO shapes returned to clients.
+        "DesiredStateIngestionRunSummaryDto.CommitAuthor",
+        "DesiredRackIntentDto.StableKey",
+        "DesiredSwitchIntentDto.StableKey",
+        "DesiredPortIntentDto.StableKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()
@@ -96,8 +118,26 @@ public sealed class DomainGuardTests
         }
     }
 
+    /// <summary>
+    /// Same as <see cref="ObservedProperties"/> but excludes <c>Caisson.Domain.DesiredState</c> — the
+    /// remediation-marker sweep exists to keep OBSERVED state read-only-shaped; it was never meant to
+    /// (and now cannot, since story #62 legitimately adds "Intent"/"Desired"-named types) apply to the
+    /// first-class desired-state model itself.
+    /// </summary>
+    public static IEnumerable<object[]> ObservedPropertiesExcludingDesiredState()
+    {
+        foreach (var type in DomainAssembly.GetTypes()
+                     .Where(t => t is { IsClass: true, IsEnum: false } && t.Namespace != DesiredStateNamespace))
+        {
+            foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                yield return new object[] { type.Name, property.Name };
+            }
+        }
+    }
+
     [Theory]
-    [MemberData(nameof(ObservedProperties))]
+    [MemberData(nameof(ObservedPropertiesExcludingDesiredState))]
     public void No_property_implies_remediation_or_desired_state(string typeName, string propertyName)
     {
         if (AuditSubjectAllowList.Contains($"{typeName}.{propertyName}"))
@@ -127,8 +167,8 @@ public sealed class DomainGuardTests
 
     /// <summary>
     /// The broadened, cross-assembly sweep (finding #27): every public contract/DTO/options property in
-    /// <c>Caisson.Api</c>/<c>Caisson.Infrastructure</c>/<c>Caisson.Orchestration</c> either avoids every
-    /// broadened marker, or is a reviewed, explicitly-approved false positive.
+    /// <c>Caisson.Api</c>/<c>Caisson.Infrastructure</c>/<c>Caisson.Orchestration</c>/<c>Caisson.Ingestion</c>
+    /// either avoids every broadened marker, or is a reviewed, explicitly-approved false positive.
     /// </summary>
     public static IEnumerable<object[]> ContractProperties()
     {
@@ -137,6 +177,7 @@ public sealed class DomainGuardTests
             typeof(Caisson.Api.Controllers.AuditController).Assembly,
             typeof(Caisson.Infrastructure.Persistence.CaissonDbContext).Assembly,
             typeof(Caisson.Orchestration.Discovery.IDiscoveryOrchestrator).Assembly,
+            typeof(Caisson.Ingestion.Options.GitIngestionOptions).Assembly,
         };
 
         var contractSuffixes = new[] { "Dto", "Options", "Settings", "Request", "Response", "Event", "Contract" };

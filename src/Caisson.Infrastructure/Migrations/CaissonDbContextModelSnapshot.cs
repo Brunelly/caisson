@@ -22,6 +22,346 @@ namespace Caisson.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredPortIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AccessVlan")
+                        .HasColumnType("integer")
+                        .HasColumnName("access_vlan");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("DesiredSwitchIntentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("desired_switch_intent_id");
+
+                    b.Property<string>("NeighborPortId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("neighbor_port_id");
+
+                    b.Property<string>("NeighborSystemName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("neighbor_system_name");
+
+                    b.Property<string>("PortName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("port_name");
+
+                    b.Property<string>("StableKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("stable_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_port_intent");
+
+                    b.HasIndex("StableKey")
+                        .HasDatabaseName("ix_desired_port_intent_stable_key");
+
+                    b.HasIndex("DesiredSwitchIntentId", "PortName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_desired_port_intent_desired_switch_intent_id_port_name");
+
+                    b.ToTable("desired_port_intent", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_desired_port_intent_access_vlan", "access_vlan >= 1 AND access_vlan <= 4094");
+                        });
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredRackIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("DesiredStateVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("desired_state_version_id");
+
+                    b.Property<string>("RackSlug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("rack_slug");
+
+                    b.Property<string>("StableKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("stable_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_rack_intent");
+
+                    b.HasIndex("DesiredStateVersionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_desired_rack_intent_desired_state_version_id");
+
+                    b.ToTable("desired_rack_intent", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredStateIngestionRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Branch")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("branch");
+
+                    b.Property<string>("CommitAuthor")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("commit_author");
+
+                    b.Property<string>("CommitMessage")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("commit_message");
+
+                    b.Property<string>("CommitSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commit_sha");
+
+                    b.Property<DateTime?>("CommitTimeUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("commit_time_utc");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at_utc");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("ErrorCategory")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("error_category");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("error_summary");
+
+                    b.Property<string>("RepoUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("repo_url");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at_utc");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("trigger_type");
+
+                    b.Property<string>("WebhookDeliveryId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("webhook_delivery_id");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_state_ingestion_run");
+
+                    b.HasIndex("CommitSha")
+                        .IsUnique()
+                        .HasDatabaseName("ux_desired_state_ingestion_run_commit_sha")
+                        .HasFilter("commit_sha IS NOT NULL AND status IN ('Running','Succeeded','PartiallySucceeded','ValidationFailed')");
+
+                    b.HasIndex("StartedAtUtc")
+                        .IsDescending()
+                        .HasDatabaseName("ix_desired_state_ingestion_run_started_at");
+
+                    b.HasIndex("WebhookDeliveryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_desired_state_ingestion_run_webhook_delivery_id")
+                        .HasFilter("webhook_delivery_id IS NOT NULL");
+
+                    b.ToTable("desired_state_ingestion_run", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredStateValidationError", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("Column")
+                        .HasColumnType("integer")
+                        .HasColumnName("column");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("file_path");
+
+                    b.Property<Guid>("IngestionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ingestion_run_id");
+
+                    b.Property<int?>("Line")
+                        .HasColumnType("integer")
+                        .HasColumnName("line");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("location");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("RackSlug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("rack_slug");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("severity");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_state_validation_error");
+
+                    b.HasIndex("IngestionRunId", "CreatedAtUtc", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_desired_state_validation_error_run_created_id");
+
+                    b.ToTable("desired_state_validation_error", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredStateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CommitSha")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commit_sha");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid>("IngestionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ingestion_run_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("RackSlug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("rack_slug");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_state_version");
+
+                    b.HasIndex("IngestionRunId")
+                        .HasDatabaseName("ix_desired_state_version_ingestion_run_id");
+
+                    b.HasIndex("RackSlug", "CreatedAtUtc", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_desired_state_version_rack_slug_created_at_id");
+
+                    b.ToTable("desired_state_version", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredSwitchIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("DesiredRackIntentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("desired_rack_intent_id");
+
+                    b.Property<string>("StableKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("stable_key");
+
+                    b.Property<string>("SwitchName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("switch_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_desired_switch_intent");
+
+                    b.HasIndex("DesiredRackIntentId", "SwitchName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_desired_switch_intent_desired_rack_intent_id_switch_name");
+
+                    b.ToTable("desired_switch_intent", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.Discovery.DiscoveryJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -988,6 +1328,56 @@ namespace Caisson.Infrastructure.Migrations
                         .HasDatabaseName("ix_vlan_snapshot_id_vlan_id");
 
                     b.ToTable("vlan", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredPortIntent", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredSwitchIntent", null)
+                        .WithMany()
+                        .HasForeignKey("DesiredSwitchIntentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_desired_port_intent_desired_switch_intents_desired_switch_i");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredRackIntent", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredStateVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DesiredStateVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_desired_rack_intent_desired_state_versions_desired_state_ve");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredStateValidationError", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredStateIngestionRun", null)
+                        .WithMany()
+                        .HasForeignKey("IngestionRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_desired_state_validation_error_desired_state_ingestion_run_");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredStateVersion", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredStateIngestionRun", null)
+                        .WithMany()
+                        .HasForeignKey("IngestionRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_desired_state_version_desired_state_ingestion_run_ingestion");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredSwitchIntent", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredRackIntent", null)
+                        .WithMany()
+                        .HasForeignKey("DesiredRackIntentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_desired_switch_intent_desired_rack_intent_desired_rack_inte");
                 });
 
             modelBuilder.Entity("Caisson.Domain.Discovery.DiscoveryJob", b =>

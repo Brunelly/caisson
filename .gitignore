@@ -45,6 +45,11 @@ Thumbs.db
 .env.local
 infra/**/.env
 
+## Story #62: LibGit2SharpRepositoryProvider's local bare mirror of the desired-state repo
+## (GitIngestionOptions.LocalMirrorPath defaults to ./data/git-ingestion-mirror) — a runtime cache,
+## never source.
+data/
+
 ## Angular workspace (web/) — dependency/build/tool artifacts, never committed.
 web/node_modules/
 web/dist/

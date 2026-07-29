@@ -20,12 +20,14 @@ public sealed class ReadOnlyGuardTests
 {
     private static readonly Assembly ApiAssembly = typeof(Program).Assembly;
 
-    // Explicit per-controller allow-list of controllers permitted to expose non-GET actions (story #8).
+    // Explicit per-controller allow-list of controllers permitted to expose non-GET actions (story #8,
+    // story #62).
     private static readonly HashSet<string> NonGetControllerAllowList = new(StringComparer.Ordinal)
     {
         nameof(DiscoveryJobsController),
         nameof(DiscoveryJobDetailController),
         nameof(RackDiscoveryScheduleController),
+        nameof(GitWebhookController),
     };
 
     // The policies a non-GET action must be gated by (fail-closed).
@@ -33,6 +35,14 @@ public sealed class ReadOnlyGuardTests
     {
         AuthorizationPolicies.DiscoveryTrigger,
         AuthorizationPolicies.ScheduleManage,
+    };
+
+    // Story #62: the Git webhook endpoint is deliberately [AllowAnonymous] — the HMAC signature over
+    // the raw body (ADR 0026) IS the authentication, not a bearer-token RBAC policy — so it is exempt
+    // from the WritePolicies check below (which only applies to the RBAC-gated discovery write actions).
+    private static readonly HashSet<string> HmacAuthenticatedControllers = new(StringComparer.Ordinal)
+    {
+        nameof(GitWebhookController),
     };
 
     [Fact]
@@ -77,11 +87,18 @@ public sealed class ReadOnlyGuardTests
                 isReadOnlyController.Should().BeFalse(
                     "action {0}.{1} must be GET-only on read controllers (NFR1)", controller.Name, action.Name);
 
-                // ... only on an allow-listed discovery controller ...
+                // ... only on an allow-listed discovery/webhook controller ...
                 NonGetControllerAllowList.Should().Contain(
                     controller.Name,
                     "non-GET action {0}.{1} must live on an allow-listed discovery controller",
                     controller.Name, action.Name);
+
+                if (HmacAuthenticatedControllers.Contains(controller.Name))
+                {
+                    // Authenticated by HMAC signature verification over the raw body, not an
+                    // authorization policy — see ADR 0026.
+                    continue;
+                }
 
                 // ... and always gated by a discovery write policy (fail-closed).
                 var policies = controllerPolicies.Concat(PolicyNames(attributes)).ToList();

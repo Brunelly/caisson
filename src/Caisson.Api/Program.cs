@@ -6,6 +6,9 @@ using Caisson.Api.Security;
 using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Ingestion.DependencyInjection;
+using Caisson.Ingestion.Options;
+using Caisson.Ingestion.Security;
 using Caisson.Orchestration.DependencyInjection;
 using Caisson.Orchestration.RackDefinitions;
 using Microsoft.AspNetCore.Authentication;
@@ -62,6 +65,10 @@ builder.Services.AddMemoryCache();
 // driver access is transitive through Caisson.Orchestration at runtime (the guard test stays green).
 builder.Services.AddCaissonOrchestration(builder.Configuration);
 
+// Git-backed desired-state ingestion (story #62, ADR 0026): config-bound options, the poll scheduler
+// and webhook drainer background services, and the shared idempotent RunAsync entry point.
+builder.Services.AddCaissonGitIngestion(builder.Configuration);
+
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
 // to boot rather than run with an ambiguous or silently-ignored security setting.
@@ -72,6 +79,13 @@ RackDefinitionValidation.Validate(rackDefinitions);
 // Fail-closed Redis connection validation (finding #2): an unauthenticated, unencrypted Redis connection
 // backing live updates refuses to boot outside Development/Testing — see ADR 0021.
 RedisEventAuthenticityStartupGuard.Validate(builder.Environment, builder.Configuration);
+
+// Fail-closed Git ingestion webhook-secret validation (story #62, AC5): a deployment with ingestion
+// enabled and no resolvable webhook secret refuses to boot rather than silently accept unsigned
+// webhook deliveries.
+var gitIngestionOptions = builder.Configuration.GetSection(GitIngestionOptions.SectionName).Get<GitIngestionOptions>()
+    ?? new GitIngestionOptions();
+GitIngestionStartupGuard.Validate(builder.Environment, gitIngestionOptions.Enabled, new EnvGitIngestionSecretsResolver());
 
 // Live topology updates (story #9, ADR 0014): the SignalR hub, Redis backplane + per-instance relay,
 // heartbeat, metrics and Redis health. Degrades to single-instance SignalR when no Redis is configured.
@@ -211,6 +225,18 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+
+    // Story #62: the webhook endpoint is [AllowAnonymous] (the HMAC signature IS the auth), so it is
+    // partitioned by remote IP rather than the "oid" claim — an anonymous caller has none.
+    options.AddPolicy(RateLimitPolicies.GitWebhook, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 builder.Services.AddControllers();
@@ -241,6 +267,11 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     health.AddNpgSql(connectionString, name: "db", tags: new[] { "ready" });
 }
+
+// Story #62 (NFR8): reports the desired-state ingestion subsystem's last-run status; never touches a
+// device and stays Healthy/Degraded (never Unhealthy) so a malformed commit can never take
+// /health/ready down.
+health.AddCheck<Caisson.Api.HealthChecks.GitIngestionHealthCheck>("git-ingestion", tags: new[] { "ready" });
 
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>

@@ -16,6 +16,8 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
         "rack", "topology_snapshot", "switch", "switch_port", "server", "nic",
         "mac_address", "vlan", "lldp_neighbour", "topology_candidate_mapping",
         "topology_change_summary", "topology_entity_diff", "topology_audit_event",
+        "desired_state_ingestion_run", "desired_state_version", "desired_rack_intent",
+        "desired_switch_intent", "desired_port_intent", "desired_state_validation_error",
     };
 
     private static readonly string[] ExpectedIndexes =
@@ -41,6 +43,15 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
         "ix_topology_candidate_mapping_snapshot_id_nic_id_switch_port_id",
         "ix_topology_candidate_mapping_snapshot_id_confidence",
         "ix_rack_external_key",
+        "ux_desired_state_ingestion_run_commit_sha",
+        "ux_desired_state_ingestion_run_webhook_delivery_id",
+        "ix_desired_state_ingestion_run_started_at",
+        "ix_desired_state_version_rack_slug_created_at_id",
+        "ix_desired_rack_intent_desired_state_version_id",
+        "ix_desired_switch_intent_desired_rack_intent_id_switch_name",
+        "ix_desired_port_intent_desired_switch_intent_id_port_name",
+        "ix_desired_port_intent_stable_key",
+        "ix_desired_state_validation_error_run_created_id",
     };
 
     private readonly PostgresFixture _fixture;
