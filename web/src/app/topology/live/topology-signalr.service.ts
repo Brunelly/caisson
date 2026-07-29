@@ -16,6 +16,10 @@ import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
+import type { DriftApplyJobStatusChangedEvent } from '../../drift/model/drift-contracts';
+import { isTerminalDriftApplyJobStatus } from '../../drift/model/drift-contracts';
+import { DriftApplyJobStatusService } from '../../drift/live/drift-apply-job-status.service';
+import { DriftApplyService } from '../../drift/services/drift-apply.service';
 import { deriveTopologyGraph } from '../model/topology-graph-model';
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
@@ -23,6 +27,7 @@ import { TopologyStateService } from '../state/topology-state.service';
 import {
   type WatermarkStore,
   applyIfNewer,
+  driftApplyJobStreamKey,
   jobStreamKey,
   snapshotStreamKey,
 } from './apply-if-newer';
@@ -97,6 +102,8 @@ export class TopologySignalRService {
   private readonly discoveryStatus = inject(DiscoveryStatusService);
   private readonly state = inject(TopologyStateService);
   private readonly telemetry = inject(TelemetryService);
+  private readonly driftApplyJobStatus = inject(DriftApplyJobStatusService);
+  private readonly driftApply = inject(DriftApplyService);
 
   private connection: HubConnection | null = null;
   private currentRackId: string | null = null;
@@ -104,6 +111,11 @@ export class TopologySignalRService {
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private initialConnectRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Drift-apply jobs the current view cares about (story #67 step 5) — populated by
+  // ApplyActionComponent via trackJob() once a job is created. Polled alongside the topology
+  // reconcile() on the same degrade cadence while the hub is disconnected/reconnecting; entries are
+  // removed once a terminal status is observed (from either a live event or a poll response).
+  private readonly trackedJobIds = new Set<string>();
 
   /** Connects (or, if already connected, switches rack subscription) and subscribes to `rackId`. */
   connect(rackId: string): void {
@@ -127,6 +139,12 @@ export class TopologySignalRService {
     }
   }
 
+  /** Registers a drift-apply job for the polling-fallback path (story #67 step 5) — call once a job is
+   * created/already-active for the currently-connected rack. Untracked automatically on terminal status. */
+  trackJob(jobId: string): void {
+    this.trackedJobIds.add(jobId);
+  }
+
   /** Unsubscribes and tears down the connection (page/component destroy). */
   disconnect(): void {
     const rackId = this.currentRackId;
@@ -134,6 +152,7 @@ export class TopologySignalRService {
     this.clearWatchdog();
     this.clearInitialConnectRetry();
     this.currentRackId = null;
+    this.trackedJobIds.clear();
 
     if (this.connection?.state === HubConnectionState.Connected && rackId) {
       void this.connection.invoke('UnsubscribeFromRack', rackId).catch(() => undefined);
@@ -155,6 +174,11 @@ export class TopologySignalRService {
     connection.on('DiscoveryJobStatusChanged', (event: DiscoveryJobStatusChangedEvent) =>
       this.onDiscoveryJobStatusChanged(event),
     );
+    // Story #67 (ADR 0032): rides this SAME connection/rack group — no second HubConnection, no new
+    // channel.
+    connection.on('DriftApplyJobStatusChanged', (event: DriftApplyJobStatusChangedEvent) =>
+      this.onDriftApplyJobStatusChanged(event),
+    );
     connection.on('Heartbeat', () => this.resetWatchdog());
 
     connection.onreconnecting(() => {
@@ -174,6 +198,7 @@ export class TopologySignalRService {
       if (this.currentRackId) {
         void connection.invoke('SubscribeToRack', this.currentRackId).catch(() => undefined);
         this.reconcile(this.currentRackId); // exactly one forced reconcile fetch on reconnect
+        this.reconcileTrackedJobs(this.currentRackId); // catch up on anything missed while disconnected
       }
     });
 
@@ -270,6 +295,32 @@ export class TopologySignalRService {
     });
   }
 
+  /** Story #67 (ADR 0032): unlike SnapshotUpdated/DiscoveryJobStatusChanged, applies the event payload
+   * directly (it already carries status/currentStep/reasonCode) rather than triggering a REST refetch
+   * on every tick — a job can transition several times a second and refetching the full detail on each
+   * would defeat the point of a push channel. The event carries no `eventId`; the watermark key is
+   * synthesized as `${jobId}:${seq}`, seq-driven exactly like DiscoveryJobStatusChanged. */
+  private onDriftApplyJobStatusChanged(event: DriftApplyJobStatusChangedEvent): void {
+    this.resetWatchdog();
+    if (event.rackId !== this.currentRackId) {
+      return;
+    }
+
+    const accepted = applyIfNewer(this.watermarks, driftApplyJobStreamKey(event.jobId), {
+      seq: event.seq,
+      eventId: `${event.jobId}:${event.seq}`,
+    });
+    if (!accepted) {
+      return;
+    }
+
+    this.driftApplyJobStatus.applyEvent(event);
+    this.telemetry.driftApplyJobStatusChanged(event.jobId, event.status, event.correlationId);
+    if (isTerminalDriftApplyJobStatus(event.status)) {
+      this.trackedJobIds.delete(event.jobId);
+    }
+  }
+
   /** Never trusts the event summary as authoritative (docs/live-topology-events.md rule 2): always
    * refetches the latest snapshot + graph via REST and patches the (already-bound) derived graph. */
   private reconcile(rackId: string, correlationId: string | null = null): void {
@@ -288,7 +339,32 @@ export class TopologySignalRService {
       return;
     }
     const rackId = this.currentRackId;
-    this.pollTimer = setInterval(() => this.reconcile(rackId), POLL_INTERVAL_MS);
+    this.pollTimer = setInterval(() => {
+      this.reconcile(rackId);
+      this.reconcileTrackedJobs(rackId);
+    }, POLL_INTERVAL_MS);
+  }
+
+  /** Story #67 step 5's polling-fallback path: while the hub is disconnected/reconnecting, any
+   * currently-tracked non-terminal drift-apply job is polled via REST on the same cadence as the
+   * topology reconcile() — the client "does not lose the ability to view final outcome" (NFR3) even if
+   * the terminal DriftApplyJobStatusChanged event itself never arrives over the hub. */
+  private reconcileTrackedJobs(rackId: string): void {
+    for (const jobId of this.trackedJobIds) {
+      this.reconcileJob(rackId, jobId);
+    }
+  }
+
+  private reconcileJob(rackId: string, jobId: string): void {
+    this.driftApply.getJob(rackId, jobId).subscribe((result) => {
+      if (result.kind !== 'ok') {
+        return;
+      }
+      this.driftApplyJobStatus.applyPolledDetail(result.value);
+      if (isTerminalDriftApplyJobStatus(result.value.status)) {
+        this.trackedJobIds.delete(jobId);
+      }
+    });
   }
 
   private stopPolling(): void {

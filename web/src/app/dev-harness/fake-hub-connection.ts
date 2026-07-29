@@ -56,6 +56,12 @@ export class FakeHubConnection {
     this.handlers.get('DiscoveryJobStatusChanged')?.(event);
   }
 
+  /** Story #67: drives the real DriftApplyJobStatusChanged handler (topology-signalr.service.ts) from
+   * outside the page — see web/e2e/drift-harness.spec.ts's live-status/seq-dedup scenarios. */
+  simulateDriftApplyJobStatusChanged(event: unknown): void {
+    this.handlers.get('DriftApplyJobStatusChanged')?.(event);
+  }
+
   simulateHeartbeat(): void {
     this.handlers.get('Heartbeat')?.();
   }

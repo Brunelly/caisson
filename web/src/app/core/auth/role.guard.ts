@@ -38,6 +38,17 @@ export function hasRecognisedRole(payload: unknown): boolean {
   return extractRoles(payload).some((role) => RECOGNISED_ROLES.includes(role));
 }
 
+/** Mirrors Caisson.Api.Security.CaissonRoles.DriftApply — a deliberately elevated permission excluded
+ * from `CaissonRoles.All`/`RECOGNISED_ROLES` (ADR 0032), so it is never implied by Operator or even
+ * Admin and must be granted/mapped independently. The server is the sole enforcement point (403 on a
+ * missing claim); this is a UX-only gate that hides/disables the Apply action for principals who would
+ * be rejected anyway. */
+export const DRIFT_APPLY_ROLE = 'DriftApply';
+
+export function hasDriftApplyPermission(payload: unknown): boolean {
+  return extractRoles(payload).includes(DRIFT_APPLY_ROLE);
+}
+
 export const roleGuard: CanActivateFn = () => {
   const oidc = inject(OidcSecurityService);
   const router = inject(Router);

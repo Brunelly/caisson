@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { extractRoles, hasRecognisedRole, roleGuard } from './role.guard';
+import { extractRoles, hasDriftApplyPermission, hasRecognisedRole, roleGuard } from './role.guard';
 
 describe('extractRoles', () => {
   it('reads a string-array roles claim', () => {
@@ -38,6 +38,28 @@ describe('hasRecognisedRole', () => {
 
   it('rejects an authenticated payload with no roles claim', () => {
     expect(hasRecognisedRole({ sub: 'user-1' })).toBe(false);
+  });
+});
+
+describe('hasDriftApplyPermission', () => {
+  it('returns false when there is no roles claim', () => {
+    expect(hasDriftApplyPermission({})).toBe(false);
+  });
+
+  it('returns false when roles does not include DriftApply', () => {
+    expect(hasDriftApplyPermission({ roles: ['Admin', 'Operator'] })).toBe(false);
+  });
+
+  it('returns true when the roles array includes DriftApply', () => {
+    expect(hasDriftApplyPermission({ roles: ['Operator', 'DriftApply'] })).toBe(true);
+  });
+
+  it('returns true for a single-string DriftApply roles claim', () => {
+    expect(hasDriftApplyPermission({ roles: 'DriftApply' })).toBe(true);
+  });
+
+  it('is not implied by Admin alone (deliberately excluded from RECOGNISED_ROLES)', () => {
+    expect(hasDriftApplyPermission({ roles: ['Admin'] })).toBe(false);
   });
 });
 

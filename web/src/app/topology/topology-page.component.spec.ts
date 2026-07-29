@@ -70,6 +70,7 @@ describe('TopologyPageComponent', () => {
       } as never),
       discoveryStatus: signal(null),
       graph: signal(graphFixture()),
+      driftOverlay: signal(new Map()),
       selection: signal(null),
       selectionStaleNotice: signal(false),
       connectionStatus: signal('live' as const),

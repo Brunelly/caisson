@@ -4,13 +4,23 @@
 // construction: only the discriminant and HTTP status survive into the result, never response bodies.
 import { HttpErrorResponse } from '@angular/common/http';
 import { catchError, map, type Observable, of } from 'rxjs';
+import { CORRELATION_ID_HEADER } from '../../core/auth/auth.interceptor';
 
 export type ApiResult<T> =
   | { kind: 'ok'; value: T }
   | { kind: 'unauthorized' }
   | { kind: 'forbidden' }
   | { kind: 'notFound' }
-  | { kind: 'error'; status: number };
+  // 422: the drift-apply write path's "unsupported drift type" / stale-revalidation rejection (ADR
+  // 0032/0033) — reasonCode is read straight off the ProblemDetails extension, never parsed further.
+  | { kind: 'unprocessable'; reasonCode: string | null }
+  // 429: the drift-apply endpoint's fixed-window rate-limit policy (Caisson.Api.Security.
+  // RateLimitPolicies.DriftApply) short-circuits before the action runs, so there is no response body —
+  // correlationId (NFR4, echoed by the backend's correlation-id middleware even on non-2xx responses)
+  // is the only thing worth surfacing to the user for a support request.
+  | { kind: 'rateLimited'; correlationId: string | null }
+  // Unexpected statuses (5xx etc.) likewise surface correlationId for the same reason.
+  | { kind: 'error'; status: number; correlationId: string | null };
 
 export function toApiResult<T>(source: Observable<T>): Observable<ApiResult<T>> {
   return source.pipe(
@@ -19,7 +29,12 @@ export function toApiResult<T>(source: Observable<T>): Observable<ApiResult<T>> 
   );
 }
 
-function apiResultFromError<T>(error: unknown): ApiResult<T> {
+// Exported so services that can't route a whole response through toApiResult() — e.g. the drift-apply
+// POST, which needs `observe: 'response'` to distinguish 201 from 202 on the success path — can still
+// reuse the exact same error-branch mapping instead of duplicating it. The return type deliberately
+// excludes the 'ok' case (this function only ever runs from an error/catch path) so callers composing
+// their own success variants (see ApplyDriftCorrectionResult) don't have to re-exclude it themselves.
+export function apiResultFromError<T>(error: unknown): Exclude<ApiResult<T>, { kind: 'ok' }> {
   if (!(error instanceof HttpErrorResponse)) {
     throw error;
   }
@@ -31,7 +46,20 @@ function apiResultFromError<T>(error: unknown): ApiResult<T> {
       return { kind: 'forbidden' };
     case 404:
       return { kind: 'notFound' };
+    case 422:
+      return { kind: 'unprocessable', reasonCode: extractReasonCode(error) };
+    case 429:
+      return { kind: 'rateLimited', correlationId: extractCorrelationId(error) };
     default:
-      return { kind: 'error', status: error.status };
+      return { kind: 'error', status: error.status, correlationId: extractCorrelationId(error) };
   }
+}
+
+function extractReasonCode(error: HttpErrorResponse): string | null {
+  const body = error.error as { reasonCode?: unknown } | null;
+  return body && typeof body.reasonCode === 'string' ? body.reasonCode : null;
+}
+
+function extractCorrelationId(error: HttpErrorResponse): string | null {
+  return error.headers.get(CORRELATION_ID_HEADER);
 }

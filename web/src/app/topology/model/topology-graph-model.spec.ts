@@ -5,6 +5,7 @@ import {
   classifyNic,
   confidenceBandOf,
   deriveTopologyGraph,
+  escapeStableKeySegment,
 } from './topology-graph-model';
 import type { NicNodeDto, PortAttachmentDto, TopologyGraphDto } from './topology-contracts';
 
@@ -244,5 +245,26 @@ describe('deriveTopologyGraph', () => {
     const model = deriveTopologyGraph(graph);
     const portVlanEdges = model.edges.filter((e) => e.kind === 'port-vlan');
     expect(portVlanEdges).toHaveLength(1);
+  });
+});
+
+describe('escapeStableKeySegment', () => {
+  it('leaves an ordinary segment unchanged', () => {
+    expect(escapeStableKeySegment('sw-01')).toBe('sw-01');
+  });
+
+  it('escapes a literal "%" to "%25"', () => {
+    expect(escapeStableKeySegment('sw%01')).toBe('sw%2501');
+  });
+
+  it('escapes a literal "|" to "%7C"', () => {
+    expect(escapeStableKeySegment('sw|01')).toBe('sw%7C01');
+  });
+
+  it('escapes "%" before "|" so a literal "%" is never mistaken for a partial escape', () => {
+    // A naive %-then-| order applied the other way round would turn "a%7Cb" (a literal percent
+    // followed by "7Cb") into something indistinguishable from an already-escaped "|" — escaping '%'
+    // first guarantees the only '%' sequences in the output are ones this function itself produced.
+    expect(escapeStableKeySegment('a%7Cb')).toBe('a%257Cb');
   });
 });

@@ -1,0 +1,106 @@
+@use '../../shared/styles/tokens';
+
+.drift-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.drift-list__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  h1 {
+    font-size: 1.125rem;
+    margin: 0;
+  }
+}
+
+.drift-list__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.drift-list__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+
+  label {
+    color: var(--color-text-muted);
+  }
+
+  // Native <select>: the simplest control that satisfies the full interactive-UI baseline for free
+  // (closes on select/outside-click/Escape, full keyboard nav, native listbox ARIA) — token-styled so
+  // it stays theme-safe in both light and dark themes.
+  select {
+    @include tokens.form-input;
+    min-width: 10rem;
+  }
+}
+
+.drift-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+.drift-list__subject-link,
+.drift-list__status-link {
+  color: var(--color-link);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+    background: var(--color-bg-hover);
+  }
+
+  @include tokens.focus-visible-ring;
+}
+
+.drift-list__load-more {
+  align-self: flex-start;
+  margin-top: 1rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+
+  &:disabled {
+    color: var(--color-text-muted);
+    background: var(--color-bg-elevated);
+    cursor: not-allowed;
+  }
+
+  @include tokens.focus-visible-ring;
+}

@@ -8,6 +8,14 @@ import type {
   SnapshotMetadataDto,
   TopologyGraphDto,
 } from '../topology/model/topology-contracts';
+import type {
+  DriftApplyJobDetailDto,
+  DriftApplyJobStatus,
+  DriftApplyJobSummaryDto,
+  DriftItemDto,
+  DriftReportDetailDto,
+  DriftReportSummaryDto,
+} from '../drift/model/drift-contracts';
 
 let version = 4;
 
@@ -181,5 +189,111 @@ export function harnessEntityDetail(entityType: string, stableKey: string): Enti
         correlationId: 'harness-correlation-1',
       },
     ],
+  };
+}
+
+// --- Story #67 drift/apply fixtures ---------------------------------------------------------
+
+const HARNESS_DRIFT_ITEM_ID = 'harness-drift-item-1';
+const HARNESS_DRIFT_REPORT_ID = 'harness-drift-report-1';
+export const HARNESS_DRIFT_JOB_ID = 'harness-drift-job-1';
+
+let driftJobStatus: DriftApplyJobStatus | null = null;
+
+/** Mutable harness job state — set by the fake DriftApplyService.applyCorrection() and readable by
+ * Playwright via window.__harness__.setDriftJobStatus() to drive the polling-fallback scenario. */
+export function currentDriftJobStatus(): DriftApplyJobStatus | null {
+  return driftJobStatus;
+}
+
+export function setDriftJobStatus(status: DriftApplyJobStatus | null): void {
+  driftJobStatus = status;
+}
+
+export function harnessDriftItem(overrides: Partial<DriftItemDto> = {}): DriftItemDto {
+  return {
+    driftItemId: HARNESS_DRIFT_ITEM_ID,
+    driftReportId: HARNESS_DRIFT_REPORT_ID,
+    driftType: 'AccessVlanMismatch',
+    severity: 'High',
+    actionable: true,
+    subjectType: 'SwitchPort',
+    subjectKey: 'v1|rack-1|SW-1|ether2',
+    expectedValue: '200',
+    actualValue: '100',
+    why: 'Access VLAN mismatch on SW-1/ether2 — expected VLAN 200, observed VLAN 100.',
+    details: { switchName: 'SW-1', portName: 'ether2' },
+    createdAt: harnessSnapshotMeta().createdAt,
+    ...overrides,
+  };
+}
+
+export function harnessDriftReportSummary(): DriftReportSummaryDto {
+  return {
+    driftReportId: HARNESS_DRIFT_REPORT_ID,
+    desiredRevisionId: 'harness-revision-1',
+    observedSnapshotId: `snap-${version}`,
+    computedAt: harnessSnapshotMeta().createdAt,
+    computationVersion: 1,
+    totalItems: 1,
+    countsBySeverity: { High: 1, Medium: 0, Low: 0 },
+    hasAmbiguities: false,
+    isTruncated: false,
+    status: 'Completed',
+    errorSummary: null,
+  };
+}
+
+export function harnessDriftReportDetail(
+  items: DriftItemDto[] = [harnessDriftItem()],
+): DriftReportDetailDto {
+  return { report: harnessDriftReportSummary(), items: { items, nextCursor: null } };
+}
+
+export function harnessDriftApplyJobSummary(
+  overrides: Partial<DriftApplyJobSummaryDto> = {},
+): DriftApplyJobSummaryDto {
+  return {
+    jobId: HARNESS_DRIFT_JOB_ID,
+    rackId: 'rack-1',
+    driftItemId: HARNESS_DRIFT_ITEM_ID,
+    status: driftJobStatus ?? 'Pending',
+    requestedAt: harnessSnapshotMeta().createdAt,
+    finishedAt: null,
+    requestedBy: 'harness-user',
+    errorCategory: null,
+    errorCode: null,
+    ...overrides,
+  };
+}
+
+export function harnessDriftApplyJobDetail(
+  overrides: Partial<DriftApplyJobDetailDto> = {},
+): DriftApplyJobDetailDto {
+  return {
+    jobId: HARNESS_DRIFT_JOB_ID,
+    rackId: 'rack-1',
+    driftItemId: HARNESS_DRIFT_ITEM_ID,
+    status: driftJobStatus ?? 'Pending',
+    requestedAt: harnessSnapshotMeta().createdAt,
+    claimedAt: harnessSnapshotMeta().createdAt,
+    finishedAt: null,
+    requestedBy: 'harness-user',
+    actorType: 'User',
+    correlationId: 'harness-correlation-drift-1',
+    attemptCount: 1,
+    currentStep: 'Revalidating',
+    switchDeviceKey: 'SW-1',
+    portName: 'ether2',
+    desiredVlanId: 200,
+    deviceReasonCode: null,
+    deviceConfirmed: null,
+    beforeState: '100',
+    afterState: null,
+    errorCategory: null,
+    errorCode: null,
+    errorMessage: null,
+    steps: [],
+    ...overrides,
   };
 }

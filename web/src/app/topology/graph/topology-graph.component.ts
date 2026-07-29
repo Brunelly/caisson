@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import * as d3 from 'd3';
+import type { DriftOverlayEntry } from '../../drift/model/drift-topology-overlay';
 import { flattenGraphNodes } from '../model/topology-graph-model';
 import type {
   TopologyEdgeKind,
@@ -23,6 +24,8 @@ import type {
   TopologyGraphNode,
   TopologyNodeType,
 } from '../model/topology-graph-model';
+
+const EMPTY_DRIFT_OVERLAY: ReadonlyMap<string, DriftOverlayEntry> = new Map();
 
 interface Point {
   x: number;
@@ -45,6 +48,15 @@ const EDGE_BADGE_GLYPH: Partial<Record<TopologyGraphEdge['state'], string>> = {
   unmapped: '✕', // ✕
 };
 
+// Story #67: drift-severity glyphs, deliberately reusing the exact same glyphs the shared status badge
+// (shared/badge/status-badge.component.ts) uses for the same severities — one icon always means the
+// same thing across the app. NFR5: colour is never the only signal.
+const DRIFT_SEVERITY_GLYPH: Record<DriftOverlayEntry['severity'], string> = {
+  High: '✕',
+  Medium: '▲',
+  Low: 'ℹ',
+};
+
 @Component({
   selector: 'app-topology-graph',
   standalone: true,
@@ -60,12 +72,17 @@ const EDGE_BADGE_GLYPH: Partial<Record<TopologyGraphEdge['state'], string>> = {
         <g class="topology-graph__edges"></g>
         <g class="topology-graph__edge-badges"></g>
         <g class="topology-graph__nodes"></g>
+        <!-- Additive, on top of nodes (paint order): drifted-port glyphs (story #67). Complete no-op
+             (empty selection) when driftOverlay is empty/null — the M0 read-only map renders
+             byte-for-byte unchanged in that case (do-not-regress #10). -->
+        <g class="topology-graph__drift-badges"></g>
       </g>
     </svg>
   `,
 })
 export class TopologyGraphComponent {
   readonly graph = input<TopologyGraphModel | null>(null);
+  readonly driftOverlay = input<ReadonlyMap<string, DriftOverlayEntry> | null>(null);
   readonly nodeSelected = output<TopologyGraphNode>();
   readonly edgeSelected = output<TopologyGraphEdge>();
 
@@ -100,6 +117,7 @@ export class TopologyGraphComponent {
     effect(() => {
       const svg = this.svgRef();
       const graph = this.graph();
+      const driftOverlay = this.driftOverlay();
       if (!svg) {
         return;
       }
@@ -109,7 +127,7 @@ export class TopologyGraphComponent {
         this.zoomAttached = true;
       }
 
-      this.render(graph);
+      this.render(graph, driftOverlay ?? EMPTY_DRIFT_OVERLAY);
     });
   }
 
@@ -133,7 +151,10 @@ export class TopologyGraphComponent {
       .call(this.zoomBehavior.transform, transform);
   }
 
-  private render(graph: TopologyGraphModel | null): void {
+  private render(
+    graph: TopologyGraphModel | null,
+    driftOverlay: ReadonlyMap<string, DriftOverlayEntry>,
+  ): void {
     const svg = this.svgRef();
     if (!svg) {
       return;
@@ -146,12 +167,14 @@ export class TopologyGraphComponent {
     const edgesLayer = root.select<SVGGElement>('.topology-graph__edges');
     const badgesLayer = root.select<SVGGElement>('.topology-graph__edge-badges');
     const structuralLayer = root.select<SVGGElement>('.topology-graph__structural-edges');
+    const driftBadgesLayer = root.select<SVGGElement>('.topology-graph__drift-badges');
 
     if (!graph) {
       nodesLayer.selectAll('*').remove();
       edgesLayer.selectAll('*').remove();
       badgesLayer.selectAll('*').remove();
       structuralLayer.selectAll('*').remove();
+      driftBadgesLayer.selectAll('*').remove();
       return;
     }
 
@@ -237,18 +260,43 @@ export class TopologyGraphComponent {
           .attr('x', NODE_WIDTH / 2)
           .attr('y', NODE_HEIGHT / 2 + 4)
           .attr('text-anchor', 'middle');
+        // Story #67: an SVG <title> gives a native hover tooltip for free; text is set below (empty for
+        // non-drifted nodes, so nothing renders). aria-describedby references it by id for drifted ports.
+        g.append('title').attr('id', (d) => driftTooltipId(d.id));
         return g;
       });
 
     nodeSelection
-      .attr('class', (d) => `node node--${d.type} ${nodeStateClass(d)}`)
-      .attr('aria-label', (d) => nodeAriaLabel(d))
+      .attr('class', (d) =>
+        `node node--${d.type} ${nodeStateClass(d)} ${driftNodeClass(d, driftOverlay)}`.trim(),
+      )
+      .attr('aria-label', (d) => nodeAriaLabel(d, driftOverlay))
+      .attr('aria-describedby', (d) => (driftOverlay.has(d.id) ? driftTooltipId(d.id) : null))
       .attr('transform', (d) => {
         const point = positions.get(d.id) ?? { x: 0, y: 0 };
         return `translate(${point.x - NODE_WIDTH / 2}, ${point.y - NODE_HEIGHT / 2})`;
       });
 
     nodeSelection.select<SVGTextElement>('text').text((d) => d.label);
+    nodeSelection
+      .select<SVGTitleElement>('title')
+      .text((d) => (driftOverlay.get(d.id) ? driftTooltipText(driftOverlay.get(d.id)!) : ''));
+
+    // Additive drift glyph badges, keyed by port id — a complete no-op when driftOverlay is empty
+    // (do-not-regress #10). NFR5: colour is never the only signal, so every drifted port also carries
+    // this icon (and the aria-label/tooltip text above), never colour (the node--drift-* class) alone.
+    const driftedPorts = graph.nodes.ports.filter((port) => driftOverlay.has(port.id));
+
+    driftBadgesLayer
+      .selectAll<SVGTextElement, TopologyGraphNode>('text.drift-badge')
+      .data(driftedPorts, (d) => d.id)
+      .join('text')
+      .attr('class', (d) => `drift-badge ${driftNodeClass(d, driftOverlay)}`)
+      .attr('text-anchor', 'middle')
+      .attr('aria-hidden', 'true')
+      .attr('x', (d) => (positions.get(d.id)?.x ?? 0) + NODE_WIDTH / 2 - 8)
+      .attr('y', (d) => (positions.get(d.id)?.y ?? 0) - NODE_HEIGHT / 2 - 4)
+      .text((d) => DRIFT_SEVERITY_GLYPH[driftOverlay.get(d.id)!.severity]);
   }
 }
 
@@ -276,19 +324,49 @@ function nodeStateClass(node: TopologyGraphNode): string {
   return 'state' in node ? `node--${node.state}` : '';
 }
 
-function nodeAriaLabel(node: TopologyGraphNode): string {
-  switch (node.type) {
-    case 'server':
-      return `Server ${node.label}`;
-    case 'nic':
-      return `NIC ${node.label}, MAC ${node.mac}, ${node.state}`;
-    case 'switch':
-      return `Switch ${node.label}`;
-    case 'port':
-      return `Port ${node.label}, ${node.state}`;
-    case 'vlan':
-      return `VLAN ${node.vlanId}`;
-  }
+// Story #67: a token-driven class per drift severity, deliberately namespaced (`node--drift-*`, not
+// `node--{state}`) so it never collides with the existing confirmed/ambiguous/unmapped mapping-state
+// classes above — a port can be simultaneously e.g. `node--confirmed` (its NIC mapping is fine) AND
+// `node--drift-high` (its VLAN is still wrong).
+function driftNodeClass(
+  node: TopologyGraphNode,
+  overlay: ReadonlyMap<string, DriftOverlayEntry>,
+): string {
+  const entry = overlay.get(node.id);
+  return entry ? `node--drift-${entry.severity.toLowerCase()}` : '';
+}
+
+function driftTooltipId(nodeId: string): string {
+  return `topology-drift-tooltip-${nodeId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+function driftTooltipText(entry: DriftOverlayEntry): string {
+  return `Drift detected: ${entry.driftType}, ${entry.severity} severity`;
+}
+
+function nodeAriaLabel(
+  node: TopologyGraphNode,
+  overlay: ReadonlyMap<string, DriftOverlayEntry>,
+): string {
+  const base = (() => {
+    switch (node.type) {
+      case 'server':
+        return `Server ${node.label}`;
+      case 'nic':
+        return `NIC ${node.label}, MAC ${node.mac}, ${node.state}`;
+      case 'switch':
+        return `Switch ${node.label}`;
+      case 'port':
+        return `Port ${node.label}, ${node.state}`;
+      case 'vlan':
+        return `VLAN ${node.vlanId}`;
+    }
+  })();
+
+  const entry = overlay.get(node.id);
+  // NFR5: severity is always spoken as text here, alongside the icon glyph and the colour-driven
+  // class — never colour-only.
+  return entry ? `${base}, drift detected: ${entry.driftType}, ${entry.severity} severity` : base;
 }
 
 function edgeAriaLabel(edge: TopologyGraphEdge): string {

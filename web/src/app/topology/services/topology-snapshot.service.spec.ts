@@ -101,6 +101,10 @@ describe('TopologySnapshotService', () => {
     );
     req.flush('boom', { status: 500, statusText: 'Server Error' });
 
-    await expect(resultPromise).resolves.toEqual({ kind: 'error', status: 500 });
+    await expect(resultPromise).resolves.toEqual({
+      kind: 'error',
+      status: 500,
+      correlationId: null,
+    });
   });
 });

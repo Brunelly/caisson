@@ -12,6 +12,26 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./topology/topology-page.component').then((m) => m.TopologyPageComponent),
   },
+  {
+    path: 'racks/:rackId/drift',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/list/drift-reports-list.component').then((m) => m.DriftReportsListComponent),
+  },
+  {
+    path: 'racks/:rackId/drift/items/:driftItemId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/detail/drift-report-details.component').then(
+        (m) => m.DriftReportDetailsComponent,
+      ),
+  },
+  {
+    path: 'racks/:rackId/drift/jobs/:jobId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
   { path: 'access-denied', component: AccessDeniedComponent },
   // Dev/CI-only route (no roleGuard, fixture data + a fake SignalR hub — see dev-harness.providers.ts):
   // lets Playwright exercise the real topology page/search/details-panel/graph components in a real
@@ -26,5 +46,28 @@ export const routes: Routes = [
     providers: DEV_HARNESS_PROVIDERS,
     loadComponent: () =>
       import('./topology/topology-page.component').then((m) => m.TopologyPageComponent),
+  },
+  // Story #67: the same dev/CI-only harness mechanism, mirroring the production drift route nesting so
+  // Playwright can exercise list -> filter -> detail -> apply -> live-status -> audit end to end (see
+  // web/e2e/drift-harness.spec.ts) without a live OIDC tenant, backend, or seeded drift data.
+  {
+    path: '__dev-harness__/drift/:rackId',
+    providers: DEV_HARNESS_PROVIDERS,
+    loadComponent: () =>
+      import('./drift/list/drift-reports-list.component').then((m) => m.DriftReportsListComponent),
+  },
+  {
+    path: '__dev-harness__/drift/:rackId/items/:driftItemId',
+    providers: DEV_HARNESS_PROVIDERS,
+    loadComponent: () =>
+      import('./drift/detail/drift-report-details.component').then(
+        (m) => m.DriftReportDetailsComponent,
+      ),
+  },
+  {
+    path: '__dev-harness__/drift/:rackId/jobs/:jobId',
+    providers: DEV_HARNESS_PROVIDERS,
+    loadComponent: () =>
+      import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
   },
 ];

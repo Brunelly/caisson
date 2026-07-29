@@ -61,6 +61,7 @@ import { TopologyStateService } from './state/topology-state.service';
           <app-topology-graph
             #graph
             [graph]="state.graph()"
+            [driftOverlay]="state.driftOverlay()"
             (nodeSelected)="onNodeSelected($event)"
             (edgeSelected)="onEdgeSelected($event)"
           />

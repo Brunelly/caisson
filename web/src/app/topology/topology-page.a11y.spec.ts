@@ -87,6 +87,7 @@ describe('TopologyPageComponent accessibility', () => {
         lastSuccessAt: '2026-01-01T00:00:00Z',
       } as never),
       graph: signal(deriveTopologyGraph(fixtureGraph())),
+      driftOverlay: signal(new Map()),
       selection: signal(null),
       selectionStaleNotice: signal(false),
       connectionStatus: signal('live' as const),

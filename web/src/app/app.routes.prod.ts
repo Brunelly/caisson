@@ -13,5 +13,25 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./topology/topology-page.component').then((m) => m.TopologyPageComponent),
   },
+  {
+    path: 'racks/:rackId/drift',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/list/drift-reports-list.component').then((m) => m.DriftReportsListComponent),
+  },
+  {
+    path: 'racks/:rackId/drift/items/:driftItemId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/detail/drift-report-details.component').then(
+        (m) => m.DriftReportDetailsComponent,
+      ),
+  },
+  {
+    path: 'racks/:rackId/drift/jobs/:jobId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
   { path: 'access-denied', component: AccessDeniedComponent },
 ];

@@ -46,6 +46,30 @@ export class TelemetryService {
     this.record('signalr.error', correlationId, { context, message });
   }
 
+  // Story #67 — permission-gated drift-apply workflow events (NFR4: correlate to backend job/
+  // correlation ids). Carries only jobId/rackId/driftItemId/status/context strings — never device host,
+  // credential, or MAC data (NFR4).
+  driftApplyRequested(rackId: string, driftItemId: string, correlationId: string | null): void {
+    this.record('drift.apply.requested', correlationId, { rackId, driftItemId });
+  }
+
+  driftApplyJobStatusChanged(jobId: string, status: string, correlationId: string | null): void {
+    this.record('drift.apply.job-status-changed', correlationId, { jobId, status });
+  }
+
+  driftApplyOutcome(jobId: string, status: string, correlationId: string | null): void {
+    this.record('drift.apply.outcome', correlationId, { jobId, status });
+  }
+
+  driftApplyError(
+    context: string,
+    message: string,
+    correlationId: string | null = null,
+    jobId: string | null = null,
+  ): void {
+    this.record('drift.apply.error', correlationId, { context, message, jobId });
+  }
+
   record(type: string, correlationId: string | null, detail?: TelemetryEvent['detail']): void {
     const event: TelemetryEvent = {
       type,
