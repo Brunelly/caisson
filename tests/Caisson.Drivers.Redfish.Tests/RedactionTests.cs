@@ -63,5 +63,30 @@ public sealed class RedactionTests : IDisposable
         logger.AllText.Should().NotContain("Authorization");
     }
 
+    [Fact]
+    public void RedfishConnectionSettings_ToString_never_contains_the_password()
+    {
+        var settings = new RedfishConnectionSettings("10.4.7.5", 443, "reader", Password, TimeSpan.FromSeconds(2));
+
+        settings.ToString().Should().NotContain(Password);
+        settings.ToString().Should().Contain("reader");
+    }
+
+    [Fact]
+    public void IpmiConnectionSettings_ToString_never_contains_the_password()
+    {
+        var settings = new IpmiConnectionSettings("10.4.7.5", 623, "reader", Password, TimeSpan.FromSeconds(2));
+
+        settings.ToString().Should().NotContain(Password);
+    }
+
+    [Fact]
+    public void BmcCredentials_ToString_never_contains_the_password()
+    {
+        var credentials = new Caisson.Drivers.Redfish.Credentials.BmcCredentials("reader", Password);
+
+        credentials.ToString().Should().NotContain(Password);
+    }
+
     public void Dispose() => _harness.Dispose();
 }

@@ -11,6 +11,7 @@ public sealed class Server : ISnapshotScoped
     {
         // EF Core materialization constructor.
         BmcAddress = null!;
+        ExternalDeviceKey = null!;
     }
 
     /// <summary>Creates an observed server record.</summary>
@@ -20,14 +21,17 @@ public sealed class Server : ISnapshotScoped
         Guid snapshotId,
         BmcType bmcType,
         string bmcAddress,
+        string externalDeviceKey,
         string? bmcUuid = null,
         string? hostname = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(externalDeviceKey);
         Id = id;
         RackId = rackId;
         SnapshotId = snapshotId;
         BmcType = bmcType;
         BmcAddress = bmcAddress;
+        ExternalDeviceKey = externalDeviceKey;
         BmcUuid = bmcUuid;
         Hostname = hostname;
     }
@@ -46,6 +50,14 @@ public sealed class Server : ISnapshotScoped
 
     /// <summary>The observed BMC address.</summary>
     public string BmcAddress { get; private set; }
+
+    /// <summary>
+    /// The trusted, config-supplied device key (<c>DeviceDefinition.DeviceKey</c>) this server was
+    /// discovered as — never device-controlled. Prefixed onto every stable key derived from this server
+    /// (see <see cref="Diffing.StableKeys.ForServer(Server)"/>) so two distinct configured devices can
+    /// never collide onto the same stable key even when they report an identical UUID/hostname (finding #3).
+    /// </summary>
+    public string ExternalDeviceKey { get; private set; }
 
     /// <summary>Observed BMC/server UUID (natural key, indexed).</summary>
     public string? BmcUuid { get; private set; }

@@ -74,8 +74,9 @@ public sealed class TopologyDiffCalculatorTests
 
         var result = Diff(previous, current);
 
+        // StableKeys.ForServer prefixes with the server's ExternalDeviceKey (finding #3) — "srv1" here.
         var serverDiff = result.Diffs.Single(d =>
-            d.EntityType == TopologyEntityType.Server && d.EntityStableKey == "uuid-1");
+            d.EntityType == TopologyEntityType.Server && d.EntityStableKey == "srv1|uuid-1");
         serverDiff.ChangeType.Should().Be(ChangeType.Modified);
         serverDiff.PreviousSnapshotId.Should().Be(previous.Id);
 

@@ -8,6 +8,7 @@ public sealed class Switch : ISnapshotScoped
     private Switch()
     {
         // EF Core materialization constructor.
+        ExternalDeviceKey = null!;
     }
 
     /// <summary>Creates an observed switch record scoped to a snapshot and rack.</summary>
@@ -16,15 +17,18 @@ public sealed class Switch : ISnapshotScoped
         Guid rackId,
         Guid snapshotId,
         DateTime lastSeenAtUtc,
+        string externalDeviceKey,
         string? managementIp = null,
         string? serial = null,
         string? model = null,
         string? osVersion = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(externalDeviceKey);
         Id = id;
         RackId = rackId;
         SnapshotId = snapshotId;
         LastSeenAtUtc = lastSeenAtUtc;
+        ExternalDeviceKey = externalDeviceKey;
         ManagementIp = managementIp;
         Serial = serial;
         Model = model;
@@ -39,6 +43,14 @@ public sealed class Switch : ISnapshotScoped
 
     /// <inheritdoc />
     public Guid SnapshotId { get; private set; }
+
+    /// <summary>
+    /// The trusted, config-supplied device key (<c>DeviceDefinition.DeviceKey</c>) this switch was
+    /// discovered as — never device-controlled. Prefixed onto every stable key derived from this switch
+    /// (see <see cref="Diffing.StableKeys.ForSwitch(Switch)"/>) so two distinct configured devices can
+    /// never collide onto the same stable key even when they report an identical serial (finding #3).
+    /// </summary>
+    public string ExternalDeviceKey { get; private set; }
 
     /// <summary>Observed management IP address, if known.</summary>
     public string? ManagementIp { get; private set; }

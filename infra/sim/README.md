@@ -20,12 +20,14 @@ docker compose -f infra/sim/docker-compose.yml down -v   # tear down, including 
 
 | Service  | Port | Credentials                                   |
 |----------|------|------------------------------------------------|
-| Postgres | 5432 | `caisson` / `caisson`, database `caisson`      |
-| Redis    | 6379 | none (no `requirepass` — local dev/test only)  |
+| Postgres | 5432 | `caisson` / `${POSTGRES_PASSWORD:-caisson}`, database `caisson` |
+| Redis    | 6379 | `requirepass` = `${REDIS_PASSWORD:-caisson}`                    |
 
-These are fixed, non-secret, local-only test credentials — the same ones the GitHub Actions `postgres:16`
-service container already uses. No source edits are required to use them; see
-[`.env.example`](.env.example) for every environment variable a contributor may want to export.
+Both services are **bound to `127.0.0.1` only** and must never be exposed on an untrusted network.
+Passwords default to `caisson` for zero-config local use and can be overridden by exporting
+`POSTGRES_PASSWORD` / `REDIS_PASSWORD` before `docker compose up`. These are fixed, non-secret,
+local-only test values; see [`.env.example`](.env.example) for every environment variable a
+contributor may want to export.
 
 ## Next steps
 

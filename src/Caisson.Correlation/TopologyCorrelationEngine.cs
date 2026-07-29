@@ -15,6 +15,15 @@ namespace Caisson.Correlation;
 /// </summary>
 internal sealed class TopologyCorrelationEngine : ITopologyCorrelationEngine
 {
+    /// <summary>
+    /// Upper bound on the ranked candidates <see cref="ResolveAmbiguous"/> returns for one ambiguous NIC
+    /// (finding #11) — when one MAC is learned on N ports, this bounds N (and, downstream, the
+    /// <c>topology_candidate_mapping</c> rows persisted for that NIC) to the top-K by score, mirroring the
+    /// default in <c>Caisson.Orchestration.Options.DiscoveryOrchestrationOptions.MaxCandidatesPerNic</c>.
+    /// Fixed here (not configurable) to keep this project's zero-config, pure/AOT contract (ADR 0010).
+    /// </summary>
+    private const int MaxCandidatesPerNic = 16;
+
     /// <inheritdoc />
     public TopologyCorrelationResult Correlate(TopologyCorrelationInput input)
     {
@@ -175,6 +184,7 @@ internal sealed class TopologyCorrelationEngine : ITopologyCorrelationEngine
             .OrderByDescending(c => c.Confidence.Value)
             .ThenBy(c => c.SwitchId, StringComparer.Ordinal)
             .ThenBy(c => c.PortName, StringComparer.Ordinal)
+            .Take(MaxCandidatesPerNic)
             .ToList();
     }
 

@@ -63,5 +63,7 @@ public sealed class ConfigurationRackDefinitionProvider : IRackDefinitionProvide
             entry.Host,
             entry.Port,
             entry.TimeoutSeconds > 0 ? TimeSpan.FromSeconds(entry.TimeoutSeconds) : defaultTimeout,
-            entry.CredentialsRef);
+            entry.CredentialsRef,
+            entry.UseTls,
+            entry.AllowPlaintext);
 }

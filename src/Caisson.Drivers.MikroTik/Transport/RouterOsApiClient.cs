@@ -18,6 +18,13 @@ namespace Caisson.Drivers.MikroTik.Transport;
 /// </summary>
 public sealed class RouterOsApiClient : IRouterOsApiClient
 {
+    /// <summary>
+    /// Upper bound on the number of <c>!re</c> rows accepted for a single reply, well above any realistic
+    /// bridge-host/port/LLDP table. Bounds the ~20x wire-to-heap amplification a compromised device could
+    /// otherwise inflict by returning an unbounded row count.
+    /// </summary>
+    internal const int MaxRowsPerReply = 100_000;
+
     private readonly RouterOsConnectionSettings _settings;
     private readonly ILogger _logger;
 
@@ -61,16 +68,30 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
                 // opt-in — never a silent accept-all (CWE-295).
                 var ssl = new SslStream(stream, leaveInnerStreamOpen: false, ValidateServerCertificate);
                 await ssl.AuthenticateAsClientAsync(
-                    new SslClientAuthenticationOptions { TargetHost = _settings.Host }, linked.Token).ConfigureAwait(false);
+                    new SslClientAuthenticationOptions
+                    {
+                        TargetHost = _settings.Host,
+
+                        // Revocation checking only makes sense against a chain trusted via the platform
+                        // store — a pinned self-signed certificate has no CA-issued revocation info to
+                        // check, so this is scoped to the non-pinned path (see ValidateServerCertificate).
+                        CertificateRevocationCheckMode = string.IsNullOrWhiteSpace(_settings.CertificateThumbprint)
+                            ? X509RevocationMode.Online
+                            : X509RevocationMode.NoCheck,
+                    },
+                    linked.Token).ConfigureAwait(false);
                 stream = ssl;
             }
             else
             {
                 // The RouterOS plaintext API sends "=password=<secret>" over the wire immediately after
-                // connect; warn (secret-free) so operators consciously accept the plaintext exposure.
-                _logger.LogWarning(
-                    "RouterOS credentials for {Host}:{Port} will be sent over a plaintext (non-TLS) connection. " +
-                    "Use the TLS API port 8729 with a pinned certificate to protect them in transit.",
+                // connect. This is now an Error (not a Warning): plaintext is only reachable when the
+                // factory's fail-closed AllowPlaintext opt-in was explicitly set, so every occurrence is a
+                // conscious, alertable operator decision, not routine noise.
+                _logger.LogError(
+                    "RouterOS credentials for {Host}:{Port} are being sent over a plaintext (non-TLS) connection " +
+                    "because AllowPlaintext was explicitly set. Use the TLS API port 8729 with a pinned certificate " +
+                    "to protect them in transit.",
                     _settings.Host, _settings.Port);
             }
 
@@ -84,21 +105,18 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
     }
 
     /// <summary>
-    /// TLS peer-certificate policy for the 8729 transport. Accepts a fully trusted chain; otherwise, if a
-    /// SHA-256 fingerprint pin is configured, accepts only an exact match (the recommended posture for the
-    /// self-signed CHR certificate); otherwise accepts an untrusted certificate only when the caller has
-    /// explicitly opted in via <see cref="RouterOsConnectionSettings.AllowUntrustedCertificate"/>. All
-    /// other cases are rejected, so validation is never silently disabled (CWE-295). Log lines are
-    /// secret-free.
+    /// TLS peer-certificate policy for the 8729 transport. When a SHA-256 fingerprint pin is configured it
+    /// is the SOLE authority — the pin comparison result is returned regardless of <paramref name="sslPolicyErrors"/>,
+    /// so a certificate that happens to chain to a trusted root can never bypass a configured pin (the pin
+    /// exists precisely to defend the active-MITM case, where the platform validator would otherwise say
+    /// <see cref="SslPolicyErrors.None"/>). Only when no pin is configured does a fully trusted chain
+    /// short-circuit to accepted, or does an untrusted certificate fall through to the explicit
+    /// <see cref="RouterOsConnectionSettings.AllowUntrustedCertificate"/> opt-in. All other cases are
+    /// rejected, so validation is never silently disabled (CWE-295). Log lines are secret-free.
     /// </summary>
     internal bool ValidateServerCertificate(
         object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
     {
-        if (sslPolicyErrors == SslPolicyErrors.None)
-        {
-            return true;
-        }
-
         if (certificate is not null && !string.IsNullOrWhiteSpace(_settings.CertificateThumbprint))
         {
             var presented = Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData()));
@@ -111,6 +129,11 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
                 "RouterOS TLS certificate for {Host} did not match the configured SHA-256 fingerprint pin; rejecting the connection.",
                 _settings.Host);
             return false;
+        }
+
+        if (sslPolicyErrors == SslPolicyErrors.None)
+        {
+            return true;
         }
 
         if (_settings.AllowUntrustedCertificate)
@@ -264,6 +287,12 @@ public sealed class RouterOsApiClient : IRouterOsApiClient
             switch (type)
             {
                 case "!re":
+                    if (rows.Count >= MaxRowsPerReply)
+                    {
+                        throw new RouterOsApiException(
+                            $"RouterOS reply exceeded the {MaxRowsPerReply}-row cap and was rejected.");
+                    }
+
                     rows.Add(attributes);
                     break;
                 case "!done":

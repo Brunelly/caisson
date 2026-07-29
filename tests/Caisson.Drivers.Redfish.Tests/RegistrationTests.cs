@@ -20,6 +20,7 @@ public sealed class RegistrationTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new TestHostEnvironment());
         services.AddHpeRedfishBmcDriver();
         services.AddCaissonDriverRegistry();
 
@@ -38,6 +39,7 @@ public sealed class RegistrationTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new TestHostEnvironment());
         services.AddHpeRedfishBmcDriver();
         services.AddCaissonDriverRegistry();
 
@@ -45,7 +47,7 @@ public sealed class RegistrationTests
         var registry = provider.GetRequiredService<IBmcDriverRegistry>();
         registry.TryResolve(RedfishBmcDriver.RedfishDescriptor, out var factory).Should().BeTrue();
 
-        var driver = factory!.Create(new BmcConnectionOptions("10.0.0.1", Port: null, TimeSpan.FromSeconds(5), "ilo-1"));
+        var driver = factory!.Create(new BmcConnectionOptions("10.0.0.1", Port: null, TimeSpan.FromSeconds(5), "ilo_1"));
 
         driver.Descriptor.Should().Be(RedfishBmcDriver.RedfishDescriptor);
     }

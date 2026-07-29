@@ -18,6 +18,8 @@ public sealed class TopologyMetrics : IDisposable
     private readonly UpDownCounter<long> _connectedClients;
     private readonly Counter<long> _publishFailures;
     private readonly Counter<long> _relayDeliveries;
+    private readonly Counter<long> _decodeFailures;
+    private readonly Counter<long> _relayRejections;
 
     public TopologyMetrics()
     {
@@ -28,6 +30,10 @@ public sealed class TopologyMetrics : IDisposable
             "caisson.realtime.publish_failures", unit: "{failure}", description: "Fail-open event publish failures.");
         _relayDeliveries = _meter.CreateCounter<long>(
             "caisson.realtime.relay_deliveries", unit: "{delivery}", description: "Events relayed from the channel to hub groups.");
+        _decodeFailures = _meter.CreateCounter<long>(
+            "caisson.realtime.decode_failures", unit: "{failure}", description: "Channel messages that failed to deserialize into a known event (finding #30).");
+        _relayRejections = _meter.CreateCounter<long>(
+            "caisson.realtime.relay_rejections", unit: "{event}", description: "Events dropped before fan-out: unknown rack, implausible seq, or a bad/absent HMAC (finding #2).");
     }
 
     /// <summary>Records a hub connect (+1) or disconnect (-1).</summary>
@@ -38,6 +44,12 @@ public sealed class TopologyMetrics : IDisposable
 
     /// <summary>Records a relayed event delivery to a hub group.</summary>
     public void RecordRelayDelivery() => _relayDeliveries.Add(1);
+
+    /// <summary>Records a channel message that failed to deserialize into a known event (finding #30).</summary>
+    public void RecordDecodeFailure() => _decodeFailures.Add(1);
+
+    /// <summary>Records an event dropped before fan-out: unknown rack, implausible seq, or a bad/absent HMAC (finding #2).</summary>
+    public void RecordRelayRejection() => _relayRejections.Add(1);
 
     /// <inheritdoc />
     public void Dispose() => _meter.Dispose();

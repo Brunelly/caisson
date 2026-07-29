@@ -39,6 +39,13 @@ public sealed record IpmiConnectionSettings(
 {
     /// <summary>The default IPMI RMCP+ (lanplus) UDP port.</summary>
     public const int DefaultPort = 623;
+
+    /// <summary>
+    /// Overrides the compiler-generated record <c>ToString()</c> — which would otherwise print every
+    /// positional member, including <see cref="Password"/> — so an accidental <c>settings.ToString()</c>
+    /// (e.g. in a debugger watch or a future log call) can never leak the credential.
+    /// </summary>
+    public override string ToString() => $"{Host}:{Port} as {Username}";
 }
 
 /// <summary>

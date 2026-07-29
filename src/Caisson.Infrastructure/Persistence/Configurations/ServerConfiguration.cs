@@ -15,6 +15,7 @@ public sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.HasKey(s => s.Id);
 
         builder.Property(s => s.BmcType).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(s => s.ExternalDeviceKey).IsRequired().HasMaxLength(256);
         builder.Property(s => s.BmcAddress).IsRequired().HasMaxLength(128);
         builder.Property(s => s.BmcUuid).HasMaxLength(128);
         builder.Property(s => s.Hostname).HasMaxLength(256);

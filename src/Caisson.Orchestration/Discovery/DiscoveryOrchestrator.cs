@@ -80,7 +80,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
             var switches = await ExecuteStepAsync(
                 job, DiscoveryStepName.SwitchDiscovery, cancellationToken,
-                () => _devices.DiscoverSwitchesAsync(definition, context, cancellationToken),
+                ct => _devices.DiscoverSwitchesAsync(definition, context, ct),
                 o => Summarize(new { attempted = o.Attempted, failed = o.Failed, discovered = o.Switches.Count }));
 
             if (await IsCanceledAsync(job, cancellationToken))
@@ -90,7 +90,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
             var servers = await ExecuteStepAsync(
                 job, DiscoveryStepName.BmcDiscovery, cancellationToken,
-                () => _devices.DiscoverServersAsync(definition, context, cancellationToken),
+                ct => _devices.DiscoverServersAsync(definition, context, ct),
                 o => Summarize(new { attempted = o.Attempted, failed = o.Failed, discovered = o.Servers.Count }));
 
             if (await IsCanceledAsync(job, cancellationToken))
@@ -101,7 +101,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             var input = new TopologyCorrelationInput(switches.Switches, servers.Servers);
             var correlation = await ExecuteStepAsync(
                 job, DiscoveryStepName.Correlation, cancellationToken,
-                () => Task.FromResult(_engine.Correlate(input)),
+                _ => Task.FromResult(_engine.Correlate(input)),
                 r => Summarize(new
                 {
                     mapped = r.Mappings.Count,
@@ -154,10 +154,20 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
         DiscoveryJob job,
         DiscoveryStepName stepName,
         CancellationToken cancellationToken,
-        Func<Task<T>> action,
+        Func<CancellationToken, Task<T>> action,
         Func<T, string?> summarize)
     {
         var step = FindStep(job, stepName);
+
+        // Overall job budget (finding #12): checked once per step so a job that is legitimately alive but
+        // pathologically slow still terminates, rather than heartbeating forever.
+        if (job.StartedAtUtc is { } startedAtUtc
+            && (Now - startedAtUtc).TotalSeconds > _options.MaxJobDurationSeconds)
+        {
+            throw await FailStepAndJobAsync(
+                job, step, DiscoveryErrorCodes.JobTimedOut,
+                DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.JobTimedOut), cancellationToken);
+        }
 
         for (var attempt = 1; ; attempt++)
         {
@@ -167,7 +177,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
 
             try
             {
-                var value = await action();
+                var value = await RunWithHeartbeatAsync(job, action, cancellationToken);
                 step.Succeed(Now, summarize(value));
                 job.Heartbeat(Now);
                 await _store.SaveAsync(cancellationToken);
@@ -203,6 +213,63 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
                     stepName, attempt, job.Id);
                 await BackoffAsync(attempt, cancellationToken);
             }
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> under a per-step deadline (<c>MaxStepDurationSeconds</c>) while a
+    /// background <see cref="PeriodicTimer"/> refreshes the job heartbeat every
+    /// <c>HeartbeatStalenessSeconds / 3</c> (finding #12) — previously the heartbeat was only touched
+    /// immediately before/after the whole (potentially multi-driver-call) step, so a legitimately slow but
+    /// alive step could exceed the staleness threshold and be reclaimed by another runner instance
+    /// mid-execution. The heartbeat loop is fully stopped and awaited before this method returns (in
+    /// <c>finally</c>), so its <c>_store.SaveAsync</c> calls can never race the caller's — <see cref="_store"/>
+    /// wraps a single non-thread-safe <c>DbContext</c> for the whole job run.
+    /// </summary>
+    private async Task<T> RunWithHeartbeatAsync<T>(
+        DiscoveryJob job, Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(_options.MaxStepDurationSeconds));
+
+        using var heartbeatStop = new CancellationTokenSource();
+        using var heartbeatToken = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, heartbeatStop.Token);
+        var heartbeatTask = HeartbeatLoopAsync(job, heartbeatToken.Token);
+
+        try
+        {
+            return await action(deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            // The deadline (not caller cancellation) fired — surface as a retryable step failure rather
+            // than letting a bare OperationCanceledException propagate as if the caller had cancelled.
+            throw new DiscoveryStepException(
+                DiscoveryErrorCodes.StepTimedOut, DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.StepTimedOut),
+                retryable: true);
+        }
+        finally
+        {
+            heartbeatStop.Cancel();
+            try
+            {
+                await heartbeatTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected: the loop observes heartbeatStop/deadline and exits.
+            }
+        }
+    }
+
+    private async Task HeartbeatLoopAsync(DiscoveryJob job, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(Math.Max(1, _options.HeartbeatStalenessSeconds / 3)));
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            job.Heartbeat(Now);
+            await _store.SaveAsync(cancellationToken);
         }
     }
 

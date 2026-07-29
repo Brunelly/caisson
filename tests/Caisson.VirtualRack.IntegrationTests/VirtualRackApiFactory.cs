@@ -144,14 +144,17 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
         var scenario = _scenarios.GetValueOrDefault(rackId, RackScenario.Happy);
 
         var switchPort = scenario == RackScenario.SwitchUnreachable ? UnreachableSwitchPort : _switchSimulator!.Port;
+        // The virtual-rack switch simulator speaks plaintext RouterOS API, so the explicit AllowPlaintext
+        // opt-in is required now that TLS is the fail-closed default (finding #8).
         var switchDevice = new DeviceDefinition(
             VirtualRackDefinition.SwitchId, "MikroTik", null, DriverConnectionKind.RouterOsApi,
-            _switchSimulator!.Host, switchPort, TimeSpan.FromSeconds(5), "sw1-creds");
+            _switchSimulator!.Host, switchPort, TimeSpan.FromSeconds(5), "sw1_creds",
+            UseTls: false, AllowPlaintext: true);
 
         var bmcSimulator = scenario == RackScenario.BmcAuthFailure ? _bmcAuthFailSimulator! : _bmcSimulator!;
         var serverDevice = new DeviceDefinition(
             VirtualRackDefinition.ServerId, "HPE", null, DriverConnectionKind.Redfish,
-            bmcSimulator.Host, bmcSimulator.Port, TimeSpan.FromSeconds(5), "srv1-creds");
+            bmcSimulator.Host, bmcSimulator.Port, TimeSpan.FromSeconds(5), "srv1_creds");
 
         return new RackDefinition(rackId, "vrack-" + rackId.ToString("N"), new[] { switchDevice }, new[] { serverDevice });
     }

@@ -41,15 +41,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
@@ -60,6 +60,22 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore
+
+      # CI/infra hardening (security-review-5): fail the build the moment a direct or transitive NuGet
+      # package has a published advisory, instead of relying on someone noticing during an unrelated PR.
+      # `--include-transitive` matters here — the two highest-severity hits found when this gate was
+      # added (Microsoft.Extensions.Caching.Memory, System.Text.Json) were both transitive, pulled in by
+      # the ASP.NET Core/EF Core 8.0.8 graph rather than referenced directly. Pin fixes in
+      # Directory.Packages.props (CentralPackageTransitivePinningEnabled locks a version once resolved,
+      # but only an explicit PackageVersion entry raises it to a patched one).
+      - name: Check for vulnerable NuGet packages
+        run: |
+          output=$(dotnet list Caisson.sln package --vulnerable --include-transitive)
+          echo "$output"
+          if echo "$output" | grep -q "has the following vulnerable packages"; then
+            echo "::error::One or more NuGet packages have a known vulnerability — see output above."
+            exit 1
+          fi
 
       - name: Build (warnings as errors)
         run: dotnet build --no-restore -c Release -warnaserror
@@ -83,7 +99,7 @@ jobs:
 
       - name: Upload MikroTik test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mikrotik-test-logs
           path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
@@ -99,7 +115,7 @@ jobs:
 
       - name: Upload Redfish test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: redfish-test-logs
           path: tests/Caisson.Drivers.Redfish.IntegrationTests/TestResults/*.trx
@@ -130,7 +146,7 @@ jobs:
 
       - name: Upload virtual-rack test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: virtual-rack-test-logs
           path: tests/Caisson.VirtualRack.IntegrationTests/TestResults/*.trx
@@ -145,10 +161,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: "npm"
@@ -156,6 +172,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # CI/infra hardening (security-review-5): fail on a known vulnerability in a package that actually
+      # ships (`--omit=dev` — the Angular/eslint toolchain's own moderate-severity dev-only advisories at
+      # the time this gate was added are irrelevant to what's served to a browser, and would otherwise
+      # make this gate permanently red for a fix nobody but the toolchain vendor controls).
+      - name: Check for vulnerable npm packages (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
@@ -166,6 +189,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # e2e/harness auth-bypass isolation (security-review-5 #7): the production bundle must NOT contain
+      # the e2e fake-token marker. build:e2e / build:harness emit to dist/web-e2e / dist/web-harness (a
+      # distinct outputPath), and this guard makes an accidental bypass in the prod bundle a hard failure.
+      - name: Assert prod bundle has no e2e auth bypass
+        run: |
+          if grep -rqF 'e2e-fake-token' dist/web/browser; then
+            echo "::error::e2e auth-bypass marker 'e2e-fake-token' found in the production bundle (dist/web/browser)"; exit 1
+          fi
+          echo "Production bundle is clean of the e2e auth-bypass marker."
+
       # Angular 22's default unit-test builder (Vitest + jsdom) runs headless with no Chrome
       # install needed; --watch=false is explicit here even though it is already the CI default
       # (ng test defaults --watch to false outside a TTY) — see ADR 0015.
@@ -174,7 +207,7 @@ jobs:
 
       - name: Upload test/coverage artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: angular-test-artifacts
           path: |
@@ -215,22 +248,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: "npm"
@@ -284,15 +317,27 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - name: Build Angular (e2e configuration, auth bypass)
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # Finding #7: the real-backend smoke spec (topology.smoke.spec.ts) and the fixture-only,
+      # auth-bypassing dev-harness spec (topology-harness.spec.ts, ADR 0016) now build and serve from
+      # TWO SEPARATE Angular configurations instead of one shared build. The `e2e` configuration is
+      # hardened to swap in the same production route table (app.routes.prod.ts) a real deploy would
+      # ship — the smoke spec never visits `/__dev-harness__/...` — so the only build ever served
+      # alongside the real, seeded Caisson.Api backend below has no unauthenticated harness route or
+      # fixture/fake-hub code reachable at all. The `harness` configuration (route + fixtures/fake-hub
+      # kept, same OIDC-bypass auth config) serves the harness spec on its own, backend-free run.
+      - name: Build Angular (e2e configuration, auth bypass, production route table)
         working-directory: web
         run: npm run build:e2e
 
       - name: Serve the Angular e2e build
         working-directory: web
         run: |
-          nohup npm run serve:e2e > "$RUNNER_TEMP/serve.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/serve.pid"
+          nohup npm run serve:e2e > "$RUNNER_TEMP/serve-e2e.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/serve-e2e.pid"
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:4200/ > /dev/null; then
               echo "Angular e2e build is being served."
@@ -301,22 +346,49 @@ jobs:
             sleep 1
           done
           echo "::error::Angular e2e build did not become ready within 30s"
-          cat "$RUNNER_TEMP/serve.log"
+          cat "$RUNNER_TEMP/serve-e2e.log"
           exit 1
-
-      - name: Install Playwright browsers
-        working-directory: web
-        run: npx playwright install --with-deps chromium
 
       - name: Run e2e smoke test
         working-directory: web
         env:
           E2E_BASE_URL: "http://127.0.0.1:4200"
-        run: npm run e2e
+        run: npx playwright test topology.smoke.spec.ts
+
+      - name: Stop the Angular e2e build server
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/serve-e2e.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-e2e.pid")" 2>/dev/null || true
+
+      - name: Build Angular (harness configuration, auth bypass, dev-harness route)
+        working-directory: web
+        run: npm run build:harness
+
+      - name: Serve the Angular harness build
+        working-directory: web
+        run: |
+          nohup npm run serve:harness > "$RUNNER_TEMP/serve-harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/serve-harness.pid"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4200/ > /dev/null; then
+              echo "Angular harness build is being served."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Angular harness build did not become ready within 30s"
+          cat "$RUNNER_TEMP/serve-harness.log"
+          exit 1
+
+      - name: Run dev-harness e2e test
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test topology-harness.spec.ts
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: web/playwright-report
@@ -327,4 +399,5 @@ jobs:
         if: always()
         run: |
           [ -f "$RUNNER_TEMP/api.pid" ] && kill "$(cat "$RUNNER_TEMP/api.pid")" 2>/dev/null || true
-          [ -f "$RUNNER_TEMP/serve.pid" ] && kill "$(cat "$RUNNER_TEMP/serve.pid")" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/serve-e2e.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-e2e.pid")" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/serve-harness.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-harness.pid")" 2>/dev/null || true

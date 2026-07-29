@@ -148,6 +148,11 @@ export function deriveTopologyGraph(graph: TopologyGraphDto): TopologyGraphModel
   const ports = new Map<string, PortGraphNode>();
   const vlans = new Map<number, VlanGraphNode>();
   const edges: TopologyGraphEdge[] = [];
+  // Finding #31: a port-vlan edge id is checked for every (nic, vlan) pair below; an `edges.some(...)`
+  // linear scan there makes derivation quadratic in the number of edges for a rack with many NICs/VLANs
+  // per port (a large-but-legitimate rack, or a crafted snapshot, could freeze the tab on every
+  // refresh — this runs on every live-update event and poll). A Set gives O(1) membership instead.
+  const portVlanEdgeIds = new Set<string>();
 
   const ensureSwitch = (stableKey: string, serial: string | null): SwitchGraphNode => {
     const id = switchNodeId(stableKey);
@@ -267,7 +272,8 @@ export function deriveTopologyGraph(graph: TopologyGraphDto): TopologyGraphModel
       for (const vlanId of attachment.vlans) {
         const vlanNode = ensureVlan(vlanId);
         const edgeId = `${portNode.id}->${vlanNode.id}`;
-        if (!edges.some((e) => e.id === edgeId)) {
+        if (!portVlanEdgeIds.has(edgeId)) {
+          portVlanEdgeIds.add(edgeId);
           edges.push({
             id: edgeId,
             source: portNode.id,

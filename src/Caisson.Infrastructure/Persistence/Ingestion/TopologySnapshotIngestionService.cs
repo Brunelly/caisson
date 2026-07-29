@@ -97,6 +97,14 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
             _ids.NewId(), request.RackId, mapped.Snapshot.Id, diffResult.ChangeCountsJson, previous?.Id);
         mapped.Snapshot.SetChangeSummary(summary);
 
+        var allDiagnostics = mapped.Diagnostics.Concat(diffResult.Diagnostics).ToList();
+        foreach (var diagnostic in allDiagnostics)
+        {
+            _logger.LogWarning(
+                "Ingestion diagnostic rackId={RackId} snapshotId={SnapshotId}: {Diagnostic}",
+                request.RackId, mapped.Snapshot.Id, diagnostic);
+        }
+
         var audit = new TopologyAuditEvent(
             _ids.NewId(),
             request.CompletedAtUtc,
@@ -109,7 +117,7 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
             rackId: request.RackId,
             snapshotId: mapped.Snapshot.Id,
             targetId: mapped.Snapshot.Id.ToString(),
-            detailsJson: diffResult.ChangeCountsJson);
+            detailsJson: BuildAuditDetails(diffResult.ChangeCountsJson, allDiagnostics));
 
         _context.Snapshots.Add(mapped.Snapshot);
         _context.MacAddresses.AddRange(mapped.MacAddresses);
@@ -156,6 +164,41 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
                 "snapshot-updated publish failed (swallowed) rackId={RackId} snapshotId={SnapshotId} correlationId={CorrelationId}",
                 request.RackId, snapshot.Id, request.CorrelationId);
         }
+    }
+
+    /// <summary>
+    /// Folds the change-count rollup and any mapping/diff diagnostics (finding #3/#28) into one JSON
+    /// object, bounded to <see cref="TopologyAuditEvent.MaxDetailsJsonLength"/> — a pathological diagnostic
+    /// count is capped rather than risking the audit-event constructor's length guard.
+    /// </summary>
+    private static string BuildAuditDetails(string changeCountsJson, IReadOnlyList<string> diagnostics)
+    {
+        if (diagnostics.Count == 0)
+        {
+            return changeCountsJson;
+        }
+
+        using var changeCounts = JsonDocument.Parse(changeCountsJson);
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["changeCounts"] = changeCounts.RootElement.Clone(),
+            ["diagnostics"] = diagnostics.Take(50).ToList(),
+            ["diagnosticCount"] = diagnostics.Count,
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        if (json.Length <= TopologyAuditEvent.MaxDetailsJsonLength)
+        {
+            return json;
+        }
+
+        // Even the capped diagnostic list overflowed the bound — keep the counts and just the total.
+        return JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["changeCounts"] = changeCounts.RootElement.Clone(),
+            ["diagnosticCount"] = diagnostics.Count,
+            ["diagnosticsTruncated"] = true,
+        });
     }
 
     private static (int Added, int Removed, int Modified) ParseTotalChangeCounts(string changeCountsJson)

@@ -21,6 +21,18 @@ public sealed class DiscoveryJobConfiguration : IEntityTypeConfiguration<Discove
         builder.ToTable("discovery_job");
         builder.HasKey(j => j.Id);
 
+        // Optimistic concurrency (finding #12): the Npgsql xmin system column as a concurrency token — no
+        // new schema column, no new dependency — so a superseded execution's SaveChangesAsync throws
+        // DbUpdateConcurrencyException instead of silently clobbering a write from a different claim (e.g.
+        // two runner instances that both believe they hold the same job after a reclaim race).
+        // UseXminAsConcurrencyToken() is marked obsolete in favour of a bare `Property<uint>("xmin")
+        // .IsRowVersion()` shadow property, but that alone makes the migration generator treat xmin as a
+        // brand-new column and emit an "ADD COLUMN xmin" — which Postgres rejects outright, xmin being a
+        // reserved system column name. UseXminAsConcurrencyToken() correctly excludes it from migrations.
+#pragma warning disable CS0618
+        builder.UseXminAsConcurrencyToken();
+#pragma warning restore CS0618
+
         builder.Property(j => j.Mode).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(j => j.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(j => j.ActorType).HasConversion<string>().HasMaxLength(32).IsRequired();

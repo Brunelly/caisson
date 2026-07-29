@@ -127,20 +127,61 @@ public sealed class DiscoveryJobRunner : BackgroundService
         return true;
     }
 
-    private Task<Guid?> ClaimAsync(CaissonDbContext context, CancellationToken cancellationToken)
+    private async Task<Guid?> ClaimAsync(CaissonDbContext context, CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow().UtcDateTime;
         var stale = now.AddSeconds(-_options.Value.HeartbeatStalenessSeconds);
-        return ClaimNextAsync(context, now, stale, cancellationToken);
+        var maxAttempts = _options.Value.MaxJobAttempts;
+
+        // Reconcile first: a stale job that has already exhausted its attempts would otherwise sit
+        // forever — excluded from the reclaim predicate below, but never itself marked terminal, since
+        // nothing else observes it (finding #12).
+        await FailExhaustedStaleJobsAsync(context, now, stale, maxAttempts, cancellationToken);
+        return await ClaimNextAsync(context, now, stale, maxAttempts, cancellationToken);
+    }
+
+    /// <summary>
+    /// Fails any <c>InProgress</c> job whose heartbeat is stale AND whose <c>attempt_count</c> has already
+    /// reached <paramref name="maxAttempts"/> — the reconciliation half of finding #12's claim exclusion:
+    /// once such a job stops being reclaimable it would otherwise never reach a terminal state. Internal
+    /// so concurrency tests can exercise the reconciliation directly.
+    /// </summary>
+    internal static Task FailExhaustedStaleJobsAsync(
+        CaissonDbContext context, DateTime now, DateTime stale, int maxAttempts, CancellationToken cancellationToken)
+    {
+        const string sql = @"
+UPDATE discovery_job
+SET status = 'Failed',
+    finished_at_utc = {0},
+    last_heartbeat_at_utc = {0},
+    error_code = {2},
+    error_message = {3}
+WHERE status = 'InProgress'
+  AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1})
+  AND attempt_count >= {4}";
+
+        // NOTE: ExecuteSqlRawAsync's params-array overload greedily captures a trailing CancellationToken
+        // as if it were another SQL parameter (it boxes to object like everything else) — it must be
+        // passed via the explicit IEnumerable<object> + CancellationToken overload instead, or EF throws
+        // "no store type mapping for CancellationToken" trying to bind it as a query parameter.
+        object[] parameters =
+        {
+            now, stale,
+            DiscoveryErrorCodes.MaxAttemptsExceeded,
+            DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.MaxAttemptsExceeded),
+            maxAttempts,
+        };
+        return context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
     }
 
     /// <summary>
     /// Atomically claims the next Queued job — or reclaims an <c>InProgress</c> job whose heartbeat is
-    /// older than <paramref name="stale"/> — via <c>FOR UPDATE SKIP LOCKED</c>. Internal so concurrency
-    /// tests can exercise the claim directly.
+    /// older than <paramref name="stale"/> — via <c>FOR UPDATE SKIP LOCKED</c>, excluding any job that has
+    /// already reached <paramref name="maxAttempts"/> (finding #12: bounded reclaim, mirroring the step
+    /// retry cap). Internal so concurrency tests can exercise the claim directly.
     /// </summary>
     internal static async Task<Guid?> ClaimNextAsync(
-        CaissonDbContext context, DateTime now, DateTime stale, CancellationToken cancellationToken)
+        CaissonDbContext context, DateTime now, DateTime stale, int maxAttempts, CancellationToken cancellationToken)
     {
         const string sql = @"
 UPDATE discovery_job
@@ -150,8 +191,9 @@ SET status = 'InProgress',
     attempt_count = attempt_count + 1
 WHERE id = (
     SELECT id FROM discovery_job
-    WHERE status = 'Queued'
-       OR (status = 'InProgress' AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1}))
+    WHERE (status = 'Queued'
+       OR (status = 'InProgress' AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1})))
+      AND attempt_count < {2}
     ORDER BY created_at_utc
     FOR UPDATE SKIP LOCKED
     LIMIT 1
@@ -159,7 +201,7 @@ WHERE id = (
 RETURNING id AS ""Value""";
 
         var claimed = await context.Database
-            .SqlQueryRaw<Guid>(sql, now, stale)
+            .SqlQueryRaw<Guid>(sql, now, stale, maxAttempts)
             .ToListAsync(cancellationToken);
         return claimed.Count > 0 ? claimed[0] : null;
     }

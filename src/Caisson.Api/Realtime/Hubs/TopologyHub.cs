@@ -22,11 +22,13 @@ namespace Caisson.Api.Realtime.Hubs;
 public sealed class TopologyHub : Hub<ITopologyClient>
 {
     private const string CorrelationItemKey = "caisson.correlationId";
+    private const string SubscribedRacksItemKey = "caisson.subscribedRacks";
 
     private readonly CaissonDbContext _context;
     private readonly IAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly TopologyMetrics _metrics;
+    private readonly IRackAccessPolicy _rackAccess;
     private readonly ILogger<TopologyHub> _logger;
 
     public TopologyHub(
@@ -34,12 +36,14 @@ public sealed class TopologyHub : Hub<ITopologyClient>
         IAuditEventWriter audit,
         ICorrelationContext correlation,
         TopologyMetrics metrics,
+        IRackAccessPolicy rackAccess,
         ILogger<TopologyHub> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        _rackAccess = rackAccess ?? throw new ArgumentNullException(nameof(rackAccess));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -71,7 +75,10 @@ public sealed class TopologyHub : Hub<ITopologyClient>
     {
         StampCorrelation();
 
-        if (!await _context.RackExistsAsync(rackId, Context.ConnectionAborted))
+        // Finding #29: the per-rack access seam, same allow-all-today shape as the REST controllers —
+        // denial is surfaced identically to "rack not found" below (the client cannot distinguish the two).
+        if (!await _rackAccess.CanReadAsync(Context.User ?? new ClaimsPrincipal(new ClaimsIdentity()), rackId, Context.ConnectionAborted)
+            || !await _context.RackExistsAsync(rackId, Context.ConnectionAborted))
         {
             // The rack does not exist, so it cannot be the audit's rack_id (a FK) — record the attempted
             // rack in targetId with a null rack_id, and join no group (fail-closed).
@@ -83,6 +90,7 @@ public sealed class TopologyHub : Hub<ITopologyClient>
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, TopologyGroups.ForRack(rackId), Context.ConnectionAborted);
+        SubscribedRacks().Add(rackId);
         await AuditAsync(rackId, rackId, "topology.hub.subscribe", "success");
         _logger.LogInformation(
             "Topology hub subscribed rackId={RackId} connectionId={ConnectionId} correlationId={CorrelationId} user={User}",
@@ -94,6 +102,14 @@ public sealed class TopologyHub : Hub<ITopologyClient>
     {
         StampCorrelation();
 
+        // Finding #5: a client may call this for a rack it was never subscribed to (a stale/duplicate
+        // unsubscribe, or simply an id it never subscribed with) — that is a genuine no-op, not an
+        // auditable action, so skip both the (equally no-op) group removal and the audit write.
+        if (!SubscribedRacks().Remove(rackId))
+        {
+            return;
+        }
+
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, TopologyGroups.ForRack(rackId), Context.ConnectionAborted);
         // A client may unsubscribe from any id (including a non-existent rack), so keep rack_id null (the
         // FK) and record the target in targetId — unsubscribe is pure group mechanics.
@@ -101,6 +117,18 @@ public sealed class TopologyHub : Hub<ITopologyClient>
         _logger.LogInformation(
             "Topology hub unsubscribed rackId={RackId} connectionId={ConnectionId} correlationId={CorrelationId} user={User}",
             rackId, Context.ConnectionId, CorrelationId(), UserId());
+    }
+
+    private HashSet<Guid> SubscribedRacks()
+    {
+        if (Context.Items.TryGetValue(SubscribedRacksItemKey, out var existing) && existing is HashSet<Guid> set)
+        {
+            return set;
+        }
+
+        var created = new HashSet<Guid>();
+        Context.Items[SubscribedRacksItemKey] = created;
+        return created;
     }
 
     private Task AuditAsync(Guid? auditRackId, Guid targetRackId, string action, string result)

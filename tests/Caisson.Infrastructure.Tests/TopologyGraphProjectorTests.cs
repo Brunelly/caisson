@@ -33,7 +33,8 @@ public sealed class TopologyGraphProjectorTests
         nic.BestAttachment.Band.Should().Be("High");
         nic.BestAttachment.Confidence.Should().BeApproximately(0.92, 1e-9);
         nic.BestAttachment.Vlans.Should().Contain(10);
-        nic.BestAttachment.SwitchStableKey.Should().Be("SW-1");
+        // StableKeys.ForSwitch prefixes with the switch's ExternalDeviceKey (finding #3) — "sw1" here.
+        nic.BestAttachment.SwitchStableKey.Should().Be("sw1|SW-1");
     }
 
     [Fact]
@@ -74,12 +75,12 @@ public sealed class TopologyGraphProjectorTests
         var snapshot = new TopologySnapshot(
             snapshotId, rackId, DateTime.UtcNow, "svc", "chr", Guid.NewGuid(), SnapshotStatus.Completed);
 
-        var sw = new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, serial: "SW-9");
+        var sw = new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, externalDeviceKey: "sw-9", serial: "SW-9");
         var port = new SwitchPort(Guid.NewGuid(), sw.Id, rackId, snapshotId, "ether1", isUp: true, pvid: 10);
         sw.AddPort(port);
         snapshot.AddSwitch(sw);
 
-        var server = new Server(Guid.NewGuid(), rackId, snapshotId, BmcType.Redfish, "10.0.1.9", "uuid-9", "node-9");
+        var server = new Server(Guid.NewGuid(), rackId, snapshotId, BmcType.Redfish, "10.0.1.9", "srv-9", "uuid-9", "node-9");
         var nic = new Nic(
             Guid.NewGuid(), server.Id, rackId, snapshotId, "eth0", MacAddressValue.Parse("aa:aa:aa:aa:aa:b1"));
         server.AddNic(nic);

@@ -18,14 +18,27 @@ public static class SnapshotQueries
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var latestId = await SnapshotSelector
-            .OrderByLatest(context.Snapshots.AsNoTracking().Where(s => s.RackId == rackId))
-            .Select(s => (Guid?)s.Id)
-            .FirstOrDefaultAsync(cancellationToken);
+        var latestId = await context.LatestSnapshotIdAsync(rackId, cancellationToken);
 
         return latestId is null
             ? null
             : await context.SnapshotWithGraphAsync(rackId, latestId.Value, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resolves just the latest snapshot's id for a rack, without loading any of its graph (finding #14)
+    /// — the cheap first step for a caller that may not need the full graph at all (e.g. a single-entity
+    /// read that can be served from a cache keyed on this id).
+    /// </summary>
+    public static Task<Guid?> LatestSnapshotIdAsync(
+        this CaissonDbContext context, Guid rackId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return SnapshotSelector
+            .OrderByLatest(context.Snapshots.AsNoTracking().Where(s => s.RackId == rackId))
+            .Select(s => (Guid?)s.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>Loads a specific snapshot (scoped to its rack) with its full observed graph, or <c>null</c>.</summary>

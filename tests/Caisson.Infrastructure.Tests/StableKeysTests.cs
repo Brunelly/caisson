@@ -9,33 +9,73 @@ namespace Caisson.Infrastructure.Tests;
 
 /// <summary>
 /// DB-free tests of the canonical <see cref="StableKeys"/> definitions (the story's answered question).
-/// These run with no database so they always execute in the codegen sandbox.
+/// These run with no database so they always execute in the codegen sandbox. Finding #3 (security-review-5):
+/// every key is now prefixed with the trusted, config-supplied device key, and every composite key escapes
+/// its <c>|</c> delimiter, so two configured devices — or two differently-segmented device-reported
+/// values — can never collide onto the same stable key.
 /// </summary>
 public sealed class StableKeysTests
 {
     [Fact]
-    public void Switch_prefers_serial_then_management_ip()
+    public void Switch_prefers_serial_then_management_ip_behind_the_device_key_prefix()
     {
-        StableKeys.ForSwitch("SER-1", "10.0.0.1").Should().Be("SER-1");
-        StableKeys.ForSwitch(null, "10.0.0.1").Should().Be("10.0.0.1");
+        StableKeys.ForSwitch("dev-1", "SER-1", "10.0.0.1").Should().Be("dev-1|SER-1");
+        StableKeys.ForSwitch("dev-1", null, "10.0.0.1").Should().Be("dev-1|10.0.0.1");
     }
 
     [Fact]
     public void Switch_without_any_identifier_throws()
     {
-        var act = () => StableKeys.ForSwitch(null, null);
+        var act = () => StableKeys.ForSwitch("dev-1", null, null);
         act.Should().Throw<ArgumentException>();
     }
 
     [Fact]
+    public void Two_switches_with_an_identical_serial_but_different_device_keys_produce_distinct_keys()
+    {
+        var keyA = StableKeys.ForSwitch("dev-a", "SAME-SERIAL", null);
+        var keyB = StableKeys.ForSwitch("dev-b", "SAME-SERIAL", null);
+
+        keyA.Should().NotBe(keyB);
+    }
+
+    [Fact]
     public void SwitchPort_is_switch_key_pipe_port_name()
-        => StableKeys.ForSwitchPort("SER-1", "ether1").Should().Be("SER-1|ether1");
+        // switchKey is itself an already-composed, already-escaped key (ForSwitch's own output) — it is
+        // appended verbatim, not re-escaped, so its internal '|' stays a real separator rather than being
+        // turned into the literal text "%7C".
+        => StableKeys.ForSwitchPort("dev-1|SER-1", "ether1").Should().Be("dev-1|SER-1|ether1");
+
+    [Fact]
+    public void SwitchPort_composed_from_a_real_ForSwitch_key_does_not_double_escape_the_device_key_separator()
+    {
+        // Regression test: ForSwitchPort must treat its switchKey parameter as an already-composed,
+        // already-escaped key (ForSwitch's own output), not a raw segment to escape again — escaping it
+        // a second time turns the real separator between the device key and serial into the literal three
+        // characters "%7C", corrupting the key end-to-end callers (the API route, the SPA's URL builder)
+        // must be able to reconstruct.
+        var switchKey = StableKeys.ForSwitch("sw1", "SW-1", null);
+        var portKey = StableKeys.ForSwitchPort(switchKey, "1/1/1");
+
+        portKey.Should().Be("sw1|SW-1|1/1/1");
+        portKey.Should().NotContain("%7C");
+    }
+
+    [Fact]
+    public void SwitchPort_escapes_a_pipe_in_the_port_name_so_segments_cannot_collide()
+    {
+        // serial "S1" + port "eth0|eth1" must not collide with serial "S1|eth0" + port "eth1".
+        var keyA = StableKeys.ForSwitchPort(StableKeys.ForSwitch("dev-1", "S1", null), "eth0|eth1");
+        var keyB = StableKeys.ForSwitchPort(StableKeys.ForSwitch("dev-1", "S1|eth0", null), "eth1");
+
+        keyA.Should().NotBe(keyB);
+    }
 
     [Fact]
     public void TryForSwitchPort_succeeds_when_port_name_is_present()
     {
-        StableKeys.TryForSwitchPort("SER-1", "ether1", out var key).Should().BeTrue();
-        key.Should().Be("SER-1|ether1");
+        StableKeys.TryForSwitchPort("dev-1|SER-1", "ether1", out var key).Should().BeTrue();
+        key.Should().Be("dev-1|SER-1|ether1");
     }
 
     [Theory]
@@ -43,16 +83,25 @@ public sealed class StableKeysTests
     [InlineData("")]
     public void TryForSwitchPort_fails_without_throwing_when_port_name_is_blank(string? portName)
     {
-        StableKeys.TryForSwitchPort("SER-1", portName, out var key).Should().BeFalse();
+        StableKeys.TryForSwitchPort("dev-1|SER-1", portName, out var key).Should().BeFalse();
         key.Should().BeEmpty();
     }
 
     [Fact]
-    public void Server_prefers_bmc_uuid_then_hostname_then_bmc_address()
+    public void Server_prefers_bmc_uuid_then_hostname_then_bmc_address_behind_the_device_key_prefix()
     {
-        StableKeys.ForServer("uuid-1", "host-1", "10.0.1.1").Should().Be("uuid-1");
-        StableKeys.ForServer(null, "host-1", "10.0.1.1").Should().Be("host-1");
-        StableKeys.ForServer(null, null, "10.0.1.1").Should().Be("10.0.1.1");
+        StableKeys.ForServer("dev-1", "uuid-1", "host-1", "10.0.1.1").Should().Be("dev-1|uuid-1");
+        StableKeys.ForServer("dev-1", null, "host-1", "10.0.1.1").Should().Be("dev-1|host-1");
+        StableKeys.ForServer("dev-1", null, null, "10.0.1.1").Should().Be("dev-1|10.0.1.1");
+    }
+
+    [Fact]
+    public void Two_servers_with_an_identical_uuid_but_different_device_keys_produce_distinct_keys()
+    {
+        var keyA = StableKeys.ForServer("dev-a", "SAME-UUID", null, null);
+        var keyB = StableKeys.ForServer("dev-b", "SAME-UUID", null, null);
+
+        keyA.Should().NotBe(keyB);
     }
 
     [Fact]
@@ -71,6 +120,15 @@ public sealed class StableKeysTests
     [Fact]
     public void Lldp_is_chassis_pipe_port()
         => StableKeys.ForLldp("chassis-1", "port-1").Should().Be("chassis-1|port-1");
+
+    [Fact]
+    public void Lldp_escapes_a_pipe_in_either_segment_so_segments_cannot_collide()
+    {
+        var keyA = StableKeys.ForLldp("chassis-1", "port|1");
+        var keyB = StableKeys.ForLldp("chassis-1|port", "1");
+
+        keyA.Should().NotBe(keyB);
+    }
 
     [Fact]
     public void TryForLldp_succeeds_when_both_identifiers_are_present()

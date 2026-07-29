@@ -108,6 +108,12 @@ namespace Caisson.Infrastructure.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("triggered_by");
 
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_discovery_job");
 
@@ -184,6 +190,12 @@ namespace Caisson.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("step_name");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id")
                         .HasName("pk_discovery_job_step");
@@ -451,6 +463,12 @@ namespace Caisson.Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("bmc_uuid");
 
+                    b.Property<string>("ExternalDeviceKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("external_device_key");
+
                     b.Property<string>("Hostname")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -485,6 +503,12 @@ namespace Caisson.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("ExternalDeviceKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("external_device_key");
 
                     b.Property<DateTime>("LastSeenAtUtc")
                         .HasColumnType("timestamp with time zone")
@@ -1217,7 +1241,7 @@ namespace Caisson.Infrastructure.Migrations
                     b.HasOne("Caisson.Domain.Topology.TopologySnapshot", null)
                         .WithMany()
                         .HasForeignKey("SnapshotId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_topology_entity_diff_snapshots_snapshot_id");
                 });

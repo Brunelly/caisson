@@ -5,10 +5,12 @@ using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Drivers.Abstractions.Results;
 using Caisson.Drivers.Abstractions.Switches;
 using Caisson.Orchestration.Discovery;
+using Caisson.Orchestration.Options;
 using Caisson.Orchestration.RackDefinitions;
 using Caisson.Orchestration.Tests.Fakes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Caisson.Orchestration.Tests;
@@ -174,6 +176,36 @@ public sealed class DeviceDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task A_500k_bridge_host_entry_input_is_truncated_to_the_configured_cap()
+    {
+        // Finding #11: nothing capped the number of bridge-host entries a switch may report — this
+        // flowed uncapped into the in-memory correlation engine and the persisted MacAddress rows.
+        var hugeTable = Enumerable.Range(0, 500_000)
+            .Select(i => new BridgeHostEntry(
+                $"ether{i % 48}", Caisson.Domain.ValueObjects.MacAddressValue.Parse($"{i % 0xFFFFFF:x6}aabbcc")))
+            .ToArray();
+        var driver = new MockSwitchDiscoveryDriver
+        {
+            BridgeHostTableResult = () => DriverResult<IReadOnlyList<BridgeHostEntry>>.Ok(hugeTable, TimeSpan.Zero),
+        };
+        var registry = new SwitchDriverRegistry(new ISwitchDriverFactory[]
+        {
+            new MockSwitchDriverFactory { DriverFactory = _ => driver },
+        });
+        var options = Microsoft.Extensions.Options.Options.Create(
+            new DiscoveryOrchestrationOptions { MaxBridgeHostsPerSwitch = 100 });
+        var service = new DeviceDiscoveryService(
+            registry, new BmcDriverRegistry(Array.Empty<IBmcDriverFactory>()), TimeProvider.System, options,
+            NullLogger<DeviceDiscoveryService>.Instance);
+        var definition = SwitchDefinition(("sw1", "Mock", DriverConnectionKind.Ssh, "good"));
+
+        var outcome = await service.DiscoverSwitchesAsync(definition, Context, CancellationToken.None);
+
+        outcome.Switches.Should().ContainSingle();
+        outcome.Switches[0].BridgeHosts.Should().HaveCount(100, "the cap must bind rather than persisting the full 500k rows");
+    }
+
+    [Fact]
     public void Cancellation_registry_signals_only_local_jobs()
     {
         var registry = new DiscoveryCancellationRegistry();
@@ -206,6 +238,7 @@ public sealed class DeviceDiscoveryServiceTests
             new SwitchDriverRegistry(new ISwitchDriverFactory[] { factory }),
             new BmcDriverRegistry(Array.Empty<IBmcDriverFactory>()),
             TimeProvider.System,
+            Microsoft.Extensions.Options.Options.Create(new DiscoveryOrchestrationOptions()),
             NullLogger<DeviceDiscoveryService>.Instance);
 
     private static DeviceDiscoveryService BmcService(MockBmcDriverFactory factory)
@@ -213,6 +246,7 @@ public sealed class DeviceDiscoveryServiceTests
             new SwitchDriverRegistry(Array.Empty<ISwitchDriverFactory>()),
             new BmcDriverRegistry(new IBmcDriverFactory[] { factory }),
             TimeProvider.System,
+            Microsoft.Extensions.Options.Options.Create(new DiscoveryOrchestrationOptions()),
             NullLogger<DeviceDiscoveryService>.Instance);
 
     private static RackDefinition SwitchDefinition(params (string Key, string Vendor, DriverConnectionKind Kind, string Host)[] switches)

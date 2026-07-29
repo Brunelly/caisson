@@ -50,8 +50,8 @@ public sealed class ConstraintTests : IClassFixture<PostgresFixture>
         var (rackId, snapshotId, _) = await SeedRackSnapshotAndNicAsync();
 
         await using var context = _fixture.CreateContext();
-        context.Switches.Add(new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, serial: "DUP-1"));
-        context.Switches.Add(new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, serial: "DUP-1"));
+        context.Switches.Add(new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, externalDeviceKey: "sw-a", serial: "DUP-1"));
+        context.Switches.Add(new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, externalDeviceKey: "sw-b", serial: "DUP-1"));
 
         var act = async () => await context.SaveChangesAsync();
 
@@ -108,6 +108,96 @@ public sealed class ConstraintTests : IClassFixture<PostgresFixture>
         assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
     }
 
+    [Fact]
+    public async Task Raw_sql_truncate_of_an_audit_event_table_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        await SeedAuditEventAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync("TRUNCATE topology_audit_event");
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    [Fact]
+    public async Task Raw_sql_update_of_an_entity_diff_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        var (_, _, diffId) = await SeedEntityDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync(
+            "UPDATE topology_entity_diff SET change_type = 'Removed' WHERE id = {0}", diffId);
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    [Fact]
+    public async Task Raw_sql_delete_of_an_entity_diff_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        var (_, _, diffId) = await SeedEntityDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync(
+            "DELETE FROM topology_entity_diff WHERE id = {0}", diffId);
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    [Fact]
+    public async Task Raw_sql_truncate_of_an_entity_diff_table_is_blocked_by_the_trigger()
+    {
+        await _fixture.MigrateAsync();
+        await SeedEntityDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var act = async () => await context.Database.ExecuteSqlRawAsync("TRUNCATE topology_entity_diff");
+
+        var assertion = await act.Should().ThrowAsync<PostgresException>();
+        assertion.Which.SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
+    [Fact]
+    public async Task Deleting_a_snapshot_that_has_diff_rows_is_rejected_by_the_restrict_fk()
+    {
+        // Finding #6: Restrict (not Cascade) makes the tamper-evidence guarantee explicit — a snapshot
+        // with diff rows is undeletable via any server-side path, including EF's own Snapshots.Remove.
+        await _fixture.MigrateAsync();
+        var (_, snapshotId, _) = await SeedEntityDiffAsync();
+
+        await using var context = _fixture.CreateContext();
+        var snapshot = await context.Snapshots.FirstAsync(s => s.Id == snapshotId);
+        context.Snapshots.Remove(snapshot);
+
+        var act = async () => await context.SaveChangesAsync();
+
+        var assertion = await act.Should().ThrowAsync<DbUpdateException>();
+        assertion.Which.InnerException.Should().BeOfType<PostgresException>()
+            .Which.SqlState.Should().Be(PostgresErrorCodes.ForeignKeyViolation);
+
+        // The diff row itself survives the failed attempt.
+        await using var verify = _fixture.CreateContext();
+        (await verify.EntityDiffs.CountAsync(d => d.SnapshotId == snapshotId)).Should().Be(1);
+    }
+
+    private async Task<(Guid RackId, Guid SnapshotId, Guid DiffId)> SeedEntityDiffAsync()
+    {
+        var (rackId, snapshotId, _) = await SeedRackSnapshotAndNicAsync();
+        var diffId = Guid.NewGuid();
+
+        await using var context = _fixture.CreateContext();
+        context.EntityDiffs.Add(new TopologyEntityDiff(
+            diffId, rackId, snapshotId, TopologyEntityType.Server, "srv-0|10.0.1.1", ChangeType.Added,
+            "{\"new\":{}}", DateTime.UtcNow, Guid.NewGuid()));
+        await context.SaveChangesAsync();
+        return (rackId, snapshotId, diffId);
+    }
+
     private async Task<Guid> SeedAuditEventAsync()
     {
         var auditId = Guid.NewGuid();
@@ -131,7 +221,7 @@ public sealed class ConstraintTests : IClassFixture<PostgresFixture>
 
         var snapshot = new TopologySnapshot(
             snapshotId, rackId, DateTime.UtcNow, "svc", "chr", Guid.NewGuid(), SnapshotStatus.Completed);
-        var server = new Server(serverId, rackId, snapshotId, BmcType.Redfish, "10.0.1.1");
+        var server = new Server(serverId, rackId, snapshotId, BmcType.Redfish, "10.0.1.1", externalDeviceKey: "srv-0");
         server.AddNic(new Nic(
             nicId, serverId, rackId, snapshotId, "eth0", MacAddressValue.Parse("001122334455")));
         snapshot.AddServer(server);

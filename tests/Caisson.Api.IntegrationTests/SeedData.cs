@@ -23,8 +23,11 @@ public sealed record SeededTopology(
     /// <summary>An entity type present in the seed with change history.</summary>
     public string ServerEntityType => "Server";
 
-    /// <summary>The stable key of a seeded server that was modified between v1 and v2.</summary>
-    public string ServerStableKey => "uuid-1";
+    /// <summary>
+    /// The stable key of a seeded server that was modified between v1 and v2. StableKeys.ForServer
+    /// prefixes with the server's trusted device key ("srv1" in this fixture's Observed()) — finding #3.
+    /// </summary>
+    public string ServerStableKey => "srv1|uuid-1";
 
     /// <summary>The discovery rack seeded with a schedule and a completed job (story #8).</summary>
     public SeededDiscovery Discovery { get; init; } = null!;

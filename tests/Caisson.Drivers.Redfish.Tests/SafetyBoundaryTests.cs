@@ -77,6 +77,23 @@ public sealed class SafetyBoundaryTests
         => RedfishReadPaths.IsReadOnlyGet("GET", path).Should().BeFalse();
 
     [Fact]
+    public void Allowlist_rejects_a_path_carrying_a_crlf_log_injection_payload()
+        => RedfishReadPaths.IsReadOnlyGet("GET", "/redfish/v1/Systems/1\r\nx").Should().BeFalse();
+
+    [Fact]
+    public void Allowlist_rejects_a_path_over_the_length_cap()
+        => RedfishReadPaths.IsReadOnlyGet("GET", "/redfish/v1/Systems/" + new string('1', 600)).Should().BeFalse();
+
+    [Fact]
+    public void SanitizeForLog_strips_control_characters_and_truncates()
+    {
+        var sanitized = RedfishReadPaths.SanitizeForLog("/redfish/v1/Systems/1\r\nInjected: header" + new string('x', 500));
+
+        sanitized.Should().NotContain("\r").And.NotContain("\n");
+        sanitized.Length.Should().BeLessThanOrEqualTo(280);
+    }
+
+    [Fact]
     public async Task Client_rejects_an_action_path_before_any_io()
     {
         using var client = new RedfishClient(Settings, NullLogger.Instance);
@@ -118,6 +135,41 @@ public sealed class SafetyBoundaryTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*not on the read-only allowlist*");
+    }
+
+    [Fact]
+    public async Task Ipmi_runner_reports_unavailable_rather_than_crashing_when_the_configured_path_does_not_exist()
+    {
+        var runner = new ProcessIpmiCommandRunner(NullLogger<ProcessIpmiCommandRunner>.Instance, "/nonexistent/ipmitool");
+
+        var result = await runner.RunAsync(Split("mc info"), IpmiSettings, CancellationToken.None);
+
+        result.Available.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Ipmi_runner_reports_unavailable_rather_than_crashing_when_the_configured_path_is_world_writable()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Unix file-mode check only.
+        }
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.OtherWrite);
+            var runner = new ProcessIpmiCommandRunner(NullLogger<ProcessIpmiCommandRunner>.Instance, path);
+
+            var result = await runner.RunAsync(Split("mc info"), IpmiSettings, CancellationToken.None);
+
+            result.Available.Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]

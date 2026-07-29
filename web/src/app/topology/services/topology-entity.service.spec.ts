@@ -61,6 +61,18 @@ describe('TopologyEntityService', () => {
     await resultPromise;
   });
 
+  it('finding #19: percent-encodes a rackId/entityType containing reserved URL characters', async () => {
+    const trickyRackId = 'rack/1?evil=1#frag';
+    const resultPromise = firstValueFrom(service.getEntity(trickyRackId, 'Server?x=1', 'srv-1'));
+
+    const req = httpMock.expectOne(
+      `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(trickyRackId)}/topology/entities/${encodeURIComponent('Server?x=1')}/srv-1`,
+    );
+    req.flush({});
+
+    await resultPromise;
+  });
+
   it('maps a 401 to an unauthorized result', async () => {
     const resultPromise = firstValueFrom(service.getEntity(rackId, 'Server', 'srv-1'));
 

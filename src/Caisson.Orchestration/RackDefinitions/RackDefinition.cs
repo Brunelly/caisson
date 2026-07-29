@@ -29,6 +29,14 @@ public sealed record RackDefinition(
 /// <param name="Port">Optional device port.</param>
 /// <param name="Timeout">Per-device driver call timeout.</param>
 /// <param name="CredentialsRef">Opaque secret-store reference — never a secret.</param>
+/// <param name="UseTls">
+/// Whether a switch device should be discovered over TLS (RouterOS API only; ignored for BMC/Redfish,
+/// which is always HTTPS). Defaults to <c>true</c> — see <see cref="SwitchConnectionOptions.UseTls"/>.
+/// </param>
+/// <param name="AllowPlaintext">
+/// Explicit opt-in to a plaintext switch connection when <see cref="UseTls"/> is <c>false</c>. See
+/// <see cref="SwitchConnectionOptions.AllowPlaintext"/>.
+/// </param>
 public sealed record DeviceDefinition(
     string DeviceKey,
     string Vendor,
@@ -37,7 +45,9 @@ public sealed record DeviceDefinition(
     string Host,
     int? Port,
     TimeSpan Timeout,
-    string CredentialsRef)
+    string CredentialsRef,
+    bool UseTls = true,
+    bool AllowPlaintext = false)
 {
     /// <summary>The descriptor used to resolve this device's driver from the registry.</summary>
     public DriverDescriptor ToDescriptor()

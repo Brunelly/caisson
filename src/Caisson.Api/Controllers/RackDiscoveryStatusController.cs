@@ -37,6 +37,11 @@ public sealed class RackDiscoveryStatusController : DiscoveryControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<DiscoveryStatusDto>> GetStatus(Guid rackId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
         {
             return RackNotFound(rackId);

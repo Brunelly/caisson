@@ -14,6 +14,7 @@ public sealed class SwitchConfiguration : IEntityTypeConfiguration<Switch>
         builder.ToTable("switch");
         builder.HasKey(s => s.Id);
 
+        builder.Property(s => s.ExternalDeviceKey).IsRequired().HasMaxLength(256);
         builder.Property(s => s.ManagementIp).HasMaxLength(64);
         builder.Property(s => s.Serial).HasMaxLength(128);
         builder.Property(s => s.Model).HasMaxLength(128);

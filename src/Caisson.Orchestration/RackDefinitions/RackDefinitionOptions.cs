@@ -61,4 +61,14 @@ public sealed class DeviceDefinitionEntry
 
     /// <summary>Opaque reference the driver resolves against the secret store — never a secret.</summary>
     public string CredentialsRef { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether a switch device should be discovered over TLS (RouterOS API only; ignored for BMC/Redfish,
+    /// which is always HTTPS). Defaults to <c>true</c>: TLS is the fail-closed default and must be
+    /// explicitly opted out of via <see cref="AllowPlaintext"/> (finding #8).
+    /// </summary>
+    public bool UseTls { get; set; } = true;
+
+    /// <summary>Explicit opt-in to a plaintext switch connection when <see cref="UseTls"/> is <c>false</c>.</summary>
+    public bool AllowPlaintext { get; set; }
 }

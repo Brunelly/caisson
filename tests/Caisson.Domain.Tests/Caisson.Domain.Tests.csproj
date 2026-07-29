@@ -9,6 +9,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
+    <!-- Finding #27: the no-credentials guard sweeps the API/Infrastructure/Orchestration contract and
+         options types too, not just Caisson.Domain — hence the extra project references here. -->
+    <ProjectReference Include="..\..\src\Caisson.Api\Caisson.Api.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Caisson.Orchestration\Caisson.Orchestration.csproj" />
   </ItemGroup>
 
   <ItemGroup>

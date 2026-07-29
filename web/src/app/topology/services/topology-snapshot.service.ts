@@ -16,8 +16,13 @@ import { type ApiResult, toApiResult } from './api-result';
 export class TopologySnapshotService {
   private readonly http = inject(HttpClient);
 
+  // Finding #19: rackId/snapshotId are route/query-driven, not app-controlled constants, so — like
+  // encodeStableKeyPath in topology-entity.service.ts — every path segment built from them must be
+  // percent-encoded. An unencoded value containing `/`, `?`, or `#` would otherwise silently reshape the
+  // request path or inject query parameters/fragments into it (e.g. a rackId of `abc?x=1` truncating the
+  // intended path at the `?`), rather than causing an honest 404 for the id that was actually typed.
   private topologyUrl(rackId: string): string {
-    return `${environment.apiBaseUrl}/api/racks/${rackId}/topology`;
+    return `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(rackId)}/topology`;
   }
 
   getLatest(rackId: string): Observable<ApiResult<SnapshotDetailDto>> {
@@ -28,7 +33,9 @@ export class TopologySnapshotService {
 
   getById(rackId: string, snapshotId: string): Observable<ApiResult<SnapshotDetailDto>> {
     return toApiResult(
-      this.http.get<SnapshotDetailDto>(`${this.topologyUrl(rackId)}/snapshots/${snapshotId}`),
+      this.http.get<SnapshotDetailDto>(
+        `${this.topologyUrl(rackId)}/snapshots/${encodeURIComponent(snapshotId)}`,
+      ),
     );
   }
 
@@ -54,7 +61,9 @@ export class TopologySnapshotService {
 
   /** The topology graph for the latest snapshot, or a specific one when `snapshotId` is given. */
   getGraph(rackId: string, snapshotId?: string): Observable<ApiResult<TopologyGraphDto>> {
-    const path = snapshotId ? `snapshots/${snapshotId}/graph` : 'snapshots/latest/graph';
+    const path = snapshotId
+      ? `snapshots/${encodeURIComponent(snapshotId)}/graph`
+      : 'snapshots/latest/graph';
     return toApiResult(this.http.get<TopologyGraphDto>(`${this.topologyUrl(rackId)}/${path}`));
   }
 

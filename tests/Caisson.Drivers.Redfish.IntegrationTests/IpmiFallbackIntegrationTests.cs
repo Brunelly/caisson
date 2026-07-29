@@ -106,7 +106,7 @@ public sealed class IpmiFallbackIntegrationTests : IClassFixture<RedfishBmcFixtu
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddSingleton(metrics);
         services.AddSingleton<IBmcDriverFactory>(
-            new RedfishBmcDriverFactory(resolver, ipmiRunner, metrics, loggerFactory, _fixture.PinnedEnvLookup));
+            new RedfishBmcDriverFactory(resolver, ipmiRunner, metrics, loggerFactory, new TestHostEnvironment(), _fixture.PinnedEnvLookup));
         services.AddCaissonDriverRegistry();
 
         return services.BuildServiceProvider();

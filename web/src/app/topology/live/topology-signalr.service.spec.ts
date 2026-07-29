@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { HubConnection } from '@microsoft/signalr';
+import { HttpTransportType, HubConnectionBuilder, type HubConnection } from '@microsoft/signalr';
 import { OidcSecurityService } from 'angular-auth-oidc-client';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -385,5 +385,23 @@ describe('TopologySignalRService', () => {
       method: 'UnsubscribeFromRack',
       args: ['rack-1'],
     });
+  });
+});
+
+describe('HUB_CONNECTION_FACTORY default factory', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('pins the transport to WebSockets (finding #20) so the client never falls back to a transport that carries the access token in every polling request URL', () => {
+    const withUrlSpy = vi.spyOn(HubConnectionBuilder.prototype, 'withUrl');
+
+    const factory = TestBed.inject(HUB_CONNECTION_FACTORY);
+    factory('https://example.test/hubs/topology', () => 'token');
+
+    expect(withUrlSpy).toHaveBeenCalledWith(
+      'https://example.test/hubs/topology',
+      expect.objectContaining({ transport: HttpTransportType.WebSockets }),
+    );
   });
 });

@@ -76,3 +76,22 @@ source.
   network-reachable client.
 - Shared read-endpoint concerns (keyset page trimming, validation-error → 400, rack-not-found 404) live on
   a small `ReadOnlyControllerBase` so the three controllers no longer duplicate them.
+
+## security-review-5 hardening (Story 104, findings #16/#17/#18)
+- **JWT issuer/algorithm are now pinned**: `TokenValidationParameters.ValidIssuers` is set from the
+  configured `AzureAd:Authority` and `ValidAlgorithms` is pinned to `RS256`, closing the gap where the
+  accepted issuer came purely from whatever the discovery document at `Authority` advertised.
+  `JwtAuthorityStartupGuard` fails startup outside Development/Testing when `Authority` is empty, is a
+  multi-tenant endpoint (`/common/` or `/organizations/`), or `Audience` is empty — mirroring
+  `TestAuthStartupGuard`'s fail-closed shape (ADR 0018).
+- **Groups vs. roles are no longer the same trust class**: `RoleClaimsTransformation` now accepts a
+  canonical role name verbatim only from the `roles` claim (app-role, admin-assigned); a `groups` claim
+  value must resolve through the explicit, reviewed `Authentication:RoleMappings` dictionary — there is no
+  passthrough for groups. `RoleClaimsTransformation.ValidateMappings` fails startup on a mapping that
+  targets a non-canonical role (a typo) or an empty map outside Development/Testing.
+- **Swagger/OpenAPI moved to an explicit environment allow-list** (`IsDevelopment() || IsEnvironment("Testing")`)
+  instead of a negative `!IsProduction()` check, so Staging/QA/any custom environment name no longer
+  exposes the full API surface unauthenticated.
+- These are hardening refinements of the RBAC/host decisions above, not a reversal of them — see ADR 0022
+  (rate limiting + off-request audit) and ADR 0023 (redaction + per-rack ACL seam) for the two related new
+  decisions from the same hardening pass.

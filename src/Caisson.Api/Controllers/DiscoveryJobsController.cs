@@ -10,6 +10,7 @@ using Caisson.Infrastructure.Persistence.Shaping;
 using Caisson.Orchestration.Discovery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Caisson.Api.Controllers;
 
@@ -43,6 +44,7 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
     /// <summary>Triggers an on-demand discovery run for the rack (AC2).</summary>
     [HttpPost]
     [Authorize(Policy = AuthorizationPolicies.DiscoveryTrigger)]
+    [EnableRateLimiting(RateLimitPolicies.DiscoveryTrigger)]
     [ProducesResponseType(typeof(TriggerDiscoveryResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(TriggerDiscoveryResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -105,9 +107,15 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var error))
+        const string endpoint = "discovery-jobs.list";
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var error))
         {
             return ValidationError(error!.Value);
+        }
+
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
@@ -117,7 +125,7 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
 
         var page = await _jobs.GetJobsPageAsync(rackId, after, limit + 1, cancellationToken);
         var lastSuccess = await _jobs.GetLastSuccessAtUtcAsync(rackId, cancellationToken);
-        var (items, next) = Paginate(page, limit, j => CursorCodec.Encode(j.CreatedAtUtc, j.Id));
+        var (items, next) = Paginate(page, limit, j => CursorCodec.Encode(j.CreatedAtUtc, j.Id, rackId, endpoint));
 
         await _audit.WriteReadAsync(
             User, rackId, "discovery.jobs.read", "rack", rackId.ToString(), cancellationToken);

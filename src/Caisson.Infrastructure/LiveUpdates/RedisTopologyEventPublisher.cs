@@ -53,8 +53,13 @@ public sealed class RedisTopologyEventPublisher : ITopologyEventPublisher
         try
         {
             var json = TopologyEventSerialization.Serialize(@event);
+            // Finding #2: sign the envelope so the relay can reject anything that didn't come from a
+            // holder of the HMAC key. TopologyEventAuthenticity.Sign can itself throw in Production if
+            // the key is unconfigured — that's still just another publish fault, absorbed by this same
+            // fail-open catch (AC4/NFR3).
+            var signed = TopologyEventAuthenticity.Sign(json);
             var subscriber = _redis.GetSubscriber();
-            await subscriber.PublishAsync(_channel, json).ConfigureAwait(false);
+            await subscriber.PublishAsync(_channel, signed).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

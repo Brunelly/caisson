@@ -120,7 +120,7 @@ public sealed class PersistenceAndTraversalTests : IClassFixture<PostgresFixture
         for (var s = 0; s < SwitchCount; s++)
         {
             var sw = new Switch(
-                Guid.NewGuid(), rackId, snapshotId, createdAtUtc,
+                Guid.NewGuid(), rackId, snapshotId, createdAtUtc, externalDeviceKey: $"sw-{s}",
                 managementIp: $"10.0.0.{s + 1}", serial: $"SW-SERIAL-{s}", model: "CRS354", osVersion: "7.15");
 
             for (var p = 0; p < PortsPerSwitch; p++)
@@ -146,7 +146,8 @@ public sealed class PersistenceAndTraversalTests : IClassFixture<PostgresFixture
         {
             var server = new Server(
                 Guid.NewGuid(), rackId, snapshotId, BmcType.Redfish,
-                bmcAddress: $"10.0.1.{s + 1}", bmcUuid: Guid.NewGuid().ToString(), hostname: $"node-{s}");
+                bmcAddress: $"10.0.1.{s + 1}", externalDeviceKey: $"srv-{s}",
+                bmcUuid: Guid.NewGuid().ToString(), hostname: $"node-{s}");
 
             for (var n = 0; n < NicsPerServer; n++)
             {

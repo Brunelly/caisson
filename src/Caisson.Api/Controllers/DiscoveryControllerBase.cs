@@ -1,4 +1,6 @@
+using Caisson.Api.Security;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Caisson.Api.Controllers;
 
@@ -36,4 +38,15 @@ public abstract class DiscoveryControllerBase : ControllerBase
             statusCode: StatusCodes.Status404NotFound,
             title: "Rack not found",
             detail: $"Rack '{rackId}' does not exist.");
+
+    /// <summary>
+    /// The per-rack access seam (finding #29) — see <see cref="ReadOnlyControllerBase.CheckRackAccessAsync"/>
+    /// for the full rationale; duplicated here rather than shared because this base deliberately does not
+    /// derive from <see cref="ReadOnlyControllerBase"/> (see this class's own remarks).
+    /// </summary>
+    protected async Task<ObjectResult?> CheckRackAccessAsync(Guid rackId, CancellationToken cancellationToken)
+    {
+        var policy = HttpContext.RequestServices.GetRequiredService<IRackAccessPolicy>();
+        return await policy.CanReadAsync(User, rackId, cancellationToken) ? null : RackNotFound(rackId);
+    }
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  MAX_PLAUSIBLE_FORWARD_SEQ_JUMP,
   type WatermarkStore,
   applyIfNewer,
   jobStreamKey,
@@ -65,5 +66,40 @@ describe('applyIfNewer', () => {
 
   it('snapshotStreamKey/jobStreamKey never collide for the same raw id', () => {
     expect(snapshotStreamKey('abc')).not.toBe(jobStreamKey('abc'));
+  });
+
+  describe('finding #2 (client half): implausible forward seq jump', () => {
+    it('still accepts (and reconciles) a jump beyond the plausible window', () => {
+      applyIfNewer(store, 'snapshot:rack-1', { seq: 5, eventId: 'e1' });
+      const jumped = 5 + MAX_PLAUSIBLE_FORWARD_SEQ_JUMP + 1;
+
+      expect(applyIfNewer(store, 'snapshot:rack-1', { seq: jumped, eventId: 'e2' })).toBe(true);
+    });
+
+    it('does not fast-forward the watermark to the implausible value — only by one', () => {
+      applyIfNewer(store, 'snapshot:rack-1', { seq: 5, eventId: 'e1' });
+      const jumped = 5 + MAX_PLAUSIBLE_FORWARD_SEQ_JUMP + 1;
+      applyIfNewer(store, 'snapshot:rack-1', { seq: jumped, eventId: 'e2' });
+
+      expect(store.get('snapshot:rack-1')).toEqual({ seq: 6, eventId: 'e2' });
+    });
+
+    it('a jump exactly at the plausible window boundary is trusted as-is (not clamped)', () => {
+      applyIfNewer(store, 'snapshot:rack-1', { seq: 5, eventId: 'e1' });
+      const atBoundary = 5 + MAX_PLAUSIBLE_FORWARD_SEQ_JUMP;
+      applyIfNewer(store, 'snapshot:rack-1', { seq: atBoundary, eventId: 'e2' });
+
+      expect(store.get('snapshot:rack-1')).toEqual({ seq: atBoundary, eventId: 'e2' });
+    });
+
+    it('a clamp does not permanently poison the stream — the next genuinely-sequential event is still accepted', () => {
+      applyIfNewer(store, 'snapshot:rack-1', { seq: 5, eventId: 'e1' });
+      applyIfNewer(store, 'snapshot:rack-1', {
+        seq: 5 + MAX_PLAUSIBLE_FORWARD_SEQ_JUMP + 1,
+        eventId: 'forged',
+      }); // watermark clamps to 6
+
+      expect(applyIfNewer(store, 'snapshot:rack-1', { seq: 7, eventId: 'e2' })).toBe(true);
+    });
   });
 });

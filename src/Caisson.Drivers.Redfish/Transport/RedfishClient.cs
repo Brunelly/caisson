@@ -20,6 +20,14 @@ namespace Caisson.Drivers.Redfish.Transport;
 /// </summary>
 public sealed class RedfishClient : IRedfishClient
 {
+    /// <summary>
+    /// Upper bound on a single response body, mirroring <see cref="Caisson.Drivers.MikroTik.Transport.RouterOsSentence.MaxWordLength"/>.
+    /// A compromised or man-in-the-middle'd BMC could otherwise stream an unbounded body — chunked
+    /// responses omit <c>Content-Length</c>, so this is enforced by counting bytes as they arrive, not by
+    /// trusting the header alone.
+    /// </summary>
+    internal const int MaxResponseBytes = 8 * 1024 * 1024;
+
     private readonly RedfishConnectionSettings _settings;
     private readonly ILogger _logger;
     private readonly HttpClient _http;
@@ -47,6 +55,13 @@ public sealed class RedfishClient : IRedfishClient
             SslOptions =
             {
                 RemoteCertificateValidationCallback = ValidateServerCertificate,
+
+                // Revocation checking only makes sense against a chain we are actually trusting via the
+                // platform store — a pinned self-signed certificate has no CA-issued revocation info to
+                // check, so this is scoped to the non-pinned path (see ValidateServerCertificate).
+                CertificateRevocationCheckMode = string.IsNullOrWhiteSpace(settings.CertificateThumbprint)
+                    ? X509RevocationMode.Online
+                    : X509RevocationMode.NoCheck,
             },
         };
 
@@ -83,7 +98,7 @@ public sealed class RedfishClient : IRedfishClient
         if (!RedfishReadPaths.IsReadOnlyGet("GET", path))
         {
             throw new InvalidOperationException(
-                $"Path '{path}' is not on the Redfish read-only allowlist and will not be requested.");
+                $"Path '{RedfishReadPaths.SanitizeForLog(path)}' is not on the Redfish read-only allowlist and will not be requested.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -113,10 +128,20 @@ public sealed class RedfishClient : IRedfishClient
             if (!response.IsSuccessStatusCode)
             {
                 throw new RedfishException(
-                    $"The Redfish endpoint returned HTTP {(int)response.StatusCode} for '{path}'.");
+                    $"The Redfish endpoint returned HTTP {(int)response.StatusCode} for '{RedfishReadPaths.SanitizeForLog(path)}'.");
             }
 
-            return await response.Content.ReadAsStringAsync(linked.Token).ConfigureAwait(false);
+            // Reject early on a Content-Length that already exceeds the cap, but never trust that header
+            // alone — a chunked response omits it — so the bounded read below is the real enforcement.
+            var declaredLength = response.Content.Headers.ContentLength;
+            if (declaredLength is > MaxResponseBytes)
+            {
+                throw new RedfishException(
+                    $"The Redfish response for '{RedfishReadPaths.SanitizeForLog(path)}' declared a Content-Length of " +
+                    $"{declaredLength} bytes, exceeding the {MaxResponseBytes}-byte cap.");
+            }
+
+            return await ReadBoundedAsync(response, path, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -131,10 +156,12 @@ public sealed class RedfishClient : IRedfishClient
         {
             stopwatch.Stop();
             // One structured line per GET — never the Authorization header, username, password or token.
+            // The path is a device-supplied @odata.id and is logged only in its sanitised (CR/LF-stripped,
+            // truncated) form so a crafted resource id can never inject a fake log line (log injection).
             _logger.LogInformation(
                 "Redfish {Method} {Path} host {Host} status {StatusCode} elapsed {ElapsedMs}ms",
-                "GET", path, _settings.Host, status is null ? "-" : ((int)status).ToString(),
-                stopwatch.Elapsed.TotalMilliseconds);
+                "GET", RedfishReadPaths.SanitizeForLog(path), _settings.Host,
+                status is null ? "-" : ((int)status).ToString(), stopwatch.Elapsed.TotalMilliseconds);
         }
     }
 
@@ -149,21 +176,47 @@ public sealed class RedfishClient : IRedfishClient
         => Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_settings.Username}:{_settings.Password}"));
 
     /// <summary>
-    /// TLS peer-certificate policy for the HTTPS transport. Accepts a fully trusted chain; otherwise, if a
-    /// SHA-256 fingerprint pin is configured, accepts only an exact match (the recommended posture for the
-    /// self-signed iLO certificate); otherwise accepts an untrusted certificate only when the caller has
-    /// explicitly opted in via <see cref="RedfishConnectionSettings.AllowUntrustedCertificate"/>. All other
-    /// cases are rejected, so validation is never silently disabled (CWE-295). Log lines are secret-free.
-    /// Ported verbatim from <c>RouterOsApiClient.ValidateServerCertificate</c>.
+    /// Reads the response body up to <see cref="MaxResponseBytes"/>, throwing <see cref="RedfishException"/>
+    /// the moment more bytes arrive than the cap allows. Reads the stream directly rather than
+    /// <c>ReadAsStringAsync</c> (which buffers unboundedly, up to 2 GB, regardless of any cap) — a chunked
+    /// response never sends <c>Content-Length</c>, so this is the only reliable enforcement point.
+    /// </summary>
+    private static async Task<string> ReadBoundedAsync(
+        HttpResponseMessage response, string path, CancellationToken cancellationToken)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxResponseBytes)
+            {
+                throw new RedfishException(
+                    $"The Redfish response for '{RedfishReadPaths.SanitizeForLog(path)}' exceeded the " +
+                    $"{MaxResponseBytes}-byte cap and was rejected.");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+    }
+
+    /// <summary>
+    /// TLS peer-certificate policy for the HTTPS transport. When a SHA-256 fingerprint pin is configured it
+    /// is the SOLE authority — the pin comparison result is returned regardless of <paramref name="sslPolicyErrors"/>,
+    /// so a certificate that happens to chain to a trusted root can never bypass a configured pin (the pin
+    /// exists precisely to defend the active-MITM case, where the platform validator would otherwise say
+    /// <see cref="SslPolicyErrors.None"/>). Only when no pin is configured does a fully trusted chain short-circuit
+    /// to accepted, or does an untrusted certificate fall through to the explicit
+    /// <see cref="RedfishConnectionSettings.AllowUntrustedCertificate"/> opt-in. All other cases are rejected, so
+    /// validation is never silently disabled (CWE-295). Log lines are secret-free. Ported verbatim from
+    /// <c>RouterOsApiClient.ValidateServerCertificate</c>.
     /// </summary>
     internal bool ValidateServerCertificate(
         object sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors sslPolicyErrors)
     {
-        if (sslPolicyErrors == SslPolicyErrors.None)
-        {
-            return true;
-        }
-
         if (certificate is not null && !string.IsNullOrWhiteSpace(_settings.CertificateThumbprint))
         {
             var presented = Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData()));
@@ -176,6 +229,11 @@ public sealed class RedfishClient : IRedfishClient
                 "Redfish TLS certificate for {Host} did not match the configured SHA-256 fingerprint pin; rejecting the connection.",
                 _settings.Host);
             return false;
+        }
+
+        if (sslPolicyErrors == SslPolicyErrors.None)
+        {
+            return true;
         }
 
         if (_settings.AllowUntrustedCertificate)

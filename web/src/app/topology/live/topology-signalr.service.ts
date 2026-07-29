@@ -5,6 +5,7 @@
 // Heartbeat, and graceful degradation to REST polling when the hub is unavailable.
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import {
+  HttpTransportType,
   HubConnection,
   HubConnectionBuilder,
   HubConnectionState,
@@ -76,9 +77,14 @@ export const HUB_CONNECTION_FACTORY = new InjectionToken<
   (url: string, accessTokenFactory: () => string | Promise<string>) => HubConnection
 >('HUB_CONNECTION_FACTORY', {
   providedIn: 'root',
+  // Finding #20 (client half): pinned to WebSockets so the client never falls back to LongPolling/SSE,
+  // which would carry accessTokenFactory's token as a `?access_token=` query string parameter on every
+  // poll request (and every intermediary/proxy/access log along the way) instead of just the one initial
+  // upgrade handshake — mirrors the server's own request-path logging hardening (finding #20, ADR — see
+  // Program.cs's UseSerilogRequestLogging(o => o.IncludeQueryInRequestPath = false)).
   factory: () => (url, accessTokenFactory) =>
     new HubConnectionBuilder()
-      .withUrl(url, { accessTokenFactory })
+      .withUrl(url, { accessTokenFactory, transport: HttpTransportType.WebSockets })
       .withAutomaticReconnect(new TopologyReconnectPolicy())
       .build(),
 });

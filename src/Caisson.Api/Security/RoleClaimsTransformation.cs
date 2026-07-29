@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Hosting;
 
 namespace Caisson.Api.Security;
 
@@ -24,6 +25,44 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
     public RoleClaimsTransformation(IReadOnlyDictionary<string, string> mappings)
         => _mappings = mappings ?? throw new ArgumentNullException(nameof(mappings));
 
+    /// <summary>
+    /// Fail-closed startup validation (finding #17), mirroring <see cref="TestAuthStartupGuard"/>: every
+    /// configured mapping value must be a genuine canonical role (a typo — e.g. "Admni" — would otherwise
+    /// silently mint a claim that never satisfies any <c>RequireRole</c> policy, effectively locking that
+    /// mapping's holders out without any startup signal), and outside Development the dictionary must be
+    /// non-empty, since an empty map means every deployment would otherwise depend entirely on the
+    /// roles-claim passthrough with no group-based grant reachable at all.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a mapping value is not in <see cref="CaissonRoles.All"/>, or when
+    /// <paramref name="mappings"/> is empty outside Development.
+    /// </exception>
+    public static void ValidateMappings(IHostEnvironment environment, IReadOnlyDictionary<string, string> mappings)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        ArgumentNullException.ThrowIfNull(mappings);
+
+        foreach (var (source, target) in mappings)
+        {
+            if (!CaissonRoles.All.Contains(target, StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Authentication:RoleMappings maps '{source}' to '{target}', which is not a canonical " +
+                    $"Caisson role ({string.Join(", ", CaissonRoles.All)}). Refusing to start rather than " +
+                    "silently mint an unrecognised role claim.");
+            }
+        }
+
+        if (mappings.Count == 0 && !environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
+        {
+            throw new InvalidOperationException(
+                "Authentication:RoleMappings is empty under ASPNETCORE_ENVIRONMENT=" +
+                $"'{environment.EnvironmentName}'. With no mappings configured, the groups claim can never " +
+                "grant a role (finding #17 removed its passthrough) — refusing to start rather than run a " +
+                "deployment where no group-based grant is reachable.");
+        }
+    }
+
     /// <inheritdoc />
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
@@ -34,21 +73,29 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
             return Task.FromResult(principal);
         }
 
+        // Finding #17: the roles claim (app-role assignment, admin-controlled in Entra) and the groups
+        // claim (directory membership, which anyone with group-creation rights can shape) are NOT the
+        // same trust class. A canonical role NAME is only ever accepted verbatim from the roles claim;
+        // a groups value must resolve through the explicit, reviewed _mappings dictionary — there is no
+        // passthrough for groups, so an IdP emitting a directory group literally named "Admin" can never
+        // grant Admin on its own.
         var canonical = new HashSet<string>(StringComparer.Ordinal);
         foreach (var claim in identity.Claims)
         {
-            if (claim.Type is not (RoleClaimType or GroupsClaimType))
+            if (claim.Type == RoleClaimType)
             {
-                continue;
+                if (_mappings.TryGetValue(claim.Value, out var mappedRole))
+                {
+                    canonical.Add(mappedRole);
+                }
+                else if (CaissonRoles.All.Contains(claim.Value, StringComparer.Ordinal))
+                {
+                    canonical.Add(claim.Value);
+                }
             }
-
-            if (_mappings.TryGetValue(claim.Value, out var mapped))
+            else if (claim.Type == GroupsClaimType && _mappings.TryGetValue(claim.Value, out var mappedGroup))
             {
-                canonical.Add(mapped);
-            }
-            else if (CaissonRoles.All.Contains(claim.Value, StringComparer.Ordinal))
-            {
-                canonical.Add(claim.Value);
+                canonical.Add(mappedGroup);
             }
         }
 
