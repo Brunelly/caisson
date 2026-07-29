@@ -22,6 +22,8 @@ public static class DriverRegistryServiceCollectionExtensions
             provider => new SwitchDriverRegistry(provider.GetServices<ISwitchDriverFactory>()));
         services.AddSingleton<IBmcDriverRegistry>(
             provider => new BmcDriverRegistry(provider.GetServices<IBmcDriverFactory>()));
+        services.AddSingleton<ISwitchMutatingDriverRegistry>(
+            provider => new SwitchMutatingDriverRegistry(provider.GetServices<ISwitchMutatingDriverFactory>()));
 
         return services;
     }
@@ -33,6 +35,20 @@ public static class DriverRegistryServiceCollectionExtensions
         where TFactory : class, ISwitchDriverFactory
     {
         services.AddSingleton<ISwitchDriverFactory, TFactory>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers <typeparamref name="TFactory"/> as an <see cref="ISwitchMutatingDriverFactory"/>. A
+    /// separate extension from <see cref="AddSwitchDriver{TFactory}"/> so registering a write-capable
+    /// driver is a distinct, explicit action from registering the read-only one (AC1).
+    /// </summary>
+    public static IServiceCollection AddSwitchMutatingDriver<
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TFactory>(
+        this IServiceCollection services)
+        where TFactory : class, ISwitchMutatingDriverFactory
+    {
+        services.AddSingleton<ISwitchMutatingDriverFactory, TFactory>();
         return services;
     }
 

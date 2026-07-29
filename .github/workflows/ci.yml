@@ -95,19 +95,41 @@ jobs:
       - name: Driver abstraction unit tests
         run: dotnet test tests/Caisson.Drivers.Abstractions.Tests --no-build -c Release
 
+      # Excludes the story #66 write-path test classes (run as their own named step below) so the two
+      # steps partition the project's tests rather than re-running the write suite twice.
       - name: MikroTik driver unit tests
-        run: dotnet test tests/Caisson.Drivers.MikroTik.Tests --no-build -c Release
+        run: dotnet test tests/Caisson.Drivers.MikroTik.Tests --no-build -c Release --filter "FullyQualifiedName!~SetAccessVlan&FullyQualifiedName!~WriteSafetyBoundary&FullyQualifiedName!~SwitchChangeAuditRecord&FullyQualifiedName!~SwitchMutatingConnectionOptions"
 
       # In-process RouterOS API simulator — no service container needed, deterministic and hardware-free.
-      # Set CAISSON_CHR_HOST to point the same suite at a real CHR instead.
+      # Set CAISSON_CHR_HOST to point the same suite at a real CHR instead. Excludes the story #66 write
+      # integration suite (run as its own named step below).
       - name: MikroTik driver integration tests (simulator)
-        run: dotnet test tests/Caisson.Drivers.MikroTik.IntegrationTests --no-build -c Release --logger "trx;LogFileName=mikrotik-integration.trx"
+        run: dotnet test tests/Caisson.Drivers.MikroTik.IntegrationTests --no-build -c Release --filter "FullyQualifiedName!~SetAccessVlanIntegrationTests" --logger "trx;LogFileName=mikrotik-integration.trx"
 
       - name: Upload MikroTik test logs on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mikrotik-test-logs
+          path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
+          if-no-files-found: ignore
+
+      # Story #66: the first write path. Unit tests exercise the driver against a fake write client;
+      # no service container or network needed.
+      - name: MikroTik write driver unit tests
+        run: dotnet test tests/Caisson.Drivers.MikroTik.Tests --no-build -c Release --filter "FullyQualifiedName~SetAccessVlan|FullyQualifiedName~WriteSafetyBoundary|FullyQualifiedName~SwitchChangeAuditRecord|FullyQualifiedName~SwitchMutatingConnectionOptions"
+
+      # Same in-process, stateful RouterOS API simulator as the read-only suite above (deterministic,
+      # hardware-free) — proves apply+confirm persistence and apply+withhold auto-rollback without a real
+      # 30s wait. Set CAISSON_CHR_HOST to point the same suite at a real, write-capable CHR instead.
+      - name: MikroTik write driver integration tests (simulator)
+        run: dotnet test tests/Caisson.Drivers.MikroTik.IntegrationTests --no-build -c Release --filter "FullyQualifiedName~SetAccessVlanIntegrationTests" --logger "trx;LogFileName=mikrotik-write-integration.trx"
+
+      - name: Upload MikroTik write driver test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mikrotik-write-test-logs
           path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
           if-no-files-found: ignore
 

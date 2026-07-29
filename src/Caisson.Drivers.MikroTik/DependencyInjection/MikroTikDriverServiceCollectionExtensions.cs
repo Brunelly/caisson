@@ -26,4 +26,25 @@ public static class MikroTikDriverServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers the RouterOS write driver (ADR 0031): the shared env-backed
+    /// <see cref="ISwitchCredentialResolver"/> and system <see cref="TimeProvider"/> (unless already
+    /// registered), the dedicated <see cref="RouterOsWriteMetrics"/>, plus the
+    /// <see cref="RouterOsSwitchMutatingDriverFactory"/> via <c>AddSwitchMutatingDriver&lt;T&gt;()</c> so
+    /// it is resolved through <c>ISwitchMutatingDriverRegistry</c> — a separate extension from
+    /// <see cref="AddMikroTikRouterOsSwitchDriver"/> so registering write capability is a distinct,
+    /// explicit action. Call <c>AddCaissonDriverRegistry()</c> as well to build the registries.
+    /// </summary>
+    public static IServiceCollection AddMikroTikRouterOsSwitchMutatingDriver(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.TryAddSingleton<ISwitchCredentialResolver, EnvSwitchCredentialResolver>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<RouterOsWriteMetrics>();
+        services.AddSwitchMutatingDriver<RouterOsSwitchMutatingDriverFactory>();
+
+        return services;
+    }
 }

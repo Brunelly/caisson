@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -5,6 +7,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Caisson.Drivers.Simulators;
 
@@ -23,27 +26,41 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
     private const string LegacyChallengeHex = "0123456789abcdef0123456789abcdef";
     private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
+    private static readonly Regex RollbackScriptPattern = new(
+        "interface=\"(?<port>[^\"]+)\"\\]\\s*pvid=(?<pvid>\\d+)", RegexOptions.Compiled);
+
     private readonly RouterOsProfile _profile;
     private readonly string _expectedUsername;
     private readonly string _expectedPassword;
     private readonly X509Certificate2? _serverCertificate;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
+    private readonly TimeProvider _timeProvider;
+    private readonly Dictionary<string, PendingRollback> _pendingRollbacks = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<string> _receivedCommands = new();
     private Task? _acceptLoop;
+    private DateTimeOffset _now;
 
     /// <summary>
     /// Creates a simulator. When <paramref name="serverCertificate"/> is supplied the transport speaks
     /// TLS (a real server-side <see cref="SslStream"/> handshake, as CHR does on 8729) before the
-    /// RouterOS login; otherwise it is plaintext, as on 8728.
+    /// RouterOS login; otherwise it is plaintext, as on 8728. When <paramref name="profile"/> sets
+    /// <see cref="RouterOsProfile.SwitchState"/>, the simulator serves the write-driver's commands from
+    /// that mutable state (AC5); <paramref name="timeProvider"/> (defaulting to <see cref="TimeProvider.System"/>)
+    /// seeds the simulator's virtual clock, which tests advance deterministically via
+    /// <see cref="AdvanceTime"/>/<see cref="FireDueRollbacks"/> rather than sleeping for a real confirm window.
     /// </summary>
     public RouterOsApiSimulator(
-        RouterOsProfile profile, string username, string password, X509Certificate2? serverCertificate = null)
+        RouterOsProfile profile, string username, string password, X509Certificate2? serverCertificate = null,
+        TimeProvider? timeProvider = null)
     {
         _profile = profile;
         _expectedUsername = username;
         _expectedPassword = password;
         _serverCertificate = serverCertificate;
         _listener = new TcpListener(IPAddress.Loopback, 0);
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _now = _timeProvider.GetUtcNow();
     }
 
     /// <summary>The loopback host the simulator listens on.</summary>
@@ -58,6 +75,58 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
+    }
+
+    /// <summary>Simulator-only observability hook (AC5): every command path received, in receipt order. Not part of the wire protocol.</summary>
+    public IReadOnlyList<string> ReceivedCommands => _receivedCommands.ToArray();
+
+    /// <summary>Simulator-only observability hook (AC5): the current PVID of a stateful-mode port, or <c>null</c> if not seeded/unknown.</summary>
+    public int? GetPortAccessVlan(string port) => _profile.SwitchState?.GetPvid(port);
+
+    /// <summary>Simulator-only observability hook (AC5): whether an armed confirmed-commit rollback is still pending for <paramref name="port"/>.</summary>
+    public bool HasPendingRollback(string port)
+    {
+        lock (_pendingRollbacks)
+        {
+            return _pendingRollbacks.Values.Any(p => string.Equals(p.PortName, port, StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>
+    /// Moves the simulator's virtual clock forward by <paramref name="delta"/> WITHOUT firing any due
+    /// rollbacks — call <see cref="FireDueRollbacks"/> afterwards to apply them. Lets CI prove the
+    /// confirmed-commit window elapsing deterministically, without a real 30-second sleep.
+    /// </summary>
+    public void AdvanceTime(TimeSpan delta)
+    {
+        lock (_pendingRollbacks)
+        {
+            _now = _now.Add(delta);
+        }
+    }
+
+    /// <summary>
+    /// Reverts every armed rollback whose window has elapsed (per the virtual clock advanced via
+    /// <see cref="AdvanceTime"/>) — the simulator-side equivalent of a RouterOS
+    /// <c>/system/scheduler</c> job firing its <c>on-event</c> script.
+    /// </summary>
+    public void FireDueRollbacks()
+    {
+        var state = _profile.SwitchState;
+        if (state is null)
+        {
+            return;
+        }
+
+        lock (_pendingRollbacks)
+        {
+            foreach (var name in _pendingRollbacks.Where(kvp => kvp.Value.DueAt <= _now).Select(kvp => kvp.Key).ToArray())
+            {
+                var pending = _pendingRollbacks[name];
+                state.SetPvid(pending.PortName, pending.RevertPvid);
+                _pendingRollbacks.Remove(name);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -130,7 +199,7 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
                         return;
                     }
 
-                    await HandleCommandAsync(stream, words[0], cancellationToken).ConfigureAwait(false);
+                    await HandleCommandAsync(stream, words, cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -189,8 +258,18 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
         return accepted;
     }
 
-    private async Task HandleCommandAsync(Stream stream, string command, CancellationToken cancellationToken)
+    private async Task HandleCommandAsync(Stream stream, IReadOnlyList<string> words, CancellationToken cancellationToken)
     {
+        var command = words[0];
+        _receivedCommands.Enqueue(command);
+
+        if (_profile.SwitchState is { } state
+            && TryHandleStatefulCommand(state, command, words, out var statefulRows, out var statefulTrap))
+        {
+            await WriteReplyAsync(stream, statefulRows, statefulTrap, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (!_profile.Commands.TryGetValue(command, out var reply))
         {
             // Unknown command → empty result set.
@@ -198,14 +277,20 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
             return;
         }
 
-        if (reply.Trap is not null)
+        await WriteReplyAsync(stream, reply.Rows, reply.Trap, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WriteReplyAsync(
+        Stream stream, List<Dictionary<string, string>>? rows, string? trap, CancellationToken cancellationToken)
+    {
+        if (trap is not null)
         {
-            await WriteSentenceAsync(stream, new[] { "!trap", "=message=" + reply.Trap }, cancellationToken).ConfigureAwait(false);
+            await WriteSentenceAsync(stream, new[] { "!trap", "=message=" + trap }, cancellationToken).ConfigureAwait(false);
             await WriteSentenceAsync(stream, new[] { "!done" }, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        foreach (var row in reply.Rows ?? new List<Dictionary<string, string>>())
+        foreach (var row in rows ?? new List<Dictionary<string, string>>())
         {
             var words = new List<string> { "!re" };
             words.AddRange(row.Select(pair => $"={pair.Key}={pair.Value}"));
@@ -214,6 +299,201 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
 
         await WriteSentenceAsync(stream, new[] { "!done" }, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Serves the write driver's bounded command set from mutable <paramref name="state"/> instead of
+    /// the stateless fixture replay (AC5). This deliberately recognises only the driver's fixed on-event
+    /// rollback template structurally (via <see cref="RollbackScriptPattern"/>) — it is NOT a general
+    /// RouterOS script interpreter, an intentional bounded simplification (see ADR 0031).
+    /// </summary>
+    private bool TryHandleStatefulCommand(
+        SimulatorSwitchState state, string command, IReadOnlyList<string> words,
+        out List<Dictionary<string, string>>? rows, out string? trap)
+    {
+        rows = null;
+        trap = null;
+
+        switch (command)
+        {
+            case "/interface/print":
+            case "/interface/ethernet/print":
+                {
+                    // Not on the write allowlist, but the simulator serves them too when stateful so the
+                    // READ driver can observe the same seeded ports for the read/write parity check (AC5)
+                    // — the allowlist boundary is enforced client-side, not by the simulator.
+                    rows = new List<Dictionary<string, string>>();
+                    foreach (var port in state.Ports.Keys)
+                    {
+                        rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            ["name"] = port,
+                            ["running"] = "true",
+                            ["disabled"] = "false",
+                        });
+                    }
+
+                    return true;
+                }
+
+            case "/interface/bridge/port/print":
+                {
+                    var filters = ParseQueryFilters(words);
+                    rows = new List<Dictionary<string, string>>();
+                    foreach (var (port, pvid) in state.Ports)
+                    {
+                        if (filters.TryGetValue("interface", out var wanted)
+                            && !string.Equals(wanted, port, StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            [".id"] = "*" + port,
+                            ["interface"] = port,
+                            ["pvid"] = pvid.ToString(CultureInfo.InvariantCulture),
+                        });
+                    }
+
+                    return true;
+                }
+
+            case "/interface/bridge/vlan/print":
+                {
+                    rows = new List<Dictionary<string, string>>();
+                    foreach (var (vlanId, membership) in state.Vlans)
+                    {
+                        rows.Add(new Dictionary<string, string>(StringComparer.Ordinal)
+                        {
+                            ["vlan-ids"] = vlanId.ToString(CultureInfo.InvariantCulture),
+                            ["tagged"] = string.Join(",", membership.Tagged),
+                            ["untagged"] = string.Join(",", membership.Untagged),
+                        });
+                    }
+
+                    return true;
+                }
+
+            case "/interface/bridge/port/set":
+                {
+                    var attributes = ParseAttributes(words);
+                    rows = new List<Dictionary<string, string>>();
+                    var portId = attributes.GetValueOrDefault(".id");
+                    var port = portId is { Length: > 1 } && portId[0] == '*' ? portId[1..] : portId;
+                    if (port is not null && attributes.TryGetValue("pvid", out var pvidText)
+                        && int.TryParse(pvidText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pvid))
+                    {
+                        state.SetPvid(port, pvid);
+                    }
+
+                    return true;
+                }
+
+            case "/system/scheduler/add":
+                {
+                    var attributes = ParseAttributes(words);
+                    rows = new List<Dictionary<string, string>>();
+                    var name = attributes.GetValueOrDefault("name");
+                    var onEvent = attributes.GetValueOrDefault("on-event") ?? string.Empty;
+                    var startTime = attributes.GetValueOrDefault("start-time") ?? string.Empty;
+
+                    if (name is not null
+                        && TryParseRelativeSeconds(startTime, out var seconds)
+                        && TryParseRollbackScript(onEvent, out var revertPort, out var revertPvid))
+                    {
+                        lock (_pendingRollbacks)
+                        {
+                            _pendingRollbacks[name] = new PendingRollback(revertPort, revertPvid, _now.AddSeconds(seconds));
+                        }
+                    }
+
+                    return true;
+                }
+
+            case "/system/scheduler/remove":
+                {
+                    var attributes = ParseAttributes(words);
+                    rows = new List<Dictionary<string, string>>();
+                    var numbers = attributes.GetValueOrDefault("numbers");
+                    if (numbers is not null)
+                    {
+                        lock (_pendingRollbacks)
+                        {
+                            _pendingRollbacks.Remove(numbers);
+                        }
+                    }
+
+                    return true;
+                }
+
+            case "/system/scheduler/print":
+                {
+                    rows = new List<Dictionary<string, string>>();
+                    lock (_pendingRollbacks)
+                    {
+                        foreach (var name in _pendingRollbacks.Keys)
+                        {
+                            rows.Add(new Dictionary<string, string>(StringComparer.Ordinal) { ["name"] = name });
+                        }
+                    }
+
+                    return true;
+                }
+
+            default:
+                return false;
+        }
+    }
+
+    private static Dictionary<string, string> ParseQueryFilters(IReadOnlyList<string> words)
+    {
+        var filters = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 1; i < words.Count; i++)
+        {
+            var word = words[i];
+            if (word.Length == 0 || word[0] != '?')
+            {
+                continue;
+            }
+
+            var separator = word.IndexOf('=', 1);
+            if (separator >= 0)
+            {
+                filters[word[1..separator]] = word[(separator + 1)..];
+            }
+        }
+
+        return filters;
+    }
+
+    private static bool TryParseRelativeSeconds(string startTime, out int seconds)
+    {
+        seconds = 0;
+        if (startTime.Length < 3 || startTime[0] != '+' || startTime[^1] != 's')
+        {
+            return false;
+        }
+
+        return int.TryParse(
+            startTime.AsSpan(1, startTime.Length - 2), NumberStyles.Integer, CultureInfo.InvariantCulture, out seconds);
+    }
+
+    private static bool TryParseRollbackScript(string script, out string port, out int pvid)
+    {
+        port = string.Empty;
+        pvid = 0;
+
+        var match = RollbackScriptPattern.Match(script);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        port = match.Groups["port"].Value;
+        return int.TryParse(match.Groups["pvid"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out pvid);
+    }
+
+    private sealed record PendingRollback(string PortName, int RevertPvid, DateTimeOffset DueAt);
 
     private static Dictionary<string, string> ParseAttributes(IReadOnlyList<string> words)
     {
@@ -376,20 +656,4 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
     }
 
     private static readonly JsonSerializerOptions ProfileJsonOptions = new(JsonSerializerDefaults.Web);
-}
-
-/// <summary>A committed simulator profile: which login scheme to speak and the per-command replies.</summary>
-public sealed class RouterOsProfile
-{
-    public bool LegacyLogin { get; set; }
-
-    public Dictionary<string, RouterOsCommandReply> Commands { get; set; } = new(StringComparer.Ordinal);
-}
-
-/// <summary>The canned reply for one command path: either data rows or a trap message.</summary>
-public sealed class RouterOsCommandReply
-{
-    public List<Dictionary<string, string>>? Rows { get; set; }
-
-    public string? Trap { get; set; }
 }
