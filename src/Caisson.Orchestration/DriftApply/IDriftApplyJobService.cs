@@ -26,9 +26,13 @@ public interface IDriftApplyJobService
     /// <summary>Returns a single job with its steps, or null if unknown.</summary>
     Task<DriftApplyJob?> GetJobAsync(Guid jobId, CancellationToken cancellationToken);
 
-    /// <summary>Returns one page of a rack's apply jobs (newest first), over-fetching by one for the cursor.</summary>
+    /// <summary>
+    /// Returns one page of a rack's apply jobs (newest first), optionally filtered to a single
+    /// <paramref name="status"/> — applied as a DB-level predicate so keyset pagination (the over-fetch-by-
+    /// one-for-the-cursor convention) stays correct with the filter active. Over-fetches by one for the cursor.
+    /// </summary>
     Task<List<DriftApplyJob>> GetJobsPageAsync(
-        Guid rackId, KeysetPosition? after, int limit, CancellationToken cancellationToken);
+        Guid rackId, DriftApplyJobStatus? status, KeysetPosition? after, int limit, CancellationToken cancellationToken);
 }
 
 /// <summary>The disposition of a <see cref="IDriftApplyJobService.RequestApplyAsync"/> call.</summary>

@@ -109,9 +109,14 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
 
     /// <inheritdoc />
     public async Task<List<DriftApplyJob>> GetJobsPageAsync(
-        Guid rackId, KeysetPosition? after, int limit, CancellationToken cancellationToken)
+        Guid rackId, DriftApplyJobStatus? status, KeysetPosition? after, int limit, CancellationToken cancellationToken)
     {
         var query = _context.DriftApplyJobs.AsNoTracking().Where(j => j.RackId == rackId);
+        if (status is { } filter)
+        {
+            query = query.Where(j => j.Status == filter);
+        }
+
         if (after is { } cursor)
         {
             query = query.Where(j =>

@@ -28,6 +28,8 @@ public sealed class ReadOnlyGuardTests
         nameof(DiscoveryJobDetailController),
         nameof(RackDiscoveryScheduleController),
         nameof(GitWebhookController),
+        // Story #65: the drift-apply endpoint — the first destructive, device-mutating write in the API.
+        nameof(DriftApplyController),
     };
 
     // The policies a non-GET action must be gated by (fail-closed).
@@ -35,6 +37,7 @@ public sealed class ReadOnlyGuardTests
     {
         AuthorizationPolicies.DiscoveryTrigger,
         AuthorizationPolicies.ScheduleManage,
+        AuthorizationPolicies.DriftApply,
     };
 
     // Story #62: the Git webhook endpoint is deliberately [AllowAnonymous] — the HMAC signature over

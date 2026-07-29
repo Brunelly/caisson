@@ -140,6 +140,8 @@ public sealed class DomainGuardTests
         // Story #65: DeviceDefinition.DeviceKey's stable identifier, resolved during revalidation — same
         // *.ExternalDeviceKey/StableKey rationale as the entries above, not an authentication secret.
         "DriftApplyJob.SwitchDeviceKey",
+        // Story #65: same false positive on the API contract DTO that surfaces the job's resolved target.
+        "DriftApplyJobDetailDto.SwitchDeviceKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()
