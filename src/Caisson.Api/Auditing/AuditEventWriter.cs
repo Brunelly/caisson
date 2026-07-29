@@ -22,9 +22,13 @@ public interface IAuditEventWriter
     /// Appends a <see cref="TopologyAuditEvent"/> for a control-plane write action (e.g. a discovery
     /// trigger or cancel, story #8) with an explicit result. The audit table remains append-only.
     /// </summary>
+    /// <param name="detailsJson">
+    /// Optional bounded, secret-scrubbed <c>jsonb</c> payload (story #65) — e.g. the permission used, or a
+    /// before/after summary. Additive: existing callers that omit it are unaffected.
+    /// </param>
     Task WriteActionAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
-        string result, CancellationToken cancellationToken);
+        string result, CancellationToken cancellationToken, string? detailsJson = null);
 }
 
 /// <summary>
@@ -54,7 +58,7 @@ public sealed class AuditEventWriter : IAuditEventWriter
     /// <inheritdoc />
     public async Task WriteActionAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
-        string result, CancellationToken cancellationToken)
+        string result, CancellationToken cancellationToken, string? detailsJson = null)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -70,7 +74,8 @@ public sealed class AuditEventWriter : IAuditEventWriter
             result: result,
             rackId: rackId,
             snapshotId: null,
-            targetId: targetId);
+            targetId: targetId,
+            detailsJson: detailsJson);
 
         _context.AuditEvents.Add(audit);
         await _context.SaveChangesAsync(cancellationToken);

@@ -43,14 +43,14 @@ public sealed class ChannelAuditEventWriter : IAuditEventWriter
     /// <inheritdoc />
     public Task WriteActionAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
-        string result, CancellationToken cancellationToken)
+        string result, CancellationToken cancellationToken, string? detailsJson = null)
     {
         ArgumentNullException.ThrowIfNull(user);
 
         var (actorType, actorId) = ResolveActor(user);
         var request = new AuditWriteRequest(
             Guid.NewGuid(), _time.GetUtcNow().UtcDateTime, actorType, actorId, action, targetType,
-            _correlation.CorrelationId, result, rackId, targetId);
+            _correlation.CorrelationId, result, rackId, targetId, detailsJson);
 
         if (!_writer.TryWrite(request))
         {
@@ -87,4 +87,5 @@ public sealed record AuditWriteRequest(
     Guid CorrelationId,
     string Result,
     Guid? RackId,
-    string? TargetId);
+    string? TargetId,
+    string? DetailsJson = null);

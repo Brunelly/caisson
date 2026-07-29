@@ -95,7 +95,8 @@ public sealed class AuditEventBackgroundWriter : BackgroundService
                 context.AuditEvents.Add(new TopologyAuditEvent(
                     request.Id, request.OccurredAtUtc, request.ActorType, request.ActorId, request.Action,
                     request.TargetType, request.CorrelationId, request.Result,
-                    rackId: request.RackId, snapshotId: null, targetId: request.TargetId));
+                    rackId: request.RackId, snapshotId: null, targetId: request.TargetId,
+                    detailsJson: request.DetailsJson));
             }
 
             await context.SaveChangesAsync(cancellationToken);

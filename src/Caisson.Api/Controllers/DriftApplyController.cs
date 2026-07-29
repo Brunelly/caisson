@@ -84,9 +84,15 @@ public sealed class DriftApplyController : DiscoveryControllerBase
         var (actorType, actorId) = ResolveActor();
         var result = await _jobs.RequestApplyAsync(item, actorId, actorType, _correlation.CorrelationId, cancellationToken);
 
+        var creationDetails = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["permission"] = AuthorizationPolicies.DriftApply,
+            ["correlationId"] = _correlation.CorrelationId,
+            ["driftItemId"] = item.DriftItemId,
+        });
         await _audit.WriteActionAsync(
             User, rackId, "drift.apply.job.created", "drift-apply-job", result.JobId.ToString(),
-            result.Disposition.ToString(), cancellationToken);
+            result.Disposition.ToString(), cancellationToken, creationDetails);
 
         var body = new ApplyDriftCorrectionResponse(result.JobId);
         var location = $"/api/racks/{rackId}/jobs/{result.JobId}";
