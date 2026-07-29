@@ -133,6 +133,21 @@ snapshot-refetch-on-event, patched into the existing DOM rather than a full relo
 [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the full rationale, including the
 config-driven CORS policy and the `NicNodeDto.UnmappedReasonCode` addition this story required.
 
+### Single-change drift-apply: the first write path (M1)
+Story #65 is the **first intentional crossing of the read-only guardrail** below, for exactly one
+bounded, safety-gated operation: applying a single, already-computed `AccessVlanMismatch` drift item by
+driving the story-66 `ISwitchMutatingDriver` (dry-run/confirmed-commit auto-rollback; never reimplemented
+here). It is gated by a NEW, elevated `CaissonRoles.DriftApply` permission — deliberately excluded from
+`CaissonRoles.All`, so it is never implied by `Operator` (or even `Admin`) and must be granted/mapped
+independently. `Caisson.Orchestration.DriftApply` mirrors the discovery job machinery exactly
+(`DriftApplyJob`/`DriftApplyJobStep`, xmin concurrency, `FOR UPDATE SKIP LOCKED` atomic claim, a
+partial-unique-index-backed idempotent create) and is the only new place outside discovery that resolves
+a device connection — `Caisson.Api` still names no driver assembly. Revalidation re-diffs the whole rack
+via the existing `IDriftComputationService` and re-resolves the target **by subject** (not by the
+original content-hashed `DriftItemId`, which can only ever say "identical" or "absent") before ever
+calling the driver; a `RecordDeviceOutcome` checkpoint bounds the job to at most one device write even
+across a crash-resume. See [ADR 0032](docs/adr/0032-drift-apply-orchestration-and-rbac.md).
+
 ## Guardrails (M0)
 - **No** remediation/desired-state fields (no `Desired*`, `Target*`, VLAN/port *config intent*).
 - **No** credentials or PII in the observed-state schema (NFR5). A reflection guard test enforces this.

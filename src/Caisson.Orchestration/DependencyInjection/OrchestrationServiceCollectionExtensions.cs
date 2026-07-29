@@ -86,6 +86,7 @@ public static class OrchestrationServiceCollectionExtensions
         services.AddMikroTikRouterOsSwitchMutatingDriver();
 
         services.TryAddSingleton<DriftApplyJobSignal>();
+        services.TryAddSingleton<DriftApplyMetrics>();
 
         services.TryAddScoped<IDriftApplyJobStore, CaissonDriftApplyJobStore>();
         services.TryAddScoped<IDriftApplyJobService, DriftApplyJobService>();

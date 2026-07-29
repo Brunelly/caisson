@@ -33,6 +33,9 @@ public sealed class DriftApplyJob
     /// <summary>Maximum length of <see cref="SwitchDeviceKey"/>.</summary>
     public const int MaxSwitchDeviceKeyLength = 256;
 
+    /// <summary>Maximum length of <see cref="SubjectKey"/> (mirrors <c>DriftSchema.MaxSubjectKeyLength</c>).</summary>
+    public const int MaxSubjectKeyLength = 512;
+
     /// <summary>Maximum length of <see cref="PortName"/>.</summary>
     public const int MaxPortNameLength = 128;
 
@@ -45,6 +48,7 @@ public sealed class DriftApplyJob
     {
         // EF Core materialization constructor.
         RequestedBy = null!;
+        SubjectKey = null!;
     }
 
     /// <summary>
@@ -56,6 +60,7 @@ public sealed class DriftApplyJob
         Guid id,
         Guid rackId,
         Guid driftItemId,
+        string subjectKey,
         string requestedBy,
         ActorType actorType,
         Guid correlationId,
@@ -65,10 +70,12 @@ public sealed class DriftApplyJob
         int expectedAfterVlan)
     {
         ArgumentException.ThrowIfNullOrEmpty(requestedBy);
+        ArgumentException.ThrowIfNullOrEmpty(subjectKey);
 
         Id = id;
         RackId = rackId;
         DriftItemId = driftItemId;
+        SubjectKey = Bound(subjectKey, MaxSubjectKeyLength, nameof(subjectKey));
         RequestedBy = Bound(requestedBy, MaxActorLength, nameof(requestedBy));
         ActorType = actorType;
         CorrelationId = correlationId;
@@ -92,6 +99,15 @@ public sealed class DriftApplyJob
     /// exactly the stale-drift condition revalidation checks for (AC3), not a referential-integrity error.
     /// </summary>
     public Guid DriftItemId { get; private set; }
+
+    /// <summary>
+    /// The drift item's <c>SubjectKey</c> (e.g. <c>DriftSubjectKeys.ForSwitchPort</c>), captured at request
+    /// time. Revalidation re-resolves the LATEST report's item for this subject rather than re-querying by
+    /// <see cref="DriftItemId"/> — a content-hash lookup can only ever say "found" (meaning identical
+    /// content) or "not found", never "found but changed", so the subject key is what lets revalidation
+    /// distinguish "still current" from "the same physical port drifted to a different value" (AC3).
+    /// </summary>
+    public string SubjectKey { get; private set; }
 
     /// <summary>The user or service subject that requested the apply.</summary>
     public string RequestedBy { get; private set; }

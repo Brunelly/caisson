@@ -192,7 +192,7 @@ public sealed class DriftApplyOrchestratorTests
     private static DriftApplyJob NewJob(int? expectedBeforeVlan = 10, int expectedAfterVlan = 20)
     {
         var job = new DriftApplyJob(
-            Guid.NewGuid(), RackId, Guid.NewGuid(), "operator@example.com", ActorType.User,
+            Guid.NewGuid(), RackId, Guid.NewGuid(), "v1|rack|sw1|ether1", "operator@example.com", ActorType.User,
             Guid.NewGuid(), Now.UtcDateTime, Guid.NewGuid(), expectedBeforeVlan, expectedAfterVlan);
         job.SeedSteps(Guid.NewGuid);
         return job;

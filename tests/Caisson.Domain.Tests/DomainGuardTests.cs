@@ -142,6 +142,8 @@ public sealed class DomainGuardTests
         "DriftApplyJob.SwitchDeviceKey",
         // Story #65: same false positive on the API contract DTO that surfaces the job's resolved target.
         "DriftApplyJobDetailDto.SwitchDeviceKey",
+        // Story #65: same *.SubjectKey rationale as DriftItem.SubjectKey above, not a secret.
+        "DriftApplyJob.SubjectKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()

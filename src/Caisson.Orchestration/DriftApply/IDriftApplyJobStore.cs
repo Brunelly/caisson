@@ -1,4 +1,5 @@
 using Caisson.Domain.Drift;
+using Caisson.Domain.Enums;
 
 namespace Caisson.Orchestration.DriftApply;
 
@@ -13,8 +14,13 @@ public interface IDriftApplyJobStore
     Task SaveAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Resolves a drift item by its stable <c>DriftItemId</c>, scoped to its rack — the revalidation
-    /// step's re-fetch after <c>IDriftComputationService.ComputeAndPersistAsync</c> (AC3).
+    /// Resolves the LATEST computed report's item for a given subject/type, scoped to its rack — the
+    /// revalidation step's re-fetch after <c>IDriftComputationService.ComputeAndPersistAsync</c> (AC3,
+    /// the "Both" check). Deliberately re-resolves by subject rather than by the job's original
+    /// content-hashed <c>DriftItemId</c>: a content-hash lookup can only ever say "found" (identical
+    /// content) or "not found" — never "found but changed" — so a subject-scoped lookup against the
+    /// LATEST report is what lets revalidation distinguish "still current" from "changed" or "resolved".
     /// </summary>
-    Task<DriftItem?> FindDriftItemAsync(Guid rackId, Guid driftItemId, CancellationToken cancellationToken);
+    Task<DriftItem?> FindCurrentAccessVlanItemAsync(
+        Guid rackId, DriftSubjectType subjectType, string subjectKey, CancellationToken cancellationToken);
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Caisson.Domain.Drift;
+using Caisson.Domain.Enums;
 using Caisson.Drivers.Abstractions.Identity;
 using Caisson.Drivers.Abstractions.Mutating;
 using Caisson.Drivers.Abstractions.Registry;
@@ -15,7 +16,7 @@ public sealed class FakeDriftApplyJobStore : IDriftApplyJobStore
 {
     public int SaveCount { get; private set; }
 
-    public Func<Guid, Guid, DriftItem?> ItemBehavior { get; set; } = (_, _) => null;
+    public Func<Guid, string, DriftItem?> ItemBehavior { get; set; } = (_, _) => null;
 
     public Task SaveAsync(CancellationToken cancellationToken)
     {
@@ -23,8 +24,9 @@ public sealed class FakeDriftApplyJobStore : IDriftApplyJobStore
         return Task.CompletedTask;
     }
 
-    public Task<DriftItem?> FindDriftItemAsync(Guid rackId, Guid driftItemId, CancellationToken cancellationToken)
-        => Task.FromResult(ItemBehavior(rackId, driftItemId));
+    public Task<DriftItem?> FindCurrentAccessVlanItemAsync(
+        Guid rackId, DriftSubjectType subjectType, string subjectKey, CancellationToken cancellationToken)
+        => Task.FromResult(ItemBehavior(rackId, subjectKey));
 }
 
 /// <summary>Scriptable, never-throws-by-contract <see cref="IDriftComputationService"/> fake.</summary>

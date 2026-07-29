@@ -57,7 +57,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
 
         var now = _time.GetUtcNow().UtcDateTime;
         var job = new DriftApplyJob(
-            _ids.NewId(), item.RackId, item.DriftItemId, requestedBy, actorType, correlationId, now,
+            _ids.NewId(), item.RackId, item.DriftItemId, item.SubjectKey, requestedBy, actorType, correlationId, now,
             item.DriftReportId, ParseExpectedBeforeVlan(item), ParseExpectedAfterVlan(item));
         job.SeedSteps(_ids.NewId);
         _context.DriftApplyJobs.Add(job);

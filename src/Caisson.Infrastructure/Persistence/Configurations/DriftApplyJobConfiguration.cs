@@ -36,6 +36,7 @@ public sealed class DriftApplyJobConfiguration : IEntityTypeConfiguration<DriftA
         builder.Property(j => j.LastHeartbeatAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(j => j.FinishedAtUtc).HasColumnType("timestamp with time zone");
 
+        builder.Property(j => j.SubjectKey).IsRequired().HasMaxLength(DriftApplyJob.MaxSubjectKeyLength);
         builder.Property(j => j.RequestedBy).IsRequired().HasMaxLength(DriftApplyJob.MaxActorLength);
         builder.Property(j => j.ClaimedByInstanceId).HasMaxLength(DriftApplyJob.MaxActorLength);
         builder.Property(j => j.AttemptCount).IsRequired();

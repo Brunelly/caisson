@@ -14,7 +14,7 @@ public sealed class DriftApplyJobTests
 {
     private static DriftApplyJob NewJob(int? expectedBeforeVlan = 10, int expectedAfterVlan = 20)
         => new(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "operator@example.com", ActorType.User,
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "v1|rack|sw1|ether1", "operator@example.com", ActorType.User,
             Guid.NewGuid(), DateTime.UtcNow, Guid.NewGuid(), expectedBeforeVlan, expectedAfterVlan);
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class DriftApplyJobTests
     public void Requested_by_is_required()
     {
         var act = () => new DriftApplyJob(
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "", ActorType.User,
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "v1|rack|sw1|ether1", "", ActorType.User,
             Guid.NewGuid(), DateTime.UtcNow, Guid.NewGuid(), 10, 20);
 
         act.Should().Throw<ArgumentException>().WithParameterName("requestedBy");

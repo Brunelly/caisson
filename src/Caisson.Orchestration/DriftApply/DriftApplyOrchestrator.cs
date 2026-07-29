@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Caisson.Domain.Drift;
 using Caisson.Domain.Drift.Apply;
 using Caisson.Domain.Enums;
 using Caisson.Drivers.Abstractions.Identity;
@@ -120,7 +121,10 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         // Failed DriftReport, which then simply means the item lookup below finds nothing (stale).
         await _driftComputation.ComputeAndPersistAsync(job.RackId, job.CorrelationId, cancellationToken);
 
-        var item = await _store.FindDriftItemAsync(job.RackId, job.DriftItemId, cancellationToken);
+        // Re-resolve by SUBJECT against the freshly recomputed LATEST report — not by the job's original
+        // content-hashed DriftItemId, which can only ever say "found" (identical content) or "not found",
+        // never "found but changed" (see IDriftApplyJobStore's remarks).
+        var item = await _store.FindCurrentAccessVlanItemAsync(job.RackId, DriftSubjectType.SwitchPort, job.SubjectKey, cancellationToken);
         if (item is null)
         {
             return RevalidationOutcome.Stale(DriftApplyErrorCodes.DriftItemGone, comparedDriftReportId: null, comparedDriftItemId: null);

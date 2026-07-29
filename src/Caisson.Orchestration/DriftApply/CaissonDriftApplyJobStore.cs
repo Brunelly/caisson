@@ -1,4 +1,5 @@
 using Caisson.Domain.Drift;
+using Caisson.Domain.Enums;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
 
@@ -16,6 +17,7 @@ public sealed class CaissonDriftApplyJobStore : IDriftApplyJobStore
     public Task SaveAsync(CancellationToken cancellationToken) => _context.SaveChangesAsync(cancellationToken);
 
     /// <inheritdoc />
-    public Task<DriftItem?> FindDriftItemAsync(Guid rackId, Guid driftItemId, CancellationToken cancellationToken)
-        => _context.ItemByDriftItemIdAsync(rackId, driftItemId, cancellationToken);
+    public Task<DriftItem?> FindCurrentAccessVlanItemAsync(
+        Guid rackId, DriftSubjectType subjectType, string subjectKey, CancellationToken cancellationToken)
+        => _context.LatestItemBySubjectAsync(rackId, subjectType, subjectKey, DriftType.AccessVlanMismatch, cancellationToken);
 }

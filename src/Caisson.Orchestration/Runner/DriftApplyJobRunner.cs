@@ -22,19 +22,12 @@ namespace Caisson.Orchestration.Runner;
 /// </summary>
 public sealed class DriftApplyJobRunner : BackgroundService
 {
-    private static readonly string[] NonTerminalStatuses =
-    {
-        nameof(DriftApplyJobStatus.Pending),
-        nameof(DriftApplyJobStatus.Claimed),
-        nameof(DriftApplyJobStatus.Revalidating),
-        nameof(DriftApplyJobStatus.Executing),
-    };
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly DriftApplyJobSignal _signal;
     private readonly TimeProvider _time;
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
+    private readonly DriftApplyMetrics _metrics;
     private readonly IOptions<DriftApplyOrchestrationOptions> _options;
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private readonly ILogger<DriftApplyJobRunner> _logger;
@@ -45,6 +38,7 @@ public sealed class DriftApplyJobRunner : BackgroundService
         TimeProvider time,
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
+        DriftApplyMetrics metrics,
         IOptions<DriftApplyOrchestrationOptions> options,
         ILogger<DriftApplyJobRunner> logger)
     {
@@ -53,6 +47,7 @@ public sealed class DriftApplyJobRunner : BackgroundService
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -217,7 +212,11 @@ RETURNING id AS ""Value""";
             "Drift-apply job finalized jobId={JobId} rackId={RackId} status={Status} correlationId={CorrelationId}",
             job.Id, job.RackId, job.Status, job.CorrelationId);
 
-        await PublishStatusAsync(job, previousStatus: null, currentStep: null, reasonCode: job.DeviceReasonCode ?? job.ErrorCode, cancellationToken);
+        var reasonCode = job.DeviceReasonCode ?? job.ErrorCode;
+        var duration = (job.FinishedAtUtc ?? DateTimeUtcNow) - job.RequestedAtUtc;
+        _metrics.RecordTerminal(job.Status.ToString(), reasonCode, duration);
+
+        await PublishStatusAsync(job, previousStatus: null, currentStep: null, reasonCode: reasonCode, cancellationToken);
     }
 
     private static Caisson.Domain.Topology.TopologyAuditEvent BuildTerminalAuditEvent(DriftApplyJob job, DateTime nowUtc)

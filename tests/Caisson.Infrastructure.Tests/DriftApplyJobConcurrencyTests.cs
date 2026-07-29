@@ -196,7 +196,7 @@ public sealed class DriftApplyJobConcurrencyTests : IClassFixture<PostgresFixtur
     {
         await using var context = _fixture.CreateContext();
         var job = new DriftApplyJob(
-            Guid.NewGuid(), rackId, Guid.NewGuid(), "a", ActorType.User, Guid.NewGuid(), heartbeatAt,
+            Guid.NewGuid(), rackId, Guid.NewGuid(), "v1|rack|sw1|ether1", "a", ActorType.User, Guid.NewGuid(), heartbeatAt,
             Guid.NewGuid(), 10, 20);
         job.SeedSteps(Guid.NewGuid);
 
