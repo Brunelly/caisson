@@ -2,13 +2,15 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Caisson.Domain.DesiredState;
+using Caisson.Domain.Enums;
+using Caisson.Domain.Topology;
+using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Ingestion.Git;
 using Caisson.Ingestion.Ingestion;
 using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
-using Caisson.Infrastructure.Persistence;
 using Caisson.VirtualRack.Fixtures;
 using FluentAssertions;
 using LibGit2Sharp;
@@ -74,13 +76,7 @@ public sealed class DriftEndToEndTests : IAsyncLifetime
         var ingestionResult = await RunDesiredStateIngestionAsync();
         ingestionResult.Disposition.Should().Be(IngestionRunDisposition.Started);
 
-        var trigger = await Send(HttpMethod.Post, $"/api/racks/{rackId}/discovery-jobs", "op", "Operator", new { mode = "OnDemand" });
-        trigger.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var jobId = (await ReadJson(trigger)).GetProperty("jobId").GetGuid();
-
-        var jobDetail = await PollUntilJobTerminalAsync(jobId);
-        jobDetail.GetProperty("status").GetString().Should().Be("Succeeded");
-        var snapshotId = jobDetail.GetProperty("resultSnapshotId").GetGuid();
+        var snapshotId = await TriggerDiscoveryAndAwaitSucceededAsync(rackId);
 
         // The real snapshot-persisted event hook (TopologySnapshotIngestionService) enqueues this rack
         // through the production IDriftRecomputeSignal → DriftRecomputeRunner → DriftComputationService —
@@ -97,7 +93,7 @@ public sealed class DriftEndToEndTests : IAsyncLifetime
         var mismatch = items.Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject;
         mismatch.GetProperty("actionable").GetBoolean().Should().BeTrue();
         mismatch.GetProperty("subjectKey").GetString().Should().Contain(VirtualRackDefinition.CleanPort);
-        mismatch.GetProperty("expectedValue").GetString().Should().Be("99");
+        mismatch.GetProperty("expectedValue").GetString().Should().Be(DesiredStateYamlRenderer.MismatchedVlan.ToString());
         mismatch.GetProperty("actualValue").GetString().Should().Be(VirtualRackDefinition.CleanVlan.ToString());
 
         // Exactly one non-actionable ambiguity item for the fixture's already-seeded AmbiguousNic
@@ -114,6 +110,142 @@ public sealed class DriftEndToEndTests : IAsyncLifetime
             .Select(p => p.GetString()).ToList();
         candidatePorts.Should().Contain(p => p!.Contains(VirtualRackDefinition.AmbiguousPortA));
         candidatePorts.Should().Contain(p => p!.Contains(VirtualRackDefinition.AmbiguousPortB));
+    }
+
+    /// <summary>
+    /// Task #113: severity is deterministic (asserts the value <c>DriftSeverityRules</c> actually ships —
+    /// High — NOT the story's illustrative "Medium"; production severity code is never changed to match a
+    /// proof story's example, see ADR 0035), the item exposes stable switch/port details, and — the
+    /// concrete NFR1 "all generated IDs deterministic" proof — recomputing drift a SECOND time against
+    /// unchanged desired/observed inputs (a second real discovery run against the same simulator state)
+    /// yields the SAME content-hashed driftItemId (ADR 0029's upsert-by-id).
+    /// </summary>
+    [SkippableFact]
+    public async Task Drift_item_severity_and_subject_details_are_deterministic_and_the_driftItemId_recurs_across_recompute()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        var rackSlug = "vrack-severity-" + Guid.NewGuid().ToString("N");
+        var rackId = await _factory.CreateRackAsync(externalKey: rackSlug);
+
+        CommitFile(
+            $"desired-state/racks/{rackSlug}.yaml",
+            DesiredStateYamlRenderer.RenderWithMismatchedVlan(rackSlug),
+            "seed mismatched desired state");
+        (await RunDesiredStateIngestionAsync()).Disposition.Should().Be(IngestionRunDisposition.Started);
+
+        var firstSnapshotId = await TriggerDiscoveryAndAwaitSucceededAsync(rackId);
+        var latest1 = await PollUntilDriftReadyForSnapshotAsync(rackId, firstSnapshotId);
+        var mismatch1 = latest1.GetProperty("items").GetProperty("items").EnumerateArray()
+            .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject;
+
+        mismatch1.GetProperty("severity").GetString().Should().Be(
+            nameof(DriftSeverity.High),
+            "DriftSeverityRules deterministically maps AccessVlanMismatch to High — this proof story asserts " +
+            "whatever the code ships, it never changes production severity to match the story text's example");
+        var details1 = mismatch1.GetProperty("details");
+        details1.GetProperty("switchName").GetString().Should().Be(VirtualRackDefinition.SwitchId);
+        details1.GetProperty("portName").GetString().Should().Be(VirtualRackDefinition.CleanPort);
+        var driftItemId1 = mismatch1.GetProperty("driftItemId").GetGuid();
+        driftItemId1.Should().NotBeEmpty();
+
+        var secondSnapshotId = await TriggerDiscoveryAndAwaitSucceededAsync(rackId);
+        secondSnapshotId.Should().NotBe(firstSnapshotId, "each discovery run persists a NEW immutable snapshot even when observed state is unchanged");
+
+        var latest2 = await PollUntilDriftReadyForSnapshotAsync(rackId, secondSnapshotId);
+        var mismatch2 = latest2.GetProperty("items").GetProperty("items").EnumerateArray()
+            .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject;
+        mismatch2.GetProperty("driftItemId").GetGuid().Should().Be(
+            driftItemId1, "the SAME real-world drift (same rack/type/subject/expected/actual) must hash to the SAME DriftItemId across recomputes (ADR 0029)");
+    }
+
+    /// <summary>
+    /// Task #113: proves the UI's actual read data path with contract-level backend assertions (per the
+    /// story's answered question — Playwright stays nightly/on-main, ADR 0016/existing angular-e2e-smoke).
+    /// The Angular drift UI (story #67) reads a single report via BOTH <c>GET .../drift/latest</c> and
+    /// <c>GET .../drift/reports/{{driftReportId}}</c> (there is no bare <c>GET .../drift/reports</c>
+    /// collection endpoint — the list route is <c>GET .../drift/history</c>, which returns report
+    /// SUMMARIES only, no per-item fields) — both expose the same switch/port/before-after item contract.
+    /// Also asserts the harness-supplied correlationId reaches the persisted discovery-job audit trail.
+    /// </summary>
+    [SkippableFact]
+    public async Task Drift_report_read_api_exposes_switch_port_and_before_after_vlans_and_the_harness_correlation_id_reaches_the_discovery_audit_trail()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        var rackSlug = "vrack-uicontract-" + Guid.NewGuid().ToString("N");
+        var rackId = await _factory.CreateRackAsync(externalKey: rackSlug);
+        var correlationId = Guid.NewGuid();
+
+        CommitFile(
+            $"desired-state/racks/{rackSlug}.yaml",
+            DesiredStateYamlRenderer.RenderWithMismatchedVlan(rackSlug),
+            "seed mismatched desired state");
+        (await RunDesiredStateIngestionAsync()).Disposition.Should().Be(IngestionRunDisposition.Started);
+
+        var trigger = await Send(
+            HttpMethod.Post, $"/api/racks/{rackId}/discovery-jobs", "op", "Operator", new { mode = "OnDemand" }, correlationId);
+        trigger.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var jobId = (await ReadJson(trigger)).GetProperty("jobId").GetGuid();
+
+        var jobDetail = await PollUntilJobTerminalAsync(jobId);
+        jobDetail.GetProperty("status").GetString().Should().Be("Succeeded");
+        var snapshotId = jobDetail.GetProperty("resultSnapshotId").GetGuid();
+
+        var latest = await PollUntilDriftReadyForSnapshotAsync(rackId, snapshotId);
+        var driftReportId = latest.GetProperty("report").GetProperty("driftReportId").GetGuid();
+        var mismatchFromLatest = latest.GetProperty("items").GetProperty("items").EnumerateArray()
+            .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject;
+
+        var reportResponse = await Send(HttpMethod.Get, $"/api/racks/{rackId}/drift/reports/{driftReportId}", "ro", "ReadOnly");
+        reportResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var reportDoc = await ReadJson(reportResponse);
+        var mismatchFromReport = reportDoc.GetProperty("items").GetProperty("items").EnumerateArray()
+            .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject;
+
+        mismatchFromReport.GetProperty("driftItemId").GetGuid().Should().Be(mismatchFromLatest.GetProperty("driftItemId").GetGuid());
+        mismatchFromReport.GetProperty("subjectKey").GetString().Should().Contain(VirtualRackDefinition.CleanPort);
+        mismatchFromReport.GetProperty("expectedValue").GetString().Should().Be(DesiredStateYamlRenderer.MismatchedVlan.ToString());
+        mismatchFromReport.GetProperty("actualValue").GetString().Should().Be(VirtualRackDefinition.CleanVlan.ToString());
+        var details = mismatchFromReport.GetProperty("details");
+        details.GetProperty("switchName").GetString().Should().Be(VirtualRackDefinition.SwitchId);
+        details.GetProperty("portName").GetString().Should().Be(VirtualRackDefinition.CleanPort);
+
+        var audit = await PollForAuditEventAsync("discovery.job.triggered", jobId.ToString());
+        audit.CorrelationId.Should().Be(correlationId, "the harness's X-Correlation-Id header must propagate through CorrelationIdMiddleware onto the persisted discovery-job audit trail");
+        audit.RackId.Should().Be(rackId);
+    }
+
+    private async Task<Guid> TriggerDiscoveryAndAwaitSucceededAsync(Guid rackId, Guid? correlationId = null)
+    {
+        var trigger = await Send(
+            HttpMethod.Post, $"/api/racks/{rackId}/discovery-jobs", "op", "Operator", new { mode = "OnDemand" }, correlationId);
+        trigger.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var jobId = (await ReadJson(trigger)).GetProperty("jobId").GetGuid();
+
+        var jobDetail = await PollUntilJobTerminalAsync(jobId);
+        jobDetail.GetProperty("status").GetString().Should().Be("Succeeded");
+        return jobDetail.GetProperty("resultSnapshotId").GetGuid();
+    }
+
+    /// <summary>Polls the AuditEvents table directly (no generic audit read API exists) for a persisted row, bounded to 10s.</summary>
+    private async Task<TopologyAuditEvent> PollForAuditEventAsync(string action, string targetId)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var scope = _factory.Services.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<CaissonDbContext>();
+            var audit = await context.AuditEvents.SingleOrDefaultAsync(a => a.Action == action && a.TargetId == targetId);
+            if (audit is not null)
+            {
+                return audit;
+            }
+
+            await Task.Delay(200);
+        }
+
+        throw new TimeoutException($"No audit event action={action} targetId={targetId} appeared within the test budget.");
     }
 
     private async Task<IngestionRunResult> RunDesiredStateIngestionAsync()
@@ -181,8 +313,11 @@ public sealed class DriftEndToEndTests : IAsyncLifetime
         throw new TimeoutException($"Drift for snapshot '{snapshotId}' was not computed within the poll budget.");
     }
 
+    /// <summary>Honoured by the real CorrelationIdMiddleware (echoes it back, stamps every audit/log line for the request).</summary>
+    private const string CorrelationIdHeader = "X-Correlation-Id";
+
     private Task<HttpResponseMessage> Send(
-        HttpMethod method, string path, string? user, string? roles, object? body = null)
+        HttpMethod method, string path, string? user, string? roles, object? body = null, Guid? correlationId = null)
     {
         var request = new HttpRequestMessage(method, path);
         if (user is not null)
@@ -193,6 +328,11 @@ public sealed class DriftEndToEndTests : IAsyncLifetime
         if (roles is not null)
         {
             request.Headers.Add(TestAuthHandler.RolesHeader, roles);
+        }
+
+        if (correlationId is { } cid)
+        {
+            request.Headers.Add(CorrelationIdHeader, cid.ToString());
         }
 
         if (body is not null)

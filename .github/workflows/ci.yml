@@ -180,6 +180,23 @@ jobs:
           path: tests/Caisson.VirtualRack.IntegrationTests/TestResults/*.trx
           if-no-files-found: ignore
 
+      # Story #68: the drift detect/apply/rollback/RBAC CI-proof suite (Task #117). A DEDICATED, filtered
+      # step — not folded into the broad virtual-rack step above — so a failure here produces its own
+      # clearly-named, isolated artifact (NFR4). Reuses the already-booted build and the same Postgres
+      # service already running for the rest of this job; no new job, service container, or CHR/Redfish
+      # containerization is needed (ADR 0017 stays intact) — everything runs against the existing
+      # in-process simulators, and the rollback test's virtual clock keeps wall-clock time sub-second.
+      - name: Drift detect/apply/rollback/RBAC E2E tests (simulators)
+        run: dotnet test tests/Caisson.VirtualRack.IntegrationTests --no-build -c Release --filter "FullyQualifiedName~Drift" --logger "trx;LogFileName=drift-e2e.trx"
+
+      - name: Upload drift E2E test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: drift-e2e-test-logs
+          path: tests/Caisson.VirtualRack.IntegrationTests/TestResults/drift-e2e.trx
+          if-no-files-found: ignore
+
   angular-build-and-test:
     runs-on: ubuntu-latest
 

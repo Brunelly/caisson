@@ -14,6 +14,14 @@ public static class DesiredStateYamlRenderer
     public const string RackSlug = "vrack-1";
 
     /// <summary>
+    /// <see cref="RenderWithMismatchedVlan"/>'s default mismatched access VLAN — shared as a named
+    /// constant so <see cref="RouterOsProfileRenderer.RenderStateful"/> can seed the SAME value into the
+    /// stateful switch simulator's VLAN table (a drift-apply targeting it would otherwise fail the write
+    /// driver's IsVlanConfigured pre-check with VlanNotConfigured, ADR 0031).
+    /// </summary>
+    public const int MismatchedVlan = 99;
+
+    /// <summary>
     /// Renders the virtual rack's one switch and four ports (<see cref="VirtualRackDefinition.CleanPort"/>,
     /// <see cref="VirtualRackDefinition.AmbiguousPortA"/>/<see cref="VirtualRackDefinition.AmbiguousPortB"/>,
     /// <see cref="VirtualRackDefinition.UnmappedPort"/>) with their ground-truth access VLANs into the
@@ -54,7 +62,7 @@ public static class DesiredStateYamlRenderer
     /// other port's desired VLAN still matches its simulated observed Pvid, so this is the ONLY port-level
     /// drift item the engine should produce for this rack.
     /// </summary>
-    public static string RenderWithMismatchedVlan(string? rackSlug = null, int mismatchedVlan = 99) => $"""
+    public static string RenderWithMismatchedVlan(string? rackSlug = null, int mismatchedVlan = MismatchedVlan) => $"""
         rackSlug: {rackSlug ?? RackSlug}
         switches:
           - name: {VirtualRackDefinition.SwitchId}

@@ -74,6 +74,38 @@ public static class RouterOsProfileRenderer
         return profile;
     }
 
+    /// <summary>
+    /// Renders the SAME ground truth as <see cref="Render"/> (byte-identical discovery replies — existing
+    /// detection-only tests using <see cref="Render"/> are unaffected) but ALSO seeds a
+    /// <see cref="SimulatorSwitchState"/>, so the simulator additionally serves the stateful write path
+    /// (<c>/interface/bridge/port/set</c>, the confirmed-commit scheduler) that
+    /// <c>RouterOsSwitchMutatingDriver</c> drives — unreachable through <see cref="Render"/>'s
+    /// stateless-only profile. The seeded VLAN table additionally registers
+    /// <see cref="DesiredStateYamlRenderer.MismatchedVlan"/> with empty tagged/untagged membership so a
+    /// drift-apply targeting that VLAN passes the driver's pre-apply VLAN-exists check.
+    /// </summary>
+    public static RouterOsProfile RenderStateful()
+    {
+        var profile = Render();
+        profile.SwitchState = new SimulatorSwitchState(
+            portPvid: new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                [VirtualRackDefinition.CleanPort] = VirtualRackDefinition.CleanVlan,
+                [VirtualRackDefinition.AmbiguousPortA] = VirtualRackDefinition.AmbiguousVlanA,
+                [VirtualRackDefinition.AmbiguousPortB] = VirtualRackDefinition.AmbiguousVlanB,
+                [VirtualRackDefinition.UnmappedPort] = VirtualRackDefinition.UnmappedPortVlan,
+            },
+            vlans: new Dictionary<int, SimulatorVlanMembership>
+            {
+                [VirtualRackDefinition.CleanVlan] = new(Array.Empty<string>(), new[] { VirtualRackDefinition.CleanPort }),
+                [VirtualRackDefinition.AmbiguousVlanA] = new(Array.Empty<string>(), new[] { VirtualRackDefinition.AmbiguousPortA }),
+                [VirtualRackDefinition.AmbiguousVlanB] = new(Array.Empty<string>(), new[] { VirtualRackDefinition.AmbiguousPortB }),
+                [VirtualRackDefinition.UnmappedPortVlan] = new(Array.Empty<string>(), new[] { VirtualRackDefinition.UnmappedPort }),
+                [DesiredStateYamlRenderer.MismatchedVlan] = new(Array.Empty<string>(), Array.Empty<string>()),
+            });
+        return profile;
+    }
+
     private static Dictionary<string, string> InterfaceRow(string name)
         => Row(("name", name), ("running", "true"), ("disabled", "false"));
 
