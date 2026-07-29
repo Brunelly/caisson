@@ -22,8 +22,11 @@ export function encodeStableKeyPath(stableKey: string): string {
 export class TopologyEntityService {
   private readonly http = inject(HttpClient);
 
+  // Finding #19: rackId is route-driven, not an app-controlled constant (entityType is, but is encoded
+  // too for consistency/defense in depth) — percent-encode both so neither can reshape the request path
+  // or inject query parameters/fragments instead of just 404ing on the id/type as given.
   private entityUrl(rackId: string, entityType: string, stableKey: string): string {
-    return `${environment.apiBaseUrl}/api/racks/${rackId}/topology/entities/${entityType}/${encodeStableKeyPath(stableKey)}`;
+    return `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(rackId)}/topology/entities/${encodeURIComponent(entityType)}/${encodeStableKeyPath(stableKey)}`;
   }
 
   getEntity(
@@ -41,7 +44,7 @@ export class TopologyEntityService {
     entityType: string,
     stableKey: string,
   ): Observable<ApiResult<EntityDiffDto[]>> {
-    const base = `${environment.apiBaseUrl}/api/racks/${rackId}/topology/entities/${entityType}`;
+    const base = `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(rackId)}/topology/entities/${encodeURIComponent(entityType)}`;
     return toApiResult(
       this.http.get<EntityDiffDto[]>(`${base}/history/${encodeStableKeyPath(stableKey)}`),
     );

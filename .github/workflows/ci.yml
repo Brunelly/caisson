@@ -284,15 +284,27 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - name: Build Angular (e2e configuration, auth bypass)
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # Finding #7: the real-backend smoke spec (topology.smoke.spec.ts) and the fixture-only,
+      # auth-bypassing dev-harness spec (topology-harness.spec.ts, ADR 0016) now build and serve from
+      # TWO SEPARATE Angular configurations instead of one shared build. The `e2e` configuration is
+      # hardened to swap in the same production route table (app.routes.prod.ts) a real deploy would
+      # ship — the smoke spec never visits `/__dev-harness__/...` — so the only build ever served
+      # alongside the real, seeded Caisson.Api backend below has no unauthenticated harness route or
+      # fixture/fake-hub code reachable at all. The `harness` configuration (route + fixtures/fake-hub
+      # kept, same OIDC-bypass auth config) serves the harness spec on its own, backend-free run.
+      - name: Build Angular (e2e configuration, auth bypass, production route table)
         working-directory: web
         run: npm run build:e2e
 
       - name: Serve the Angular e2e build
         working-directory: web
         run: |
-          nohup npm run serve:e2e > "$RUNNER_TEMP/serve.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/serve.pid"
+          nohup npm run serve:e2e > "$RUNNER_TEMP/serve-e2e.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/serve-e2e.pid"
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:4200/ > /dev/null; then
               echo "Angular e2e build is being served."
@@ -301,18 +313,45 @@ jobs:
             sleep 1
           done
           echo "::error::Angular e2e build did not become ready within 30s"
-          cat "$RUNNER_TEMP/serve.log"
+          cat "$RUNNER_TEMP/serve-e2e.log"
           exit 1
-
-      - name: Install Playwright browsers
-        working-directory: web
-        run: npx playwright install --with-deps chromium
 
       - name: Run e2e smoke test
         working-directory: web
         env:
           E2E_BASE_URL: "http://127.0.0.1:4200"
-        run: npm run e2e
+        run: npx playwright test topology.smoke.spec.ts
+
+      - name: Stop the Angular e2e build server
+        if: always()
+        run: |
+          [ -f "$RUNNER_TEMP/serve-e2e.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-e2e.pid")" 2>/dev/null || true
+
+      - name: Build Angular (harness configuration, auth bypass, dev-harness route)
+        working-directory: web
+        run: npm run build:harness
+
+      - name: Serve the Angular harness build
+        working-directory: web
+        run: |
+          nohup npm run serve:harness > "$RUNNER_TEMP/serve-harness.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/serve-harness.pid"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4200/ > /dev/null; then
+              echo "Angular harness build is being served."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Angular harness build did not become ready within 30s"
+          cat "$RUNNER_TEMP/serve-harness.log"
+          exit 1
+
+      - name: Run dev-harness e2e test
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test topology-harness.spec.ts
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -327,4 +366,5 @@ jobs:
         if: always()
         run: |
           [ -f "$RUNNER_TEMP/api.pid" ] && kill "$(cat "$RUNNER_TEMP/api.pid")" 2>/dev/null || true
-          [ -f "$RUNNER_TEMP/serve.pid" ] && kill "$(cat "$RUNNER_TEMP/serve.pid")" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/serve-e2e.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-e2e.pid")" 2>/dev/null || true
+          [ -f "$RUNNER_TEMP/serve-harness.pid" ] && kill "$(cat "$RUNNER_TEMP/serve-harness.pid")" 2>/dev/null || true

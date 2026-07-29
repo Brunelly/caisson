@@ -43,6 +43,24 @@ dead branch, so the route/fixtures/fake-hub code stayed reachable in the shipped
 `production` configuration now also replaces `app.routes.ts` with `app.routes.prod.ts`, which omits the
 harness route/import outright.
 
+## Addendum (security-review-5, finding #7): isolate the harness build from the real-backend smoke build
+
+Originally `angular-e2e-smoke` built ONE `e2e`-configured Angular bundle (OIDC auth bypass, no route
+swap) and served it for BOTH `topology.smoke.spec.ts` (real, seeded `Caisson.Api` + Postgres backend)
+and `topology-harness.spec.ts` (fixture data, fake SignalR hub, no backend). That meant the only build
+ever served alongside a real backend also shipped the unauthenticated `/__dev-harness__/...` route and
+its fixture/fake-hub code — broader reachable surface than a real deployment would ever have, for no
+reason the smoke spec needed (it only ever visits the real `/racks/:rackId/topology` route).
+
+The `e2e` build configuration now ALSO swaps in `app.routes.prod.ts` (on top of its existing OIDC-bypass
+replacements), so it ships the same route table a production build would — verified by grepping the
+built bundle for the `dev-harness` string (present with zero matches after this change, versus one match
+before). A new `harness` configuration (OIDC bypass, but the ordinary `app.routes.ts` so the harness
+route stays) is what `topology-harness.spec.ts` now builds/serves against instead, in its own step,
+after the smoke-test server is stopped — see `angular.json`'s `build`/`serve` architect targets,
+`package.json`'s `build:harness`/`serve:harness` scripts, and the `angular-e2e-smoke` job in
+`.github/workflows/ci.yml`.
+
 ## Consequences
 
 - `web/e2e/topology-harness.spec.ts` needs no seeded backend, real OIDC tenant, or `E2E_ENABLED` gate —

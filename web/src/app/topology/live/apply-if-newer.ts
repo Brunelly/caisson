@@ -18,10 +18,23 @@ export function jobStreamKey(jobId: string): string {
   return `job:${jobId}`;
 }
 
+// Finding #2 (client half): mirrors the server-side plausibility check
+// (RedisTopologyEventSubscriber.IsPlausibleAsync) at the same threshold. A forward jump this large is
+// more plausibly a forged/corrupted event than real traffic even after the server's own HMAC/plausibility
+// gates — defense in depth, since this client trusts the hub connection itself as already-authenticated.
+export const MAX_PLAUSIBLE_FORWARD_SEQ_JUMP = 10_000;
+
 /**
  * Returns `true` and records the watermark if `candidate` is strictly newer than the last accepted
  * event for `streamKey`; returns `false` (leaving the store untouched) for a duplicate (`seq` equal) or
  * out-of-order/replayed (`seq` lower) event.
+ *
+ * An implausibly large forward jump is still accepted (so the caller's unconditional `reconcile()` still
+ * runs — the safe response to anything unexpected) but the watermark only advances by one: fast-forwarding
+ * it to the implausible value would permanently poison the stream, since every subsequent genuine
+ * (much lower) seq would then look like a stale duplicate and be silently dropped forever, with no
+ * user-visible sign — `resetWatchdog()` fires on every inbound message regardless of acceptance, so the
+ * connection would keep reporting "live" while never actually updating again.
  */
 export function applyIfNewer(
   store: WatermarkStore,
@@ -29,8 +42,14 @@ export function applyIfNewer(
   candidate: StreamWatermark,
 ): boolean {
   const current = store.get(streamKey);
-  if (current && candidate.seq <= current.seq) {
-    return false;
+  if (current) {
+    if (candidate.seq <= current.seq) {
+      return false;
+    }
+    if (candidate.seq - current.seq > MAX_PLAUSIBLE_FORWARD_SEQ_JUMP) {
+      store.set(streamKey, { seq: current.seq + 1, eventId: candidate.eventId });
+      return true;
+    }
   }
 
   store.set(streamKey, candidate);

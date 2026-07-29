@@ -7,6 +7,8 @@
     "build": "ng build",
     "build:e2e": "ng build --configuration e2e",
     "serve:e2e": "http-server dist/web/browser -p 4200 -a 127.0.0.1 -s --proxy http://127.0.0.1:4200?",
+    "build:harness": "ng build --configuration harness",
+    "serve:harness": "http-server dist/web/browser -p 4200 -a 127.0.0.1 -s --proxy http://127.0.0.1:4200?",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",

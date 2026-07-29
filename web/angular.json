@@ -72,6 +72,22 @@
                 {
                   "replace": "src/app/core/auth/auth.config.ts",
                   "with": "src/app/core/auth/auth.config.e2e.ts"
+                },
+                {
+                  "replace": "src/app/app.routes.ts",
+                  "with": "src/app/app.routes.prod.ts"
+                }
+              ]
+            },
+            "harness": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.e2e.ts"
+                },
+                {
+                  "replace": "src/app/core/auth/auth.config.ts",
+                  "with": "src/app/core/auth/auth.config.e2e.ts"
                 }
               ]
             }
@@ -89,6 +105,9 @@
             },
             "e2e": {
               "buildTarget": "web:build:e2e"
+            },
+            "harness": {
+              "buildTarget": "web:build:harness"
             }
           },
           "defaultConfiguration": "development"

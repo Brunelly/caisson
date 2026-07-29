@@ -81,6 +81,18 @@ describe('TopologySnapshotService', () => {
     await resultPromise;
   });
 
+  it('finding #19: percent-encodes a rackId/snapshotId containing reserved URL characters', async () => {
+    const trickyRackId = 'rack/1?evil=1#frag';
+    const resultPromise = firstValueFrom(service.getById(trickyRackId, 'snap/../../etc'));
+
+    const req = httpMock.expectOne(
+      `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(trickyRackId)}/topology/snapshots/${encodeURIComponent('snap/../../etc')}`,
+    );
+    req.flush({});
+
+    await resultPromise;
+  });
+
   it('maps an unexpected status to a generic error result carrying the status code', async () => {
     const resultPromise = firstValueFrom(service.getLatest(rackId));
 

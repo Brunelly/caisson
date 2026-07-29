@@ -199,4 +199,50 @@ describe('deriveTopologyGraph', () => {
     const ether4 = model.nodes.ports.find((p) => p.name === 'ether4')!;
     expect(model.edges.some((e) => e.source === ether4.id)).toBe(false);
   });
+
+  it('finding #31: dedups a port-vlan edge shared by two NICs on the same port/VLAN into exactly one edge', () => {
+    const sharedAttachment = attachment({ portName: 'ether1', vlans: [10] });
+    const graph: TopologyGraphDto = {
+      snapshotId: 'snap-1',
+      version: 1,
+      correlationId: 'corr-1',
+      servers: [
+        {
+          stableKey: 'srv-1',
+          hostname: 'srv-01',
+          bmcUuid: 'uuid-1',
+          nics: [
+            {
+              stableKey: 'nic:srv-1:eth0',
+              name: 'eth0',
+              mac: 'aabbccddee01',
+              bestAttachment: sharedAttachment,
+              candidates: [sharedAttachment],
+              unmappedReasonCode: null,
+            },
+          ],
+        },
+        {
+          stableKey: 'srv-2',
+          hostname: 'srv-02',
+          bmcUuid: 'uuid-2',
+          nics: [
+            {
+              stableKey: 'nic:srv-2:eth0',
+              name: 'eth0',
+              mac: 'aabbccddee02',
+              bestAttachment: sharedAttachment,
+              candidates: [sharedAttachment],
+              unmappedReasonCode: null,
+            },
+          ],
+        },
+      ],
+      unmappedPorts: [],
+    };
+
+    const model = deriveTopologyGraph(graph);
+    const portVlanEdges = model.edges.filter((e) => e.kind === 'port-vlan');
+    expect(portVlanEdges).toHaveLength(1);
+  });
 });

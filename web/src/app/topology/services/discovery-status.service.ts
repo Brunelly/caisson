@@ -11,9 +11,12 @@ export class DiscoveryStatusService {
   private readonly http = inject(HttpClient);
 
   getStatus(rackId: string): Observable<ApiResult<DiscoveryStatusDto>> {
+    // Finding #19: rackId is route-driven, not an app-controlled constant — percent-encode it (mirrors
+    // TopologySnapshotService.topologyUrl) so a value containing `/`, `?`, or `#` can't reshape the
+    // request path or inject query parameters/fragments instead of just 404ing on the id as typed.
     return toApiResult(
       this.http.get<DiscoveryStatusDto>(
-        `${environment.apiBaseUrl}/api/racks/${rackId}/discovery-status`,
+        `${environment.apiBaseUrl}/api/racks/${encodeURIComponent(rackId)}/discovery-status`,
       ),
     );
   }
