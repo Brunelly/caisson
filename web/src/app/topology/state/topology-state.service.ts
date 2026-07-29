@@ -14,7 +14,10 @@ import {
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
 
-export type TopologyLoadError = 'unauthorized' | 'forbidden' | 'notFound' | 'error';
+// 'unprocessable'/'rateLimited' are included for type-completeness with the shared ApiResult<T> union
+// (extended for the drift-apply write path) — topology's own GET endpoints never actually produce them.
+export type TopologyLoadError =
+  'unauthorized' | 'forbidden' | 'notFound' | 'unprocessable' | 'rateLimited' | 'error';
 
 /** Live-connection status shown by the stale/disconnected banner (NFR4: text, not colour-only). */
 export type ConnectionStatus = 'connecting' | 'live' | 'stale' | 'disconnected';

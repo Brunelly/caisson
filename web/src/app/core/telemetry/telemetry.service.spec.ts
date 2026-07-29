@@ -44,6 +44,21 @@ describe('TelemetryService', () => {
     ]);
   });
 
+  it('records drift-apply lifecycle events with only job/rack/item ids and status strings', () => {
+    service.driftApplyRequested('rack-1', 'item-1', 'corr-3');
+    service.driftApplyJobStatusChanged('job-1', 'Executing', 'corr-3');
+    service.driftApplyOutcome('job-1', 'Completed', 'corr-3');
+    service.driftApplyError('apply', 'boom', 'corr-3', 'job-1');
+
+    expect(service.recent().map((e) => e.type)).toEqual([
+      'drift.apply.requested',
+      'drift.apply.job-status-changed',
+      'drift.apply.outcome',
+      'drift.apply.error',
+    ]);
+    expect(service.recent().every((e) => e.correlationId === 'corr-3')).toBe(true);
+  });
+
   it('accumulates events in recent() in recording order', () => {
     service.record('a', null);
     service.record('b', null);
