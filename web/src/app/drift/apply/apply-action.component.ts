@@ -11,6 +11,7 @@ import { DriftPermissionService } from '../../core/auth/drift-permission.service
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { ToastService } from '../../shared/toast/toast.service';
 import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
+import { TopologyStateService } from '../../topology/state/topology-state.service';
 import { isTerminalDriftApplyJobStatus } from '../model/drift-contracts';
 import type { DriftItemDto } from '../model/drift-contracts';
 import { DriftApplyJobStatusService } from '../live/drift-apply-job-status.service';
@@ -63,6 +64,20 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
               {{ jobId }}
             </a>
           </p>
+          @if (
+            !isTerminal() &&
+            (topologyState.connectionStatus() === 'stale' ||
+              topologyState.connectionStatus() === 'disconnected')
+          ) {
+            <p class="apply-action__connection-banner" role="status">
+              {{
+                topologyState.connectionStatus() === 'stale'
+                  ? 'Live updates are stale'
+                  : 'Live updates disconnected'
+              }}
+              — showing the last known job status.
+            </p>
+          }
           <app-job-status-timeline [status]="liveStatus() ?? 'Pending'" />
           @if (isTerminal()) {
             <p class="apply-action__outcome">{{ outcomeText() }}</p>
@@ -94,6 +109,9 @@ export class ApplyActionComponent {
   private readonly telemetry = inject(TelemetryService);
   private readonly signalR = inject(TopologySignalRService);
   private readonly jobStatus = inject(DriftApplyJobStatusService);
+  /** Reuses the SAME connection-status signal topology-page.component.ts's banner already reads — no
+   * second reconnect state machine, just a second render location for it (ADR 0033/story #67 step 5). */
+  protected readonly topologyState = inject(TopologyStateService);
 
   protected readonly submitting = signal(false);
   protected readonly stale = signal(false);
