@@ -81,4 +81,25 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Security-review-5 (CI/infra finding): none of these three are direct PackageReferences anywhere —
+      each floats in transitively (Caching.Memory/System.Text.Json via the ASP.NET Core/EF Core 8.0.8
+      dependency graph; MessagePack via the SignalR client/hub packages above) at a version with a known,
+      published high-severity advisory. CentralPackageTransitivePinningEnabled alone only locks whatever
+      version resolves; it does not raise it — an explicit PackageVersion entry here is what forces NuGet
+      to float the resolved version up to the patched one across every project, with no direct reference
+      required. `dotnet list package` with its `vulnerable`/`include-transitive` flags is the way to
+      re-check this.
+    -->
+    <!-- CVE-2024-43483 (GHSA-qj66-m88j-hmgj, DoS) — fixed in the dedicated 8.0.1 patch release. -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <!-- CVE-2024-43485 (GHSA-8g4q-xg66-9fp4, DoS) — fixed by 8.0.5; pinned to the latest 8.0.x, 8.0.6. -->
+    <PackageVersion Include="System.Text.Json" Version="8.0.6" />
+    <!-- GHSA-hv8m-jj95-wg3x/GHSA-vh6j-jc39-fggf (LZ4 decompression memory corruption) plus several
+         moderate-severity advisories against 2.5.108 — pinned to the latest 2.5.x release (no need for
+         the 3.x major, which changes default resolver/Typeless behaviour) that includes every fix. -->
+    <PackageVersion Include="MessagePack" Version="2.5.302" />
+  </ItemGroup>
+
 </Project>

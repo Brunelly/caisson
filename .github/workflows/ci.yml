@@ -41,15 +41,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
@@ -60,6 +60,22 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore
+
+      # CI/infra hardening (security-review-5): fail the build the moment a direct or transitive NuGet
+      # package has a published advisory, instead of relying on someone noticing during an unrelated PR.
+      # `--include-transitive` matters here — the two highest-severity hits found when this gate was
+      # added (Microsoft.Extensions.Caching.Memory, System.Text.Json) were both transitive, pulled in by
+      # the ASP.NET Core/EF Core 8.0.8 graph rather than referenced directly. Pin fixes in
+      # Directory.Packages.props (CentralPackageTransitivePinningEnabled locks a version once resolved,
+      # but only an explicit PackageVersion entry raises it to a patched one).
+      - name: Check for vulnerable NuGet packages
+        run: |
+          output=$(dotnet list Caisson.sln package --vulnerable --include-transitive)
+          echo "$output"
+          if echo "$output" | grep -q "has the following vulnerable packages"; then
+            echo "::error::One or more NuGet packages have a known vulnerability — see output above."
+            exit 1
+          fi
 
       - name: Build (warnings as errors)
         run: dotnet build --no-restore -c Release -warnaserror
@@ -83,7 +99,7 @@ jobs:
 
       - name: Upload MikroTik test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mikrotik-test-logs
           path: tests/Caisson.Drivers.MikroTik.IntegrationTests/TestResults/*.trx
@@ -99,7 +115,7 @@ jobs:
 
       - name: Upload Redfish test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: redfish-test-logs
           path: tests/Caisson.Drivers.Redfish.IntegrationTests/TestResults/*.trx
@@ -130,7 +146,7 @@ jobs:
 
       - name: Upload virtual-rack test logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: virtual-rack-test-logs
           path: tests/Caisson.VirtualRack.IntegrationTests/TestResults/*.trx
@@ -145,10 +161,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: "npm"
@@ -156,6 +172,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # CI/infra hardening (security-review-5): fail on a known vulnerability in a package that actually
+      # ships (`--omit=dev` — the Angular/eslint toolchain's own moderate-severity dev-only advisories at
+      # the time this gate was added are irrelevant to what's served to a browser, and would otherwise
+      # make this gate permanently red for a fix nobody but the toolchain vendor controls).
+      - name: Check for vulnerable npm packages (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint
@@ -174,7 +197,7 @@ jobs:
 
       - name: Upload test/coverage artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: angular-test-artifacts
           path: |
@@ -215,22 +238,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '.config/dotnet-tools.json') }}
           restore-keys: ${{ runner.os }}-nuget-
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: "npm"
@@ -355,7 +378,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: web/playwright-report
