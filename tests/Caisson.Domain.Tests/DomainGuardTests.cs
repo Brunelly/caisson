@@ -162,8 +162,8 @@ public sealed class DomainGuardTests
 
     /// <summary>
     /// The broadened, cross-assembly sweep (finding #27): every public contract/DTO/options property in
-    /// <c>Caisson.Api</c>/<c>Caisson.Infrastructure</c>/<c>Caisson.Orchestration</c> either avoids every
-    /// broadened marker, or is a reviewed, explicitly-approved false positive.
+    /// <c>Caisson.Api</c>/<c>Caisson.Infrastructure</c>/<c>Caisson.Orchestration</c>/<c>Caisson.Ingestion</c>
+    /// either avoids every broadened marker, or is a reviewed, explicitly-approved false positive.
     /// </summary>
     public static IEnumerable<object[]> ContractProperties()
     {
@@ -172,6 +172,7 @@ public sealed class DomainGuardTests
             typeof(Caisson.Api.Controllers.AuditController).Assembly,
             typeof(Caisson.Infrastructure.Persistence.CaissonDbContext).Assembly,
             typeof(Caisson.Orchestration.Discovery.IDiscoveryOrchestrator).Assembly,
+            typeof(Caisson.Ingestion.Options.GitIngestionOptions).Assembly,
         };
 
         var contractSuffixes = new[] { "Dto", "Options", "Settings", "Request", "Response", "Event", "Contract" };

@@ -1,9 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Git-backed desired-state ingestion: fetch, parse, validate, materialise (story #62, ADR 0026).
-    References ONLY Caisson.Domain — no EF Core, no Caisson.Drivers.* — mirroring Caisson.Correlation's
-    pure layering so the M0 driver-boundary guard tests stay intact.
+    Git-backed desired-state ingestion: fetch, parse, validate, materialise, orchestrate (story #62,
+    ADR 0026). The parsing core (Git/Schema/Materializer/Webhook/Security) depends only on
+    Caisson.Domain, mirroring Caisson.Correlation's pure layering. The orchestration layer
+    (Ingestion/Scheduling/Runner) additionally references Caisson.Infrastructure for CaissonDbContext —
+    the same shape Caisson.Orchestration already has for discovery. No Caisson.Drivers.* assembly is
+    ever referenced, which is what the M0 driver-boundary guard tests actually check.
   -->
   <PropertyGroup>
     <RootNamespace>Caisson.Ingestion</RootNamespace>
@@ -12,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+    <ProjectReference Include="..\Caisson.Infrastructure\Caisson.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,10 +16,16 @@ introduce a new secrets mechanism as a first-of-its-kind dependency.
 
 ## Decision
 
-- **New `Caisson.Ingestion` project, referencing only `Caisson.Domain`.** Mirrors `Caisson.Correlation`'s
+- **New `Caisson.Ingestion` project.** The git adapter, YAML parser/validator/materialiser and webhook
+  HMAC verifier (the parsing "core") reference only `Caisson.Domain`, mirroring `Caisson.Correlation`'s
   pure layering: no EF Core, no reference to any `Caisson.Drivers.*` assembly. This keeps the M0
   driver-boundary guard tests intact and follows ADR 0013's rule that a new external dependency (Git,
-  YAML) gets its own owning layer rather than leaking into `Caisson.Domain` or `Caisson.Infrastructure`.
+  YAML) gets its own owning layer rather than leaking into `Caisson.Domain`. The orchestration layer
+  added on top in the same project (`DesiredStateIngestionService`, the poll scheduler, the webhook
+  drainer) additionally references `Caisson.Infrastructure` for `CaissonDbContext` — this is the exact
+  same shape `Caisson.Orchestration` already has for discovery (Domain + Infrastructure, no driver
+  assembly named), not a new pattern. `Caisson.Ingestion` still never references any `Caisson.Drivers.*`
+  assembly, which is what the M0 guard tests actually check.
 - **LibGit2Sharp over shelling out to the `git` CLI.** A library call has zero command-injection surface
   — consistent with the hardening batch (story #104) that removed shell-invocation patterns elsewhere.
   `LibGit2Sharp` is dual-licensed MIT (wrapper) / GPLv2-with-linking-exception (native `libgit2`), which

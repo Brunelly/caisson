@@ -19,6 +19,11 @@
       (driver access is transitive through Caisson.Orchestration at runtime).
     -->
     <ProjectReference Include="..\Caisson.Orchestration\Caisson.Orchestration.csproj" />
+    <!--
+      Git-backed desired-state ingestion (story #62, ADR 0026). Same shape as the Orchestration
+      reference above: no Caisson.Drivers.* assembly is named, so the guard test stays green.
+    -->
+    <ProjectReference Include="..\Caisson.Ingestion\Caisson.Ingestion.csproj" />
   </ItemGroup>
 
   <ItemGroup>
