@@ -29,6 +29,12 @@ public static class TopologyEventSerialization
     /// Deserializes a canonical envelope back to a concrete <see cref="TopologyEvent"/>, or null when the
     /// payload is not a recognised event (so a malformed channel message can never crash the relay).
     /// </summary>
+    /// <remarks>
+    /// Finding #30: a payload with no <c>type</c> discriminator (or an unrecognised one) makes
+    /// <see cref="JsonPolymorphicAttribute"/> throw <see cref="NotSupportedException"/> rather than
+    /// <see cref="JsonException"/> — both are "not a recognised event", so both are caught here and
+    /// answered the same way: null, never a throw.
+    /// </remarks>
     public static TopologyEvent? Deserialize(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -41,6 +47,10 @@ public static class TopologyEventSerialization
             return JsonSerializer.Deserialize<TopologyEvent>(json, Options);
         }
         catch (JsonException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
         {
             return null;
         }

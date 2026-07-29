@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using StackExchange.Redis;
 using FluentAssertions;
 using Xunit;
 
@@ -89,6 +90,37 @@ public sealed class TopologyEventFanOutTests : IAsyncLifetime
         {
             received.Should().ContainSingle(e => e.EventId == @event.EventId);
         }
+    }
+
+    [SkippableFact]
+    public async Task An_unsigned_message_published_directly_to_the_channel_is_never_relayed()
+    {
+        // Finding #2: the relay only trusts messages carrying a valid HMAC tag. A message published
+        // straight to the Redis channel — bypassing RedisTopologyEventPublisher entirely, as a
+        // misconfigured ACL or a misrouted publisher on the shared instance would — must never reach a
+        // client, even though it decodes to a perfectly well-formed event.
+        Skip.IfNot(_postgres.Available && _redis.Available, "Requires Postgres and Redis; skipped when unavailable.");
+
+        var rackId = await SeedRackAsync();
+        await using var host = new SharedHost(_postgres.ConnectionString, _redis.ConnectionString);
+        _ = host.Services;
+
+        await using var connection = BuildConnection(host, "tester", "Operator");
+        var received = new TaskCompletionSource<SnapshotUpdatedEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.On<SnapshotUpdatedEvent>(nameof(ITopologyClient.SnapshotUpdated), e => received.TrySetResult(e));
+
+        await connection.StartAsync();
+        await connection.InvokeAsync("SubscribeToRack", rackId);
+
+        var @event = new SnapshotUpdatedEvent(
+            rackId, JobId: null, Guid.NewGuid(), 1, new SnapshotSummary(2, 20, 3, 4, 0, 1),
+            DateTimeOffset.UtcNow, 1, Guid.NewGuid());
+        var unsignedJson = TopologyEventSerialization.Serialize(@event);
+        var multiplexer = host.Services.GetRequiredService<IConnectionMultiplexer>();
+        await multiplexer.GetSubscriber().PublishAsync(RedisChannel.Literal(TopologyEventChannels.Default), unsignedJson);
+
+        var completed = await Task.WhenAny(received.Task, Task.Delay(Budget));
+        completed.Should().NotBe(received.Task, "an unsigned message must never be relayed to a client");
     }
 
     private async Task<Guid> SeedRackAsync()

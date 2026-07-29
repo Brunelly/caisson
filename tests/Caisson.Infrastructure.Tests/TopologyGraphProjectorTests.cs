@@ -33,7 +33,8 @@ public sealed class TopologyGraphProjectorTests
         nic.BestAttachment.Band.Should().Be("High");
         nic.BestAttachment.Confidence.Should().BeApproximately(0.92, 1e-9);
         nic.BestAttachment.Vlans.Should().Contain(10);
-        nic.BestAttachment.SwitchStableKey.Should().Be("SW-1");
+        // StableKeys.ForSwitch prefixes with the switch's ExternalDeviceKey (finding #3) — "sw1" here.
+        nic.BestAttachment.SwitchStableKey.Should().Be("sw1|SW-1");
     }
 
     [Fact]

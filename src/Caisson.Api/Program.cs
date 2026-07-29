@@ -69,6 +69,10 @@ var rackDefinitions = builder.Configuration.GetSection(RackDefinitionOptions.Sec
     ?? new RackDefinitionOptions();
 RackDefinitionValidation.Validate(rackDefinitions);
 
+// Fail-closed Redis connection validation (finding #2): an unauthenticated, unencrypted Redis connection
+// backing live updates refuses to boot outside Development/Testing — see ADR 0021.
+RedisEventAuthenticityStartupGuard.Validate(builder.Environment, builder.Configuration);
+
 // Live topology updates (story #9, ADR 0014): the SignalR hub, Redis backplane + per-instance relay,
 // heartbeat, metrics and Redis health. Degrades to single-instance SignalR when no Redis is configured.
 builder.Services.AddCaissonRealtime(builder.Configuration);
