@@ -1,4 +1,6 @@
+using Caisson.Domain.Drift;
 using Caisson.Domain.Enums;
+using Caisson.Domain.Topology;
 using FluentAssertions;
 using Xunit;
 
@@ -91,6 +93,54 @@ public sealed class DriftEngineTests
         item.DriftType.Should().Be(DriftType.UnexpectedTrunkConfig);
         item.Severity.Should().Be(DriftSeverity.Medium);
         item.ActualValue.Should().Be("30,40");
+    }
+
+    [Fact]
+    public void A_trunk_all_vlans_port_produces_a_bounded_UnexpectedTrunkConfig_item_instead_of_throwing()
+    {
+        // A legitimate "trunk all VLANs" uplink can carry thousands of tagged VLANs — device-controlled
+        // volume that must degrade to a single, bounded item (M1 invariant) rather than making the
+        // DriftItem constructor throw and fail the whole rack's report.
+        var rackId = Guid.NewGuid();
+        var desired = DriftFixtures.Desired(accessVlan: 10);
+        var allVlans = Enumerable.Range(1, 4094).ToArray();
+        var observed = DriftFixtures.Observed(rackId, pvid: 10, taggedVlans: allVlans);
+
+        var result = DriftEngine.Compute(desired, observed, rackId, DateTime.UtcNow, Options);
+
+        result.Items.Should().ContainSingle();
+        var item = result.Items[0];
+        item.DriftType.Should().Be(DriftType.UnexpectedTrunkConfig);
+        item.ActualValue.Should().NotBeNull();
+        item.ActualValue!.Length.Should().BeLessThan(DriftSchema.MaxActualValueLength);
+        item.ActualValue.Should().Contain("more");
+        item.ActualValue.Should().Contain("4094 total");
+    }
+
+    [Fact]
+    public void Many_observed_LLDP_neighbours_produce_a_bounded_UnexpectedNeighbour_item_instead_of_throwing()
+    {
+        // Same device-controlled-volume concern as the trunk-VLAN case above, for LLDP neighbours: a
+        // port with many (e.g. misbehaving/garbage) LLDP neighbours must still degrade to one bounded
+        // item rather than throw.
+        var rackId = Guid.NewGuid();
+        var desired = DriftFixtures.Desired(accessVlan: 10, neighborSystemName: "expected-neighbour");
+        var observed = DriftFixtures.Observed(rackId, pvid: 10);
+
+        var port = observed.Switches.Single().Ports.Single();
+        for (var i = 0; i < 200; i++)
+        {
+            port.AddLldpNeighbour(new LldpNeighbour(
+                Guid.NewGuid(), port.Id, rackId, observed.Id, $"chassis-{i}", $"remote-port-{i}", $"unexpected-host-{i}"));
+        }
+
+        var result = DriftEngine.Compute(desired, observed, rackId, DateTime.UtcNow, Options);
+
+        result.Items.Should().ContainSingle(i => i.DriftType == DriftType.UnexpectedNeighbour);
+        var item = result.Items.Single(i => i.DriftType == DriftType.UnexpectedNeighbour);
+        item.ActualValue.Should().NotBeNull();
+        item.ActualValue!.Length.Should().BeLessThan(DriftSchema.MaxActualValueLength);
+        item.ActualValue.Should().Contain("more");
     }
 
     [Fact]

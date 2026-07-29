@@ -51,21 +51,24 @@ public sealed class DriftItem
                 $"Subject key exceeds the {DriftSchema.MaxSubjectKeyLength}-character bound.", nameof(subjectKey));
         }
 
-        if (expectedValue is { Length: > 0 } && expectedValue.Length > DriftSchema.MaxExpectedValueLength)
+        // Finding #27-style backstop (mirrors TopologyEntityDiff/TopologyAuditEvent): all four free-text
+        // fields are derived from device-reported and desired-state text, so scrub before the length
+        // bound so redaction can never push the value over it — uniformly across ExpectedValue/
+        // ActualValue/Why/DetailsJson, not just the narrative fields.
+        var scrubbedExpectedValue = SecretScrubber.Scrub(expectedValue);
+        if (scrubbedExpectedValue is { Length: > 0 } && scrubbedExpectedValue.Length > DriftSchema.MaxExpectedValueLength)
         {
             throw new ArgumentException(
                 $"Expected value exceeds the {DriftSchema.MaxExpectedValueLength}-character bound.", nameof(expectedValue));
         }
 
-        if (actualValue is { Length: > 0 } && actualValue.Length > DriftSchema.MaxActualValueLength)
+        var scrubbedActualValue = SecretScrubber.Scrub(actualValue);
+        if (scrubbedActualValue is { Length: > 0 } && scrubbedActualValue.Length > DriftSchema.MaxActualValueLength)
         {
             throw new ArgumentException(
                 $"Actual value exceeds the {DriftSchema.MaxActualValueLength}-character bound.", nameof(actualValue));
         }
 
-        // Finding #27-style backstop (mirrors TopologyEntityDiff/TopologyAuditEvent): Why/Details are
-        // derived from device-reported and desired-state text, so scrub before the length bound so
-        // redaction can never push the value over it.
         var scrubbedWhy = SecretScrubber.Scrub(why)!;
         if (scrubbedWhy.Length > DriftSchema.MaxWhyLength)
         {
@@ -88,8 +91,8 @@ public sealed class DriftItem
         Actionable = actionable;
         SubjectType = subjectType;
         SubjectKey = subjectKey;
-        ExpectedValue = expectedValue;
-        ActualValue = actualValue;
+        ExpectedValue = scrubbedExpectedValue;
+        ActualValue = scrubbedActualValue;
         Why = scrubbedWhy;
         DetailsJson = scrubbedDetailsJson;
         CreatedAtUtc = createdAtUtc;

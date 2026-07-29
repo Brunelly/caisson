@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Caisson.Domain.DesiredState;
+using Caisson.Domain.Drift;
 using Caisson.Domain.Drift.Diffing;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
@@ -118,7 +120,9 @@ public static class DriftEngine
 
             if (observedPort.TaggedVlans.Length > 0)
             {
-                var taggedVlans = string.Join(",", observedPort.TaggedVlans.OrderBy(v => v));
+                var taggedVlans = JoinBounded(
+                    observedPort.TaggedVlans.OrderBy(v => v).Select(v => v.ToString(CultureInfo.InvariantCulture)),
+                    ",");
                 yield return BuildPortItem(
                     rackId, DriftType.UnexpectedTrunkConfig, subjectKey,
                     expectedValue: "none",
@@ -132,11 +136,11 @@ public static class DriftEngine
                 var expectedNeighbour = FormatNeighbour(desiredPort.NeighborSystemName, desiredPort.NeighborPortId);
                 var actualNeighbours = observedPort.LldpNeighbours.Count == 0
                     ? "none"
-                    : string.Join(
-                        "; ",
+                    : JoinBounded(
                         observedPort.LldpNeighbours
                             .Select(n => FormatNeighbour(n.SystemName, n.PortId))
-                            .OrderBy(s => s, StringComparer.Ordinal));
+                            .OrderBy(s => s, StringComparer.Ordinal),
+                        "; ");
 
                 yield return BuildPortItem(
                     rackId, DriftType.UnexpectedNeighbour, subjectKey,
@@ -155,14 +159,14 @@ public static class DriftEngine
             yield break;
         }
 
-        var nicsByid = observed.Servers.SelectMany(s => s.Nics).ToDictionary(n => n.Id);
+        var nicsById = observed.Servers.SelectMany(s => s.Nics).ToDictionary(n => n.Id);
         var portNamesById = observed.Switches
             .SelectMany(sw => sw.Ports.Select(p => (SwitchName: sw.ExternalDeviceKey, Port: p)))
             .ToDictionary(t => t.Port.Id, t => (t.SwitchName, t.Port.PortName));
 
         foreach (var group in observed.CandidateMappings.GroupBy(m => m.NicId))
         {
-            if (!nicsByid.TryGetValue(group.Key, out var nic))
+            if (!nicsById.TryGetValue(group.Key, out var nic))
             {
                 diagnostics.Add($"Candidate mapping references unknown NicId '{group.Key}'; skipped.");
                 continue;
@@ -281,6 +285,53 @@ public static class DriftEngine
         => $"systemName={systemName ?? "(any)"},portId={portId ?? "(any)"}";
 
     private static string FormatPvid(int? pvid) => pvid?.ToString(CultureInfo.InvariantCulture) ?? "none";
+
+    /// <summary>
+    /// Joins device-controlled, unbounded-cardinality observed values (e.g. a trunk port's tagged VLANs,
+    /// or a port's LLDP neighbours) into a single string that is guaranteed to stay well under
+    /// <see cref="DriftSchema.MaxActualValueLength"/>, appending a "+N more" summary instead of the
+    /// remaining items when the full list would overflow. Without this, a single legitimate
+    /// high-cardinality port (e.g. a "trunk all VLANs 1-4094" uplink) would make the
+    /// <c>DriftItem</c> constructor throw, failing the WHOLE rack's report (M1 device-controlled-volume
+    /// invariant) instead of just degrading this one item.
+    /// </summary>
+    private static string JoinBounded(IEnumerable<string> items, string separator)
+    {
+        const int maxJoinedLength = 900; // Margin under MaxActualValueLength (1024) for the "+N more" suffix,
+                                          // and — combined with the surrounding fixed why-text — under MaxWhyLength (2048).
+        var all = items.ToList();
+        var builder = new StringBuilder();
+        var includedCount = 0;
+
+        foreach (var item in all)
+        {
+            var prefixLength = builder.Length == 0 ? 0 : separator.Length;
+            if (builder.Length + prefixLength + item.Length > maxJoinedLength)
+            {
+                break;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.Append(separator);
+            }
+
+            builder.Append(item);
+            includedCount++;
+        }
+
+        if (includedCount < all.Count)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append(separator);
+            }
+
+            builder.Append($"...(+{all.Count - includedCount} more, {all.Count} total)");
+        }
+
+        return builder.ToString();
+    }
 
     private static string SerializeCounts(IReadOnlyList<DriftItemResult> items)
     {

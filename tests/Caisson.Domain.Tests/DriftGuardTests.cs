@@ -18,10 +18,12 @@ public sealed class DriftGuardTests
             DriftSchema.CurrentComputationVersion, totalItems: 0, countsBySeverityJson,
             hasAmbiguities: false, isTruncated: false, status, errorSummary);
 
-    private static DriftItem NewItem(string subjectKey = "v1|rack|sw1|ether1", string why = "why", string? detailsJson = null)
+    private static DriftItem NewItem(
+        string subjectKey = "v1|rack|sw1|ether1", string why = "why", string? detailsJson = null,
+        string? expectedValue = "10", string? actualValue = "20")
         => new(
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DriftType.AccessVlanMismatch,
-            DriftSeverity.High, actionable: true, DriftSubjectType.SwitchPort, subjectKey, "10", "20", why,
+            DriftSeverity.High, actionable: true, DriftSubjectType.SwitchPort, subjectKey, expectedValue, actualValue, why,
             DateTime.UtcNow, detailsJson);
 
     [Fact]
@@ -122,6 +124,44 @@ public sealed class DriftGuardTests
         var act = () => NewItem(detailsJson: oversized);
 
         act.Should().Throw<ArgumentException>().WithParameterName("detailsJson");
+    }
+
+    [Fact]
+    public void DriftItem_expected_value_over_the_bound_is_rejected()
+    {
+        var oversized = new string('a', DriftSchema.MaxExpectedValueLength + 1);
+
+        var act = () => NewItem(expectedValue: oversized);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("expectedValue");
+    }
+
+    [Fact]
+    public void DriftItem_actual_value_over_the_bound_is_rejected()
+    {
+        var oversized = new string('a', DriftSchema.MaxActualValueLength + 1);
+
+        var act = () => NewItem(actualValue: oversized);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("actualValue");
+    }
+
+    [Fact]
+    public void DriftItem_expected_value_is_secret_scrubbed()
+    {
+        var item = NewItem(expectedValue: "postgres://admin:hunter2@db.internal:5432/caisson");
+
+        item.ExpectedValue.Should().NotContain("hunter2");
+        item.ExpectedValue.Should().Contain("[REDACTED]");
+    }
+
+    [Fact]
+    public void DriftItem_actual_value_is_secret_scrubbed()
+    {
+        var item = NewItem(actualValue: "Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.abc.def");
+
+        item.ActualValue.Should().NotContain("eyJhbGciOiJSUzI1NiJ9");
+        item.ActualValue.Should().Contain("[REDACTED]");
     }
 
     [Fact]

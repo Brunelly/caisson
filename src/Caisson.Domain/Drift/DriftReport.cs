@@ -132,6 +132,14 @@ public sealed class DriftReport
         return scrubbed;
     }
 
+    /// <summary>
+    /// Unlike <see cref="BoundCounts"/> (and every bounded field in <see cref="DriftItem"/>'s
+    /// constructor), an over-length summary is truncated here rather than thrown: this value is an
+    /// operator-facing capture of an arbitrary exception message from an already-failed (re)computation
+    /// (<see cref="RecordFailure"/>), so the one call site that persists it is failure handling itself —
+    /// throwing here would turn "record that computation failed" into a second failure instead of a
+    /// best-effort diagnostic, and would risk repeatedly failing at that same recovery step.
+    /// </summary>
     private static string? BoundErrorSummary(string? errorSummary)
     {
         var scrubbed = SecretScrubber.Scrub(errorSummary);
