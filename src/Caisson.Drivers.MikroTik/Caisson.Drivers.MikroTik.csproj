@@ -28,6 +28,15 @@
     <!-- Test seams: internal wire-protocol helpers and the stream-injecting client ctor. -->
     <InternalsVisibleTo Include="Caisson.Drivers.MikroTik.Tests" />
     <InternalsVisibleTo Include="Caisson.Drivers.MikroTik.IntegrationTests" />
+    <!--
+      Story #66: the mcp-tooling-caisson RouterOsWriteRunner e2e harness needs the internal
+      BeginChangeAsync/ConfirmChangeAsync seam on RouterOsSwitchMutatingDriver to prove the
+      apply-then-withhold-confirm auto-rollback path — the public SetAccessVlanAsync always confirms
+      synchronously on its happy path, so there is no other way to produce an unconfirmed-but-applied
+      state to roll back. A bare assembly-name grant, not a path/project reference — this project builds
+      and tests unchanged with no knowledge of mcp-tooling-caisson's existence.
+    -->
+    <InternalsVisibleTo Include="RouterOsWriteRunner" />
   </ItemGroup>
 
 </Project>
