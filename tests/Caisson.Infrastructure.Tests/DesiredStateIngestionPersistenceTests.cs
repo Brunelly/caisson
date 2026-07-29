@@ -73,7 +73,7 @@ public sealed class DesiredStateIngestionPersistenceTests : IClassFixture<Postgr
         await using (var context = _fixture.CreateContext())
         {
             context.DesiredStateValidationErrors.Add(new DesiredStateValidationError(
-                errorId, runId, "rack-x", "desired-state/racks/rack-x.yaml", "/switches/0/ports/0/accessVlan",
+                errorId, runId, DateTime.UtcNow, "rack-x", "desired-state/racks/rack-x.yaml", "/switches/0/ports/0/accessVlan",
                 "accessVlan out of range"));
             await context.SaveChangesAsync();
         }

@@ -100,6 +100,11 @@ public sealed class DomainGuardTests
         "DesiredRackIntent.StableKey",
         "DesiredSwitchIntent.StableKey",
         "DesiredPortIntent.StableKey",
+        // Story #62 API contracts: same two false positives, now on the DTO shapes returned to clients.
+        "DesiredStateIngestionRunSummaryDto.CommitAuthor",
+        "DesiredRackIntentDto.StableKey",
+        "DesiredSwitchIntentDto.StableKey",
+        "DesiredPortIntentDto.StableKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()

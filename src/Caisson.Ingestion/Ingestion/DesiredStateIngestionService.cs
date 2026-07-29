@@ -338,7 +338,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         ValidationSeverity severity = ValidationSeverity.Error, int? line = null, int? column = null)
     {
         _context.DesiredStateValidationErrors.Add(new DesiredStateValidationError(
-            _ids.NewId(), run.Id, rackSlug, filePath, location, message, severity, line, column));
+            _ids.NewId(), run.Id, _time.GetUtcNow().UtcDateTime, rackSlug, filePath, location, message, severity, line, column));
         _logger.LogWarning(
             "Desired-state validation error runId={RunId} rackSlug={RackSlug} filePath={FilePath} location={Location} message={Message}",
             run.Id, rackSlug, filePath, location, message);

@@ -19,6 +19,7 @@ public sealed class DesiredStateValidationErrorConfiguration : IEntityTypeConfig
         builder.ToTable("desired_state_validation_error");
         builder.HasKey(e => e.Id);
 
+        builder.Property(e => e.CreatedAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(e => e.RackSlug).IsRequired().HasMaxLength(DesiredStateSchema.MaxRackSlugLength);
         builder.Property(e => e.FilePath).IsRequired().HasMaxLength(DesiredStateValidationError.MaxFilePathLength);
         builder.Property(e => e.Location).IsRequired().HasMaxLength(DesiredStateValidationError.MaxLocationLength);
@@ -30,7 +31,11 @@ public sealed class DesiredStateValidationErrorConfiguration : IEntityTypeConfig
             .HasForeignKey(e => e.IngestionRunId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // AC2/step-5: validation errors are listed/paged by run.
-        builder.HasIndex(e => e.IngestionRunId).HasDatabaseName("ix_desired_state_validation_error_ingestion_run_id");
+        // AC2/step-5: validation errors are listed/paged by run, newest-first (ADR 0002's tie-break).
+        // Explicit short name: the conventional one exceeds Postgres's 63-byte identifier limit and would
+        // be silently truncated, making the C#-side name and the on-disk name diverge.
+        builder.HasIndex(e => new { e.IngestionRunId, e.CreatedAtUtc, e.Id })
+            .IsDescending(false, true, true)
+            .HasDatabaseName("ix_desired_state_validation_error_run_created_id");
     }
 }

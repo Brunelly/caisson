@@ -51,7 +51,7 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
         "ix_desired_switch_intent_desired_rack_intent_id_switch_name",
         "ix_desired_port_intent_desired_switch_intent_id_port_name",
         "ix_desired_port_intent_stable_key",
-        "ix_desired_state_validation_error_ingestion_run_id",
+        "ix_desired_state_validation_error_run_created_id",
     };
 
     private readonly PostgresFixture _fixture;

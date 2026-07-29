@@ -32,6 +32,7 @@ public sealed class DesiredStateValidationError : IAppendOnly
     public DesiredStateValidationError(
         Guid id,
         Guid ingestionRunId,
+        DateTime createdAtUtc,
         string rackSlug,
         string filePath,
         string location,
@@ -57,6 +58,7 @@ public sealed class DesiredStateValidationError : IAppendOnly
 
         Id = id;
         IngestionRunId = ingestionRunId;
+        CreatedAtUtc = createdAtUtc;
         RackSlug = rackSlug;
         FilePath = filePath;
         Location = location;
@@ -73,6 +75,12 @@ public sealed class DesiredStateValidationError : IAppendOnly
 
     /// <summary>The ingestion run this error was raised during.</summary>
     public Guid IngestionRunId { get; private set; }
+
+    /// <summary>
+    /// When this error was recorded — the deterministic keyset-pagination ordering key for the
+    /// validation-errors read API (ADR 0002's <c>created_at DESC, id DESC</c> tie-break).
+    /// </summary>
+    public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>The rack slug the offending file claimed (or was expected to claim from its path).</summary>
     public string RackSlug { get; private set; }

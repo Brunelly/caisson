@@ -1,6 +1,9 @@
 using Caisson.Domain.Topology;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Ingestion.Git.ReadOnly;
+using Caisson.Ingestion.Options;
+using Caisson.Ingestion.Security;
 using Caisson.Orchestration.Options;
 using Caisson.Orchestration.RackDefinitions;
 using Microsoft.AspNetCore.Authentication;
@@ -85,8 +88,26 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
                 options.RetryBaseDelayMs = 0;
                 options.HeartbeatStalenessSeconds = 5;
             });
+
+            // Story #62: no real Git repository exists in this suite. The poll scheduler stays disabled
+            // (default) and the real LibGit2Sharp provider is swapped for a stub, so the webhook path can
+            // still be exercised end-to-end (HMAC verify → 202 → background RunAsync) without ever
+            // touching a real repo or filesystem mirror.
+            services.RemoveAll(typeof(IGitRepositoryProvider));
+            services.AddSingleton<IGitRepositoryProvider, StubGitRepositoryProvider>();
+            // Fixed-secret resolver (not an env var) — see FixedGitIngestionSecretsResolver's remarks on
+            // avoiding cross-test-class env var races.
+            services.RemoveAll(typeof(IGitIngestionSecretsResolver));
+            services.AddSingleton<IGitIngestionSecretsResolver, FixedGitIngestionSecretsResolver>();
+            services.Configure<GitIngestionOptions>(options =>
+            {
+                options.RepoUrl = "https://example.com/stub-repo.git";
+            });
         });
     }
+
+    /// <summary>Creates a context bound to this factory's isolated database, for direct seeding.</summary>
+    public CaissonDbContext CreateDbContext() => _harness.CreateContext();
 
     /// <summary>Creates a fresh rack in the isolated database and returns its id.</summary>
     public async Task<Guid> CreateRackAsync(string? name = null)
