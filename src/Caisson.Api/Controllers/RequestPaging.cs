@@ -22,9 +22,16 @@ internal static class RequestPaging
     /// apply the composite predicate <c>ts &lt; cur.ts OR (ts == cur.ts AND id &lt; cur.id)</c> and never
     /// drop rows that share the boundary timestamp.
     /// </summary>
+    /// <summary>
+    /// As the other overload, additionally binding the cursor's HMAC to <paramref name="rackId"/> and
+    /// <paramref name="endpoint"/> (finding #21) — a cursor forged or replayed across a different rack or
+    /// endpoint is rejected the same clean way a malformed one is.
+    /// </summary>
     public static bool TryResolve(
         int? pageSize,
         string? cursor,
+        Guid rackId,
+        string endpoint,
         out int limit,
         out KeysetPosition? after,
         out (string Field, string Message)? error)
@@ -41,7 +48,7 @@ internal static class RequestPaging
 
         if (!string.IsNullOrEmpty(cursor))
         {
-            if (!CursorCodec.TryDecode(cursor, out var ts, out var id))
+            if (!CursorCodec.TryDecode(cursor, rackId, endpoint, out var ts, out var id))
             {
                 error = (nameof(cursor), "cursor is not a valid pagination cursor.");
                 return false;

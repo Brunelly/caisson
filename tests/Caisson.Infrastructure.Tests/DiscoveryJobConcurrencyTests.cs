@@ -127,7 +127,7 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
         await using (var context = _fixture.CreateContext())
         {
             var claimed = await DiscoveryJobRunner.ClaimNextAsync(
-                context, now, now.AddSeconds(-45), default);
+                context, now, now.AddSeconds(-45), maxAttempts: 5, default);
             claimed.Should().Be(stalledId);
         }
 
@@ -135,9 +135,39 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
         await using (var context = _fixture.CreateContext())
         {
             var claimed = await DiscoveryJobRunner.ClaimNextAsync(
-                context, now, now.AddSeconds(-45), default);
+                context, now, now.AddSeconds(-45), maxAttempts: 5, default);
             claimed.Should().BeNull();
         }
+    }
+
+    [Fact]
+    public async Task A_stalled_job_at_or_over_max_attempts_is_not_reclaimed_and_is_failed_instead()
+    {
+        // Finding #12: a job that keeps reclaiming and crashing must eventually stop being reclaimed and
+        // reach a terminal state instead of retrying forever.
+        await _fixture.MigrateAsync();
+        await ClearJobsAsync();
+        var rackId = await SeedRackAsync();
+        var now = DateTime.UtcNow;
+
+        var exhaustedId = await InsertInProgressJobAsync(rackId, heartbeatAt: now.AddMinutes(-5), attemptCount: 5);
+
+        await using (var context = _fixture.CreateContext())
+        {
+            var claimed = await DiscoveryJobRunner.ClaimNextAsync(
+                context, now, now.AddSeconds(-45), maxAttempts: 5, default);
+            claimed.Should().BeNull("a job at the attempt cap must not be reclaimed");
+        }
+
+        await using (var context = _fixture.CreateContext())
+        {
+            await DiscoveryJobRunner.FailExhaustedStaleJobsAsync(context, now, now.AddSeconds(-45), maxAttempts: 5, default);
+        }
+
+        await using var verify = _fixture.CreateContext();
+        var job = await verify.DiscoveryJobs.FirstAsync(j => j.Id == exhaustedId);
+        job.Status.Should().Be(DiscoveryJobStatus.Failed);
+        job.ErrorCode.Should().Be(DiscoveryErrorCodes.MaxAttemptsExceeded);
     }
 
     [Fact]
@@ -158,7 +188,7 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
         await using (var context = _fixture.CreateContext())
         {
             var claimed = await DiscoveryJobRunner.ClaimNextAsync(
-                context, DateTime.UtcNow, DateTime.UtcNow.AddSeconds(-45), default);
+                context, DateTime.UtcNow, DateTime.UtcNow.AddSeconds(-45), maxAttempts: 5, default);
             claimed.Should().Be(jobId);
         }
     }
@@ -206,13 +236,17 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
         return job.Id;
     }
 
-    private async Task<Guid> InsertInProgressJobAsync(Guid rackId, DateTime heartbeatAt)
+    private async Task<Guid> InsertInProgressJobAsync(Guid rackId, DateTime heartbeatAt, int attemptCount = 1)
     {
         await using var context = _fixture.CreateContext();
         var job = new DiscoveryJob(
             Guid.NewGuid(), rackId, TriggerType.OnDemand, "a", ActorType.User, Guid.NewGuid(), heartbeatAt);
         job.SeedSteps(Guid.NewGuid);
-        job.MarkInProgress(heartbeatAt);
+        for (var i = 0; i < attemptCount; i++)
+        {
+            job.MarkInProgress(heartbeatAt);
+        }
+
         context.DiscoveryJobs.Add(job);
         await context.SaveChangesAsync();
         return job.Id;

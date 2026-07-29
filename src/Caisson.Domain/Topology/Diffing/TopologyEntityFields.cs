@@ -23,6 +23,18 @@ public static class TopologyEntityFields
     /// <summary>An ordered (type, stableKey) → field-map view of every diffable entity in a snapshot.</summary>
     public static IReadOnlyDictionary<TopologyEntityType, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>>>
         Extract(TopologySnapshot snapshot)
+        => Extract(snapshot, out _);
+
+    /// <summary>
+    /// As <see cref="Extract(TopologySnapshot)"/>, additionally reporting any stable-key collision
+    /// encountered. Every dictionary write uses <c>TryAdd</c> rather than an indexer assignment (finding
+    /// #3): a second entity that computes the same stable key as one already seen is skipped — never
+    /// silently overwriting the first — and recorded as a <see cref="StableKeyCollision"/>, mirroring the
+    /// existing <see cref="StableKeys.TryForSwitchPort(string,string?,out string)"/>/
+    /// <see cref="StableKeys.TryForLldp"/> skip-and-continue precedent for a missing identity.
+    /// </summary>
+    public static IReadOnlyDictionary<TopologyEntityType, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>>>
+        Extract(TopologySnapshot snapshot, out IReadOnlyList<StableKeyCollision> collisions)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -32,17 +44,23 @@ public static class TopologyEntityFields
         var servers = new Dictionary<string, IReadOnlyDictionary<string, string?>>(StringComparer.Ordinal);
         var nics = new Dictionary<string, IReadOnlyDictionary<string, string?>>(StringComparer.Ordinal);
         var vlans = new Dictionary<string, IReadOnlyDictionary<string, string?>>(StringComparer.Ordinal);
+        var found = new List<StableKeyCollision>();
 
         foreach (var sw in snapshot.Switches)
         {
             var switchKey = StableKeys.ForSwitch(sw);
-            switches[switchKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
+            var switchFields = new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 ["serial"] = sw.Serial,
                 ["managementIp"] = sw.ManagementIp,
                 ["model"] = sw.Model,
                 ["osVersion"] = sw.OsVersion,
             };
+            if (!switches.TryAdd(switchKey, switchFields))
+            {
+                found.Add(new StableKeyCollision(TopologyEntityType.Switch, switchKey));
+                continue;
+            }
 
             foreach (var port in sw.Ports)
             {
@@ -54,13 +72,18 @@ public static class TopologyEntityFields
                     continue;
                 }
 
-                ports[portKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
+                var portFields = new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["switch"] = switchKey,
                     ["isUp"] = port.IsUp?.ToString(CultureInfo.InvariantCulture),
                     ["pvid"] = port.Pvid?.ToString(CultureInfo.InvariantCulture),
                     ["taggedVlans"] = string.Join(",", port.TaggedVlans),
                 };
+                if (!ports.TryAdd(portKey, portFields))
+                {
+                    found.Add(new StableKeyCollision(TopologyEntityType.SwitchPort, portKey));
+                    continue;
+                }
 
                 foreach (var neighbour in port.LldpNeighbours)
                 {
@@ -71,12 +94,16 @@ public static class TopologyEntityFields
                         continue;
                     }
 
-                    lldp[lldpKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
+                    var lldpFields = new Dictionary<string, string?>(StringComparer.Ordinal)
                     {
                         ["port"] = portKey,
                         ["systemName"] = neighbour.SystemName,
                         ["mgmtAddress"] = neighbour.MgmtAddress,
                     };
+                    if (!lldp.TryAdd(lldpKey, lldpFields))
+                    {
+                        found.Add(new StableKeyCollision(TopologyEntityType.Lldp, lldpKey));
+                    }
                 }
             }
         }
@@ -84,33 +111,45 @@ public static class TopologyEntityFields
         foreach (var server in snapshot.Servers)
         {
             var serverKey = StableKeys.ForServer(server);
-            servers[serverKey] = new Dictionary<string, string?>(StringComparer.Ordinal)
+            var serverFields = new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 ["bmcType"] = server.BmcType.ToString(),
                 ["bmcAddress"] = server.BmcAddress,
                 ["bmcUuid"] = server.BmcUuid,
                 ["hostname"] = server.Hostname,
             };
+            if (!servers.TryAdd(serverKey, serverFields))
+            {
+                found.Add(new StableKeyCollision(TopologyEntityType.Server, serverKey));
+                continue;
+            }
 
             foreach (var nic in server.Nics)
             {
-                nics[StableKeys.ForNic(nic)] = new Dictionary<string, string?>(StringComparer.Ordinal)
+                var nicKey = StableKeys.ForNic(nic);
+                var nicFields = new Dictionary<string, string?>(StringComparer.Ordinal)
                 {
                     ["server"] = serverKey,
                     ["name"] = nic.Name,
                     ["linkState"] = nic.LinkState?.ToString(),
                 };
+                if (!nics.TryAdd(nicKey, nicFields))
+                {
+                    found.Add(new StableKeyCollision(TopologyEntityType.Nic, nicKey));
+                }
             }
         }
 
         foreach (var vlan in snapshot.Vlans)
         {
-            vlans[StableKeys.ForVlan(vlan)] = new Dictionary<string, string?>(StringComparer.Ordinal)
+            var vlanKey = StableKeys.ForVlan(vlan);
+            if (!vlans.TryAdd(vlanKey, new Dictionary<string, string?>(StringComparer.Ordinal) { ["name"] = vlan.Name }))
             {
-                ["name"] = vlan.Name,
-            };
+                found.Add(new StableKeyCollision(TopologyEntityType.Vlan, vlanKey));
+            }
         }
 
+        collisions = found;
         return new Dictionary<TopologyEntityType, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>>>
         {
             [TopologyEntityType.Switch] = switches,
@@ -122,3 +161,10 @@ public static class TopologyEntityFields
         };
     }
 }
+
+/// <summary>
+/// Records that a second entity of <paramref name="EntityType"/> computed the same
+/// <paramref name="StableKey"/> as one already seen within the same snapshot and was skipped rather than
+/// silently overwriting the first (finding #3, <see cref="ReasonCode.StableKeyCollision"/>).
+/// </summary>
+public sealed record StableKeyCollision(TopologyEntityType EntityType, string StableKey);

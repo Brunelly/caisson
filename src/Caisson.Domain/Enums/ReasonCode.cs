@@ -70,4 +70,24 @@ public enum ReasonCode
 
     /// <summary>The port has an LLDP neighbour but it could not be correlated to any known NIC.</summary>
     PortNeighbourUnknown,
+
+    /// <summary>
+    /// A second entity computed the same stable key as one already seen in the snapshot and was skipped
+    /// rather than silently overwriting the first (finding #3) — e.g. two switches reporting an identical
+    /// serial, or two servers reporting an identical UUID/MAC.
+    /// </summary>
+    StableKeyCollision,
+
+    /// <summary>A device-supplied field exceeded its column limit and was truncated before persistence (finding #28).</summary>
+    FieldTruncated,
+
+    /// <summary>A device reported the same MAC address on more than one NIC within the same snapshot (finding #3).</summary>
+    DuplicateNicMac,
+
+    /// <summary>
+    /// A device reported more entries (ports/bridge-hosts/LLDP neighbours/NICs) than the configured cap
+    /// and was truncated (finding #11) — bounds device-controlled volume flowing into the in-memory
+    /// correlation engine and the persisted snapshot.
+    /// </summary>
+    VolumeCapped,
 }

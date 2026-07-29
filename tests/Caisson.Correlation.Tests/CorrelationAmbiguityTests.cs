@@ -40,6 +40,28 @@ public sealed class CorrelationAmbiguityTests
     }
 
     [Fact]
+    public void Ambiguous_candidates_are_capped_to_the_top_k_by_score()
+    {
+        // Finding #11: one MAC learned on N ports used to produce N unranked candidate rows persisted per
+        // NIC. Build far more than the cap (20) and assert the engine itself bounds its output.
+        const string mac = "00:11:22:33:44:55";
+        var builder = new SnapshotBuilder();
+        for (var i = 0; i < 20; i++)
+        {
+            var switchId = $"sw{i}";
+            var port = $"ether{i}";
+            builder.Switch(switchId, s => s.Port(port).Bridge(port, mac));
+        }
+
+        builder.Server("srv-a", sv => sv.Nic("eth0", mac));
+
+        var result = Engine.Correlate(builder.Build());
+
+        result.AmbiguousMappings.Should().HaveCount(1);
+        result.AmbiguousMappings[0].Candidates.Should().HaveCountLessThanOrEqualTo(16);
+    }
+
+    [Fact]
     public void Ambiguous_candidates_are_ordered_by_confidence_then_switch_then_port()
     {
         // Two candidates with identical evidence -> equal scores -> deterministic (SwitchId, PortName) tie-break.

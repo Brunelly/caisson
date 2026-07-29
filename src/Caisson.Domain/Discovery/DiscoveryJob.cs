@@ -1,4 +1,5 @@
 using Caisson.Domain.Enums;
+using Caisson.Domain.Security;
 
 namespace Caisson.Domain.Discovery;
 
@@ -173,5 +174,11 @@ public sealed class DiscoveryJob
     }
 
     private static string? Truncate(string? message)
-        => message is { Length: > MaxErrorMessageLength } ? message[..MaxErrorMessageLength] : message;
+    {
+        // Finding #27: a value-level backstop — ErrorMessage is meant to be a fixed, operator-safe string
+        // (DiscoveryErrorCodes.MessageFor), but this defends the column even if a future caller passes
+        // through a less-trusted message that happens to embed secret-shaped text.
+        var scrubbed = SecretScrubber.Scrub(message);
+        return scrubbed is { Length: > MaxErrorMessageLength } ? scrubbed[..MaxErrorMessageLength] : scrubbed;
+    }
 }

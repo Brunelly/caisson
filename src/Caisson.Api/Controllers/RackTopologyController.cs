@@ -59,7 +59,8 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var error))
+        const string endpoint = "topology.snapshots.history";
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var error))
         {
             return ValidationError(error!.Value);
         }
@@ -70,7 +71,7 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         }
 
         var page = await _context.SnapshotHistoryPageAsync(rackId, after, limit + 1, cancellationToken);
-        var (items, next) = Paginate(page, limit, s => CursorCodec.Encode(s.CreatedAtUtc, s.Id));
+        var (items, next) = Paginate(page, limit, s => CursorCodec.Encode(s.CreatedAtUtc, s.Id, rackId, endpoint));
 
         await _audit.WriteReadAsync(User, rackId, "topology.history.read", "rack", rackId.ToString(), cancellationToken);
         return Ok(new PagedResult<SnapshotMetadataDto>(items.Select(ContractMappers.ToMetadata).ToList(), next));

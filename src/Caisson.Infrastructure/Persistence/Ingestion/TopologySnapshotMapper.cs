@@ -67,30 +67,38 @@ public static class TopologySnapshotMapper
         var nicByServerNic = new Dictionary<(string ServerId, string NicName), Guid>();
         var nicByMac = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var seenVlans = new HashSet<int>();
+        var diagnostics = new List<string>();
 
-        MapSwitches(observed, rackId, snapshotId, context.CreatedAtUtc, newId, snapshot, macAddresses, portByKey, seenVlans, nicByMac);
-        MapServers(observed, rackId, snapshotId, context.CreatedAtUtc, newId, snapshot, macAddresses, nicByServerNic, nicByMac);
+        MapSwitches(observed, rackId, snapshotId, context.CreatedAtUtc, newId, snapshot, macAddresses, portByKey, seenVlans, nicByMac, diagnostics);
+        MapServers(observed, rackId, snapshotId, context.CreatedAtUtc, newId, snapshot, macAddresses, nicByServerNic, nicByMac, diagnostics);
         MapBridgeMacs(observed, rackId, snapshotId, context.CreatedAtUtc, newId, macAddresses, nicByMac);
         MapCandidates(correlation, rackId, snapshotId, newId, snapshot, portByKey, nicByServerNic);
 
-        return new MappedSnapshot(snapshot, macAddresses);
+        return new MappedSnapshot(snapshot, macAddresses, diagnostics);
     }
 
     private static void MapSwitches(
         TopologyCorrelationInput observed, Guid rackId, Guid snapshotId, DateTime lastSeen, Func<Guid> newId,
         TopologySnapshot snapshot, List<MacAddress> macAddresses,
-        Dictionary<(string, string), Guid> portByKey, HashSet<int> seenVlans, Dictionary<string, Guid> nicByMac)
+        Dictionary<(string, string), Guid> portByKey, HashSet<int> seenVlans, Dictionary<string, Guid> nicByMac,
+        List<string> diagnostics)
     {
         foreach (var s in observed.Switches)
         {
             var sw = new Switch(
                 newId(), rackId, snapshotId, lastSeen,
+                externalDeviceKey: s.SwitchId,
                 // ManagementIp falls back to the caller-supplied stable switch id so the switch always
                 // has a stable key (serial preferred). See StableKeys.
-                managementIp: s.Device?.ManagementIp ?? s.SwitchId,
-                serial: s.Device?.Serial,
-                model: s.Device?.Model,
-                osVersion: s.Device?.OsVersion);
+                managementIp: Truncate(s.Device?.ManagementIp ?? s.SwitchId, MaxManagementIpLength, "switch.managementIp", diagnostics),
+                serial: Truncate(s.Device?.Serial, MaxSerialLength, "switch.serial", diagnostics),
+                model: Truncate(s.Device?.Model, MaxModelLength, "switch.model", diagnostics),
+                osVersion: Truncate(s.Device?.OsVersion, MaxOsVersionLength, "switch.osVersion", diagnostics));
+
+            // Ports keyed by name, built once per switch — a per-neighbour FirstOrDefault scan over
+            // sw.Ports would be quadratic in device-controlled port/neighbour counts (finding #13); this
+            // switch is the one true quadratic that used to run inside the ingestion transaction.
+            var portsByName = new Dictionary<string, SwitchPort>(StringComparer.Ordinal);
 
             foreach (var p in s.Ports)
             {
@@ -99,13 +107,20 @@ public static class TopologySnapshotMapper
                     isUp: p.IsUp, pvid: p.Pvid, taggedVlans: p.TaggedVlans.ToArray());
                 sw.AddPort(port);
                 portByKey[(s.SwitchId, p.PortName)] = port.Id;
+                portsByName.TryAdd(p.PortName, port);
             }
 
             foreach (var l in s.LldpNeighbours)
             {
-                var port = sw.Ports.FirstOrDefault(p => p.PortName == l.PortName);
-                port?.AddLldpNeighbour(new LldpNeighbour(
-                    newId(), port.Id, rackId, snapshotId, l.ChassisId, l.PortId, l.SystemName, l.MgmtAddress));
+                if (portsByName.TryGetValue(l.PortName, out var port))
+                {
+                    port.AddLldpNeighbour(new LldpNeighbour(
+                        newId(), port.Id, rackId, snapshotId,
+                        Truncate(l.ChassisId, MaxLldpChassisIdLength, "lldp.chassisId", diagnostics) ?? string.Empty,
+                        Truncate(l.PortId, MaxLldpPortIdLength, "lldp.portId", diagnostics) ?? string.Empty,
+                        Truncate(l.SystemName, MaxLldpSystemNameLength, "lldp.systemName", diagnostics),
+                        Truncate(l.MgmtAddress, MaxLldpMgmtAddressLength, "lldp.mgmtAddress", diagnostics)));
+                }
             }
 
             snapshot.AddSwitch(sw);
@@ -123,16 +138,18 @@ public static class TopologySnapshotMapper
     private static void MapServers(
         TopologyCorrelationInput observed, Guid rackId, Guid snapshotId, DateTime lastSeen, Func<Guid> newId,
         TopologySnapshot snapshot, List<MacAddress> macAddresses,
-        Dictionary<(string, string), Guid> nicByServerNic, Dictionary<string, Guid> nicByMac)
+        Dictionary<(string, string), Guid> nicByServerNic, Dictionary<string, Guid> nicByMac,
+        List<string> diagnostics)
     {
         foreach (var sv in observed.Servers)
         {
             var server = new Server(
                 newId(), rackId, snapshotId,
                 bmcType: sv.System?.BmcType ?? BmcType.Redfish,
-                bmcAddress: sv.System?.BmcAddress ?? sv.ServerId,
-                bmcUuid: sv.System?.BmcUuid,
-                hostname: sv.System?.Hostname);
+                bmcAddress: Truncate(sv.System?.BmcAddress ?? sv.ServerId, MaxBmcAddressLength, "server.bmcAddress", diagnostics) ?? sv.ServerId,
+                externalDeviceKey: sv.ServerId,
+                bmcUuid: Truncate(sv.System?.BmcUuid, MaxBmcUuidLength, "server.bmcUuid", diagnostics),
+                hostname: Truncate(sv.System?.Hostname, MaxHostnameLength, "server.hostname", diagnostics));
 
             foreach (var n in sv.Nics)
             {
@@ -144,10 +161,18 @@ public static class TopologySnapshotMapper
                     continue;
                 }
 
-                var nic = new Nic(newId(), server.Id, rackId, snapshotId, n.Name, mac, n.LinkState);
+                var nic = new Nic(
+                    newId(), server.Id, rackId, snapshotId,
+                    Truncate(n.Name, MaxNicNameLength, "nic.name", diagnostics) ?? n.Name, mac, n.LinkState);
                 server.AddNic(nic);
                 nicByServerNic[(sv.ServerId, n.Name)] = nic.Id;
-                nicByMac.TryAdd(mac.Value, nic.Id);
+                if (!nicByMac.TryAdd(mac.Value, nic.Id))
+                {
+                    // A device reported the same MAC on more than one NIC within this snapshot — flag it
+                    // rather than silently dropping the second observation (finding #3).
+                    diagnostics.Add(
+                        $"[{ReasonCode.DuplicateNicMac}] MAC {mac.Value} was observed on more than one NIC within the same snapshot.");
+                }
 
                 macAddresses.Add(new MacAddress(
                     newId(), rackId, snapshotId, mac, MacSource.Bmc, lastSeen, nic.Id));
@@ -155,6 +180,34 @@ public static class TopologySnapshotMapper
 
             snapshot.AddServer(server);
         }
+    }
+
+    // Bounds mirror the DB column limits declared in SwitchConfiguration/ServerConfiguration/
+    // LldpNeighbourConfiguration/NicConfiguration — an over-long device-supplied value is truncated
+    // with a diagnostic here (finding #28) rather than reaching PostgreSQL and raising SQLSTATE 22001.
+    private const int MaxManagementIpLength = 64;
+    private const int MaxSerialLength = 128;
+    private const int MaxModelLength = 128;
+    private const int MaxOsVersionLength = 128;
+    private const int MaxBmcAddressLength = 128;
+    private const int MaxBmcUuidLength = 128;
+    private const int MaxHostnameLength = 256;
+    private const int MaxNicNameLength = 128;
+    private const int MaxLldpChassisIdLength = 256;
+    private const int MaxLldpPortIdLength = 256;
+    private const int MaxLldpSystemNameLength = 256;
+    private const int MaxLldpMgmtAddressLength = 128;
+
+    private static string? Truncate(string? value, int maxLength, string field, List<string> diagnostics)
+    {
+        if (value is null || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        diagnostics.Add(
+            $"[{ReasonCode.FieldTruncated}] {field} was {value.Length} characters and was truncated to {maxLength}.");
+        return value[..maxLength];
     }
 
     private static void MapBridgeMacs(
@@ -291,6 +344,12 @@ public sealed record SnapshotRunContext(
 /// </summary>
 /// <param name="Snapshot">The snapshot graph root.</param>
 /// <param name="MacAddresses">All observed MAC rows for the snapshot.</param>
+/// <param name="Diagnostics">
+/// Human-readable, secret-free notes recorded during mapping — an over-long field truncation or a
+/// duplicate-MAC-within-snapshot observation (finding #3/#28) — folded into the discovery audit event so
+/// they are visible rather than silent.
+/// </param>
 public sealed record MappedSnapshot(
     TopologySnapshot Snapshot,
-    IReadOnlyList<MacAddress> MacAddresses);
+    IReadOnlyList<MacAddress> MacAddresses,
+    IReadOnlyList<string> Diagnostics);

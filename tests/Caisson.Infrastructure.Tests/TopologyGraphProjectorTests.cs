@@ -74,12 +74,12 @@ public sealed class TopologyGraphProjectorTests
         var snapshot = new TopologySnapshot(
             snapshotId, rackId, DateTime.UtcNow, "svc", "chr", Guid.NewGuid(), SnapshotStatus.Completed);
 
-        var sw = new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, serial: "SW-9");
+        var sw = new Switch(Guid.NewGuid(), rackId, snapshotId, DateTime.UtcNow, externalDeviceKey: "sw-9", serial: "SW-9");
         var port = new SwitchPort(Guid.NewGuid(), sw.Id, rackId, snapshotId, "ether1", isUp: true, pvid: 10);
         sw.AddPort(port);
         snapshot.AddSwitch(sw);
 
-        var server = new Server(Guid.NewGuid(), rackId, snapshotId, BmcType.Redfish, "10.0.1.9", "uuid-9", "node-9");
+        var server = new Server(Guid.NewGuid(), rackId, snapshotId, BmcType.Redfish, "10.0.1.9", "srv-9", "uuid-9", "node-9");
         var nic = new Nic(
             Guid.NewGuid(), server.Id, rackId, snapshotId, "eth0", MacAddressValue.Parse("aa:aa:aa:aa:aa:b1"));
         server.AddNic(nic);

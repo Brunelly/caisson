@@ -115,9 +115,12 @@ public sealed class TopologySnapshotMapperTests
     }
 
     [Fact]
-    public void Switch_stable_key_falls_back_to_serial()
+    public void Switch_stable_key_falls_back_to_serial_behind_the_device_key_prefix()
     {
         var snapshot = Map().Snapshot;
-        StableKeys.ForSwitch(snapshot.Switches.Single()).Should().Be("SW-1");
+        var sw = snapshot.Switches.Single();
+
+        sw.ExternalDeviceKey.Should().Be("sw1");
+        StableKeys.ForSwitch(sw).Should().Be($"{sw.ExternalDeviceKey}|SW-1");
     }
 }

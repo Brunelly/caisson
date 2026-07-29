@@ -1,4 +1,5 @@
 using Caisson.Domain.Enums;
+using Caisson.Domain.Security;
 
 namespace Caisson.Domain.Topology;
 
@@ -43,7 +44,12 @@ public sealed class TopologyAuditEvent : IAppendOnly
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(targetType);
         ArgumentNullException.ThrowIfNull(result);
-        if (detailsJson is { Length: > MaxDetailsJsonLength })
+
+        // Finding #27: a value-level backstop for this free-text jsonb column, since the property-name
+        // guard cannot see into its content — e.g. a driver exception's text accidentally embedding a
+        // connection string. Scrubbed before the length check so redaction can never push it over the bound.
+        var scrubbedDetailsJson = SecretScrubber.Scrub(detailsJson);
+        if (scrubbedDetailsJson is { Length: > MaxDetailsJsonLength })
         {
             throw new ArgumentException(
                 $"Details JSON exceeds the {MaxDetailsJsonLength}-character bound.", nameof(detailsJson));
@@ -60,7 +66,7 @@ public sealed class TopologyAuditEvent : IAppendOnly
         CorrelationId = correlationId;
         RackId = rackId;
         SnapshotId = snapshotId;
-        DetailsJson = detailsJson;
+        DetailsJson = scrubbedDetailsJson;
     }
 
     /// <summary>Primary key.</summary>

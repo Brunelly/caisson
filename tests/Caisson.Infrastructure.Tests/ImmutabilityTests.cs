@@ -144,7 +144,7 @@ public sealed class ImmutabilityTests : IClassFixture<PostgresFixture>
 
         var snapshot = new TopologySnapshot(
             snapshotId, rackId, DateTime.UtcNow, "svc", "chr", Guid.NewGuid(), SnapshotStatus.Completed);
-        var server = new Server(serverId, rackId, snapshotId, BmcType.Redfish, "10.0.1.1", hostname: "node-0");
+        var server = new Server(serverId, rackId, snapshotId, BmcType.Redfish, "10.0.1.1", externalDeviceKey: "srv-0", hostname: "node-0");
         server.AddNic(new Nic(
             Guid.NewGuid(), serverId, rackId, snapshotId, "eth0", MacAddressValue.Parse("001122334455")));
         snapshot.AddServer(server);

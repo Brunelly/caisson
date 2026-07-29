@@ -105,7 +105,8 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var error))
+        const string endpoint = "discovery-jobs.list";
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var error))
         {
             return ValidationError(error!.Value);
         }
@@ -117,7 +118,7 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
 
         var page = await _jobs.GetJobsPageAsync(rackId, after, limit + 1, cancellationToken);
         var lastSuccess = await _jobs.GetLastSuccessAtUtcAsync(rackId, cancellationToken);
-        var (items, next) = Paginate(page, limit, j => CursorCodec.Encode(j.CreatedAtUtc, j.Id));
+        var (items, next) = Paginate(page, limit, j => CursorCodec.Encode(j.CreatedAtUtc, j.Id, rackId, endpoint));
 
         await _audit.WriteReadAsync(
             User, rackId, "discovery.jobs.read", "rack", rackId.ToString(), cancellationToken);

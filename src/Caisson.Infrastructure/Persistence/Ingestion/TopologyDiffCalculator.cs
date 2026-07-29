@@ -41,9 +41,18 @@ public static class TopologyDiffCalculator
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(newId);
 
-        var currentFields = TopologyEntityFields.Extract(current);
-        var previousFields = previous is null ? null : TopologyEntityFields.Extract(previous);
+        var currentFields = TopologyEntityFields.Extract(current, out var currentCollisions);
+        IReadOnlyDictionary<TopologyEntityType, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>>>? previousFields = null;
+        IReadOnlyList<StableKeyCollision> previousCollisions = Array.Empty<StableKeyCollision>();
+        if (previous is not null)
+        {
+            previousFields = TopologyEntityFields.Extract(previous, out previousCollisions);
+        }
+
         var previousSnapshotId = previous?.Id;
+        var diagnostics = currentCollisions.Concat(previousCollisions)
+            .Select(c => $"[{ReasonCode.StableKeyCollision}] A second {c.EntityType} entity computed the stable key '{c.StableKey}'; it was skipped rather than overwriting the first.")
+            .ToList();
 
         var diffs = new List<TopologyEntityDiff>();
         var counts = new Dictionary<TopologyEntityType, ChangeCounts>();
@@ -92,7 +101,7 @@ public static class TopologyDiffCalculator
             counts[type] = tally;
         }
 
-        return new TopologyDiffResult(diffs, SerializeCounts(counts));
+        return new TopologyDiffResult(diffs, SerializeCounts(counts), diagnostics);
     }
 
     private static TopologyEntityDiff BuildDiff(
@@ -174,6 +183,12 @@ public static class TopologyDiffCalculator
 /// <summary>The output of a diff run: the per-entity diff rows and the change-count rollup JSON.</summary>
 /// <param name="Diffs">One row per added/removed/modified entity; unchanged entities are omitted.</param>
 /// <param name="ChangeCountsJson">The bounded per-type-and-total change-count rollup for the summary.</param>
+/// <param name="Diagnostics">
+/// Human-readable, secret-free notes about a stable-key collision detected while extracting either
+/// snapshot's fields (finding #3) — folded into the discovery audit event so they are visible rather
+/// than silent.
+/// </param>
 public sealed record TopologyDiffResult(
     IReadOnlyList<TopologyEntityDiff> Diffs,
-    string ChangeCountsJson);
+    string ChangeCountsJson,
+    IReadOnlyList<string> Diagnostics);

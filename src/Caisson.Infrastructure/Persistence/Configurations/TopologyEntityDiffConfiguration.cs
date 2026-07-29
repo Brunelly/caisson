@@ -28,11 +28,17 @@ public sealed class TopologyEntityDiffConfiguration : IEntityTypeConfiguration<T
             .IsRequired();
         builder.Property(d => d.CreatedAtUtc).HasColumnType("timestamp with time zone");
 
-        // Ownership: the "to" snapshot owns its diff rows (cascade) — the single cascade path.
+        // Restrict (not Cascade): a diff row is tamper-evident (IAppendOnly + the DB trigger below), so no
+        // server-side path — including a snapshot delete — may remove it. The
+        // trg_topology_entity_diff_append_only trigger already blocks a cascade-delete of diff rows at the
+        // row level; Restrict on the FK makes that guarantee explicit instead of emergent, and turns what
+        // would otherwise be a trigger exception mid-cascade into a clean FK-violation failure up front.
+        // Consequence (noted in the PR): a snapshot that has diff rows becomes undeletable — any future
+        // retention/rollback path must archive/detach the diff rows first, not bare-DELETE the snapshot.
         builder.HasOne<TopologySnapshot>()
             .WithMany()
             .HasForeignKey(d => d.SnapshotId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Denormalized references (no cascade) to keep a single cascade path.
         builder.HasOne<TopologySnapshot>()

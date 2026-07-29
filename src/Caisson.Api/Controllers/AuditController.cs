@@ -43,7 +43,8 @@ public sealed class AuditController : ReadOnlyControllerBase
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        if (!RequestPaging.TryResolve(pageSize, cursor, out var limit, out var after, out var pagingError))
+        const string endpoint = "audit.list";
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var pagingError))
         {
             return ValidationError(pagingError!.Value);
         }
@@ -61,7 +62,7 @@ public sealed class AuditController : ReadOnlyControllerBase
         }
 
         var page = await _context.AuditPageAsync(rackId, fromUtc, toUtc, after, limit + 1, cancellationToken);
-        var (items, next) = Paginate(page, limit, a => CursorCodec.Encode(a.OccurredAtUtc, a.Id));
+        var (items, next) = Paginate(page, limit, a => CursorCodec.Encode(a.OccurredAtUtc, a.Id, rackId, endpoint));
 
         await _audit.WriteReadAsync(User, rackId, "audit.read", "rack", rackId.ToString(), cancellationToken);
         return Ok(new PagedResult<AuditEventDto>(items.Select(ContractMappers.ToAudit).ToList(), next));

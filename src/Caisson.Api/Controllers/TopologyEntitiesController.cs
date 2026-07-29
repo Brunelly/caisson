@@ -5,6 +5,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology.Diffing;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
+using Caisson.Infrastructure.Persistence.Shaping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -49,8 +50,12 @@ public sealed class TopologyEntitiesController : ReadOnlyControllerBase
             return InvalidEntityType(entityType);
         }
 
+        // Finding #4: EntityHistoryAsync had no row cap. The embedded history here is capped to the
+        // standard MaxPageSize (no cursor — this combined detail+history view is not itself paginated);
+        // GetEntityHistory below is the fully keyset-paginated endpoint for walking a long history.
         var latest = await ResolveLatestFieldsAsync(rackId, type, stableKey, cancellationToken);
-        var history = await _context.EntityHistoryAsync(rackId, type, stableKey, cancellationToken);
+        var history = await _context.EntityHistoryAsync(
+            rackId, type, stableKey, after: null, RequestPaging.MaxPageSize, cancellationToken);
 
         if (latest is null && history.Count == 0)
         {
@@ -62,28 +67,37 @@ public sealed class TopologyEntitiesController : ReadOnlyControllerBase
             type.ToString(), stableKey, latest, history.Select(ContractMappers.ToEntityDiff).ToList()));
     }
 
-    /// <summary>Returns only the entity's stored change history, newest-first.</summary>
+    /// <summary>Returns a paginated page of the entity's stored change history, newest-first.</summary>
     [HttpGet("history/{**stableKey}")]
-    [ProducesResponseType(typeof(IReadOnlyList<EntityDiffDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResult<EntityDiffDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<EntityDiffDto>>> GetEntityHistory(
-        Guid rackId, string entityType, string stableKey, CancellationToken cancellationToken)
+    public async Task<ActionResult<PagedResult<EntityDiffDto>>> GetEntityHistory(
+        Guid rackId, string entityType, string stableKey,
+        [FromQuery] string? cursor, [FromQuery] int? pageSize, CancellationToken cancellationToken)
     {
         if (!TryParseEntityType(entityType, out var type))
         {
             return InvalidEntityType(entityType);
         }
 
-        var history = await _context.EntityHistoryAsync(rackId, type, stableKey, cancellationToken);
-        if (history.Count == 0
+        var endpoint = $"topology.entity.history.{entityType}";
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var pagingError))
+        {
+            return ValidationError(pagingError!.Value);
+        }
+
+        var page = await _context.EntityHistoryAsync(rackId, type, stableKey, after, limit + 1, cancellationToken);
+        if (page.Count == 0 && after is null
             && await ResolveLatestFieldsAsync(rackId, type, stableKey, cancellationToken) is null)
         {
             return EntityNotFound(rackId, entityType, stableKey);
         }
 
+        var (items, next) = Paginate(page, limit, d => CursorCodec.Encode(d.CreatedAtUtc, d.Id, rackId, endpoint));
+
         await _audit.WriteReadAsync(User, rackId, "topology.entity.history.read", entityType, stableKey, cancellationToken);
-        return Ok(history.Select(ContractMappers.ToEntityDiff).ToList());
+        return Ok(new PagedResult<EntityDiffDto>(items.Select(ContractMappers.ToEntityDiff).ToList(), next));
     }
 
     private async Task<IReadOnlyDictionary<string, string?>?> ResolveLatestFieldsAsync(

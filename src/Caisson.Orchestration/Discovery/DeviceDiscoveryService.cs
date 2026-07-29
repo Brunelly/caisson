@@ -6,8 +6,10 @@ using Caisson.Drivers.Abstractions.ReadOnly;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Drivers.Abstractions.Results;
 using Caisson.Drivers.Abstractions.Switches;
+using Caisson.Orchestration.Options;
 using Caisson.Orchestration.RackDefinitions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Caisson.Orchestration.Discovery;
 
@@ -24,17 +26,20 @@ public sealed class DeviceDiscoveryService : IDeviceDiscoveryService
     private readonly ISwitchDriverRegistry _switchRegistry;
     private readonly IBmcDriverRegistry _bmcRegistry;
     private readonly TimeProvider _time;
+    private readonly DiscoveryOrchestrationOptions _options;
     private readonly ILogger<DeviceDiscoveryService> _logger;
 
     public DeviceDiscoveryService(
         ISwitchDriverRegistry switchRegistry,
         IBmcDriverRegistry bmcRegistry,
         TimeProvider time,
+        IOptions<DiscoveryOrchestrationOptions> options,
         ILogger<DeviceDiscoveryService> logger)
     {
         _switchRegistry = switchRegistry ?? throw new ArgumentNullException(nameof(switchRegistry));
         _bmcRegistry = bmcRegistry ?? throw new ArgumentNullException(nameof(bmcRegistry));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -90,9 +95,9 @@ public sealed class DeviceDiscoveryService : IDeviceDiscoveryService
             snapshots.Add(new SwitchTopologySnapshot(
                 device.DeviceKey,
                 deviceInfo.Success ? deviceInfo.Value : null,
-                ports.Success ? ports.Value! : Array.Empty<SwitchPortInfo>(),
-                lldp.Success ? lldp.Value! : Array.Empty<LldpNeighbourInfo>(),
-                bridge.Success ? bridge.Value! : Array.Empty<BridgeHostEntry>(),
+                Cap(ports.Success ? ports.Value : null, _options.MaxPortsPerSwitch, device.DeviceKey, "ports"),
+                Cap(lldp.Success ? lldp.Value : null, _options.MaxLldpNeighboursPerSwitch, device.DeviceKey, "LLDP neighbours"),
+                Cap(bridge.Success ? bridge.Value : null, _options.MaxBridgeHostsPerSwitch, device.DeviceKey, "bridge-host entries"),
                 vlans.Success ? vlans.Value! : Array.Empty<VlanInfo>()));
         }
 
@@ -148,7 +153,7 @@ public sealed class DeviceDiscoveryService : IDeviceDiscoveryService
             snapshots.Add(new ServerNicSnapshot(
                 device.DeviceKey,
                 system.Success ? system.Value : null,
-                nics.Success ? nics.Value! : Array.Empty<BmcNetworkInterfaceInfo>()));
+                Cap(nics.Success ? nics.Value : null, _options.MaxNicsPerServer, device.DeviceKey, "NICs")));
         }
 
         if (definition.Servers.Count > 0 && snapshots.Count == 0)
@@ -199,6 +204,31 @@ public sealed class DeviceDiscoveryService : IDeviceDiscoveryService
                 step, durationMs, ReadOnlyCategory);
             return new DriverCallOutcome<T>(false, default, true);
         }
+    }
+
+    /// <summary>
+    /// Truncates a device-reported list to <paramref name="max"/> entries immediately after the driver
+    /// call that produced it (finding #11), logging a warning rather than letting an unbounded count flow
+    /// into the in-memory correlation engine and the persisted snapshot. A missing/failed result yields an
+    /// empty list, matching the untruncated call sites' existing behaviour.
+    /// </summary>
+    private IReadOnlyList<T> Cap<T>(IReadOnlyList<T>? items, int max, string deviceKey, string section)
+    {
+        if (items is null)
+        {
+            return Array.Empty<T>();
+        }
+
+        if (items.Count <= max)
+        {
+            return items;
+        }
+
+        _logger.LogWarning(
+            "Device {DeviceKey} reported {Count} {Section}, exceeding the cap of {Max}; truncating " +
+            "(reasonCode={ReasonCode}).",
+            deviceKey, items.Count, section, max, ReasonCode.VolumeCapped);
+        return items.Take(max).ToList();
     }
 
     private void LogDriverNotFound(DeviceDiscoveryContext context, DeviceDefinition device, DiscoveryStepName step)

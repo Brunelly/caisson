@@ -1,4 +1,5 @@
 using Caisson.Domain.Enums;
+using Caisson.Domain.Security;
 
 namespace Caisson.Domain.Topology;
 
@@ -38,7 +39,12 @@ public sealed class TopologyEntityDiff : ISnapshotScoped, IAppendOnly
     {
         ArgumentNullException.ThrowIfNull(entityStableKey);
         ArgumentNullException.ThrowIfNull(diffPayloadJson);
-        if (diffPayloadJson.Length > MaxDiffPayloadJsonLength)
+
+        // Finding #27: a value-level backstop for this free-text jsonb column — the diffed fields are
+        // device-reported (e.g. a switch model/hostname string), so a rogue device could otherwise smuggle
+        // secret-shaped text into a persisted, queryable diff row.
+        var scrubbedPayload = SecretScrubber.Scrub(diffPayloadJson)!;
+        if (scrubbedPayload.Length > MaxDiffPayloadJsonLength)
         {
             throw new ArgumentException(
                 $"Diff payload JSON exceeds the {MaxDiffPayloadJsonLength}-character bound.",
@@ -52,7 +58,7 @@ public sealed class TopologyEntityDiff : ISnapshotScoped, IAppendOnly
         EntityType = entityType;
         EntityStableKey = entityStableKey;
         ChangeType = changeType;
-        DiffPayloadJson = diffPayloadJson;
+        DiffPayloadJson = scrubbedPayload;
         CreatedAtUtc = createdAtUtc;
         CorrelationId = correlationId;
     }

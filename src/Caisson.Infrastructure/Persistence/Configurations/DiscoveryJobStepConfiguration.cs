@@ -18,6 +18,11 @@ public sealed class DiscoveryJobStepConfiguration : IEntityTypeConfiguration<Dis
         builder.ToTable("discovery_job_step");
         builder.HasKey(s => s.Id);
 
+        // Optimistic concurrency (finding #12): see DiscoveryJobConfiguration's UseXminAsConcurrencyToken.
+#pragma warning disable CS0618
+        builder.UseXminAsConcurrencyToken();
+#pragma warning restore CS0618
+
         builder.Property(s => s.StepName).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(s => s.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(s => s.AttemptCount).IsRequired();
