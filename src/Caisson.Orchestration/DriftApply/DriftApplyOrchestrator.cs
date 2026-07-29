@@ -6,9 +6,7 @@ using Caisson.Drivers.Abstractions.Identity;
 using Caisson.Drivers.Abstractions.Mutating;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Infrastructure.LiveUpdates;
-using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Drift;
-using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Orchestration.Options;
 using Caisson.Orchestration.RackDefinitions;
 using Microsoft.Extensions.Logging;
@@ -26,7 +24,7 @@ namespace Caisson.Orchestration.DriftApply;
 /// </summary>
 public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
 {
-    private readonly CaissonDbContext _context;
+    private readonly IDriftApplyJobStore _store;
     private readonly IDriftComputationService _driftComputation;
     private readonly IRackDefinitionProvider _rackDefinitions;
     private readonly ISwitchMutatingDriverRegistry _driverRegistry;
@@ -38,7 +36,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
     private readonly ILogger<DriftApplyOrchestrator> _logger;
 
     public DriftApplyOrchestrator(
-        CaissonDbContext context,
+        IDriftApplyJobStore store,
         IDriftComputationService driftComputation,
         IRackDefinitionProvider rackDefinitions,
         ISwitchMutatingDriverRegistry driverRegistry,
@@ -49,7 +47,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         IOptions<DriftApplyOrchestrationOptions> options,
         ILogger<DriftApplyOrchestrator> logger)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _driftComputation = driftComputation ?? throw new ArgumentNullException(nameof(driftComputation));
         _rackDefinitions = rackDefinitions ?? throw new ArgumentNullException(nameof(rackDefinitions));
         _driverRegistry = driverRegistry ?? throw new ArgumentNullException(nameof(driverRegistry));
@@ -72,7 +70,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
             {
                 var previousStatus = job.Status.ToString();
                 job.MarkRevalidating(Now);
-                await _context.SaveChangesAsync(cancellationToken);
+                await _store.SaveAsync(cancellationToken);
                 await PublishStatusAsync(job, previousStatus, DriftApplyStepName.Revalidation.ToString(), reasonCode: null, cancellationToken);
 
                 var revalidation = await ExecuteStepAsync(
@@ -87,7 +85,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
                 }
 
                 job.ResolveTarget(revalidation.SwitchDeviceKey!, revalidation.PortName!, revalidation.DesiredVlanId);
-                await _context.SaveChangesAsync(cancellationToken);
+                await _store.SaveAsync(cancellationToken);
             }
             else
             {
@@ -98,7 +96,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
 
             var beforeExecuting = job.Status.ToString();
             job.MarkExecuting(Now);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _store.SaveAsync(cancellationToken);
             await PublishStatusAsync(job, beforeExecuting, DriftApplyStepName.DeviceApply.ToString(), reasonCode: null, cancellationToken);
 
             await ExecuteStepAsync(
@@ -122,7 +120,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         // Failed DriftReport, which then simply means the item lookup below finds nothing (stale).
         await _driftComputation.ComputeAndPersistAsync(job.RackId, job.CorrelationId, cancellationToken);
 
-        var item = await _context.ItemByDriftItemIdAsync(job.RackId, job.DriftItemId, cancellationToken);
+        var item = await _store.FindDriftItemAsync(job.RackId, job.DriftItemId, cancellationToken);
         if (item is null)
         {
             return RevalidationOutcome.Stale(DriftApplyErrorCodes.DriftItemGone, comparedDriftReportId: null, comparedDriftItemId: null);
@@ -160,7 +158,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         });
 
         job.MarkStaleDrift(Now, outcome.ReasonCode!, DriftApplyErrorCodes.MessageFor(outcome.ReasonCode!), details);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _store.SaveAsync(cancellationToken);
 
         _logger.LogInformation(
             "Drift-apply job found stale drift, no device call made jobId={JobId} rackId={RackId} reasonCode={ReasonCode} correlationId={CorrelationId}",
@@ -239,7 +237,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
             outcome.Confirmed,
             outcome.Before is null ? null : JsonSerializer.Serialize(outcome.Before),
             outcome.After is null ? null : JsonSerializer.Serialize(outcome.After));
-        await _context.SaveChangesAsync(cancellationToken);
+        await _store.SaveAsync(cancellationToken);
 
         _logger.LogInformation(
             "Drift-apply device call completed jobId={JobId} rackId={RackId} switchDeviceKey={SwitchDeviceKey} portName={PortName} " +
@@ -258,7 +256,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         if (reasonCode is SwitchChangeReasonCode.Applied or SwitchChangeReasonCode.NoOpAlreadyDesiredState)
         {
             job.Complete(Now);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _store.SaveAsync(cancellationToken);
 
             // AC: a successful apply must be reflected in the next drift report (closing the loop).
             _driftRecompute.Enqueue(job.RackId);
@@ -268,7 +266,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         job.Fail(
             Now, DriftApplyErrorCategories.DeviceRejected, job.DeviceReasonCode ?? SwitchChangeReasonCode.Unknown.ToString(),
             "The device change was not applied or could not be confirmed; no further attempt will be made.");
-        await _context.SaveChangesAsync(cancellationToken);
+        await _store.SaveAsync(cancellationToken);
     }
 
     private async Task<T> ExecuteStepAsync<T>(
@@ -284,14 +282,14 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         {
             step.BeginAttempt(Now);
             job.Heartbeat(Now);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _store.SaveAsync(cancellationToken);
 
             try
             {
                 var value = await action(cancellationToken);
                 step.Succeed(Now, summarize(value));
                 job.Heartbeat(Now);
-                await _context.SaveChangesAsync(cancellationToken);
+                await _store.SaveAsync(cancellationToken);
                 return value;
             }
             catch (DriftApplyStepException ex)
@@ -329,7 +327,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
     {
         step.Fail(Now, errorCode, message);
         job.Fail(Now, errorCategory, errorCode, message);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _store.SaveAsync(cancellationToken);
         return new JobAbortedException(errorCode);
     }
 

@@ -133,7 +133,9 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
 
     private async Task<Guid?> FindActiveJobIdAsync(Guid rackId, Guid driftItemId, CancellationToken cancellationToken)
         => await _context.DriftApplyJobs
-            .Where(j => j.RackId == rackId && j.DriftItemId == driftItemId && !IsTerminal(j.Status))
+            .Where(j => j.RackId == rackId && j.DriftItemId == driftItemId
+                && j.Status != DriftApplyJobStatus.Completed && j.Status != DriftApplyJobStatus.Failed
+                && j.Status != DriftApplyJobStatus.StaleDrift && j.Status != DriftApplyJobStatus.Canceled)
             .OrderBy(j => j.RequestedAtUtc)
             .Select(j => (Guid?)j.Id)
             .FirstOrDefaultAsync(cancellationToken);

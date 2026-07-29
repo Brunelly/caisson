@@ -87,6 +87,7 @@ public static class OrchestrationServiceCollectionExtensions
 
         services.TryAddSingleton<DriftApplyJobSignal>();
 
+        services.TryAddScoped<IDriftApplyJobStore, CaissonDriftApplyJobStore>();
         services.TryAddScoped<IDriftApplyJobService, DriftApplyJobService>();
         services.TryAddScoped<IDriftApplyOrchestrator, DriftApplyOrchestrator>();
 
