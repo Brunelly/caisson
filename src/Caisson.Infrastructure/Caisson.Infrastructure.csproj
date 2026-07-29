@@ -14,6 +14,12 @@
       engine; Correlation stays EF-free.
     -->
     <ProjectReference Include="..\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <!--
+      The drift persistence bridge (story #64) maps the persisted desired/observed graphs into the pure
+      engine's inputs and the pure result back into persisted DriftReport/DriftItem rows. Same shape as
+      the Correlation reference above: Caisson.Drift stays EF-free (PurityGuardTests enforces this).
+    -->
+    <ProjectReference Include="..\Caisson.Drift\Caisson.Drift.csproj" />
   </ItemGroup>
 
   <ItemGroup>
