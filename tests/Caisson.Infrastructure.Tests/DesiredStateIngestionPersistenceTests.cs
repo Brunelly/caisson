@@ -261,7 +261,9 @@ public sealed class DesiredStateIngestionPersistenceTests : IClassFixture<Postgr
 
         await using var context = _fixture.CreateContext();
         var version = new DesiredStateVersion(
-            Guid.NewGuid(), rackSlug, commitSha, runId, DateTime.UtcNow.Add(createdOffset), "hash-" + commitSha);
+            Guid.NewGuid(), rackSlug, commitSha, runId, DateTime.UtcNow.Add(createdOffset), "hash-" + commitSha,
+            "{\"rackSlug\":\"" + rackSlug + "\",\"switches\":[]}", DesiredStateSchema.CurrentSchemaVersion,
+            "desired-state-ingestion", "author", "author@example.com", DateTime.UtcNow.Add(createdOffset));
         context.DesiredStateVersions.Add(version);
         await context.SaveChangesAsync();
         return (runId, version.Id);

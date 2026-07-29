@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Caisson.Domain.DesiredState;
+using Caisson.Domain.Enums;
+using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
@@ -29,6 +32,13 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 {
     internal const string CommitShaConstraint = "ux_desired_state_ingestion_run_commit_sha";
     internal const string WebhookDeliveryIdConstraint = "ux_desired_state_ingestion_run_webhook_delivery_id";
+
+    /// <summary>
+    /// The fixed service-principal identity stamped on every persisted <see cref="DesiredStateVersion"/>
+    /// and its ingestion audit event (story #63, AC1/AC5) — this pipeline has no interactive user
+    /// context, so a constant, never a per-request actor, is the correct identity here.
+    /// </summary>
+    internal const string IngestingServicePrincipal = "desired-state-ingestion";
 
     private readonly CaissonDbContext _context;
     private readonly IGitRepositoryProvider _git;
@@ -266,20 +276,53 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         var existingActive = await _context.ActiveVersionForRackAsync(document.RackSlug, cancellationToken);
         if (existingActive is not null && string.Equals(existingActive.ContentHash, contentHash, StringComparison.Ordinal))
         {
-            // Unchanged since the last successful ingestion — still a success, nothing new to persist.
+            // Unchanged since the last successful ingestion — still a success, nothing new to persist, and
+            // (AC5) no second ingestion audit event for a replay of the same content.
             return true;
         }
 
+        var desiredStateJson = DesiredStatePayloadSerializer.Serialize(document);
+        var createdAtUtc = _time.GetUtcNow().UtcDateTime;
         var version = new DesiredStateVersion(
-            _ids.NewId(), document.RackSlug, commit.Sha, run.Id, _time.GetUtcNow().UtcDateTime, contentHash);
+            _ids.NewId(), document.RackSlug, commit.Sha, run.Id, createdAtUtc, contentHash,
+            desiredStateJson, DesiredStateSchema.CurrentSchemaVersion, IngestingServicePrincipal,
+            commit.Author, commit.AuthorEmail, commit.CommitTimeUtc);
         var materialized = DesiredStateMaterializer.Materialize(version.Id, document, _ids.NewId);
+
+        var audit = new TopologyAuditEvent(
+            _ids.NewId(),
+            createdAtUtc,
+            ActorType.System,
+            IngestingServicePrincipal,
+            action: "desired-state.revision.ingested",
+            targetType: "desired-state-version",
+            correlationId: run.CorrelationId,
+            result: "success",
+            rackId: null,
+            snapshotId: null,
+            targetId: version.Id.ToString(),
+            detailsJson: BuildIngestionAuditDetails(document.RackSlug, commit.Sha, contentHash));
 
         _context.DesiredStateVersions.Add(version);
         _context.DesiredRackIntents.Add(materialized.Rack);
         _context.DesiredSwitchIntents.AddRange(materialized.Switches);
         _context.DesiredPortIntents.AddRange(materialized.Ports);
+        _context.AuditEvents.Add(audit);
         return true;
     }
+
+    /// <summary>
+    /// The rack slug/commit SHA/content hash the ingestion audit event carries (AC5) — well under
+    /// <see cref="TopologyAuditEvent.MaxDetailsJsonLength"/>, so no truncation logic is needed here
+    /// (contrast <c>TopologySnapshotIngestionService.BuildAuditDetails</c>'s diagnostic-list capping).
+    /// </summary>
+    private static string BuildIngestionAuditDetails(string rackSlug, string commitSha, string contentHash)
+        => JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["rackSlug"] = rackSlug,
+            ["commitSha"] = commitSha,
+            ["contentHash"] = contentHash,
+        });
 
     private async Task SaveFinalAsync(DesiredStateIngestionRun run, CancellationToken cancellationToken)
     {

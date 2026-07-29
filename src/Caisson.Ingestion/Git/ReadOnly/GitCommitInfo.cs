@@ -1,7 +1,11 @@
 namespace Caisson.Ingestion.Git.ReadOnly;
 
-/// <summary>Commit metadata observed for the configured branch's tip (story #62, AC1).</summary>
-public sealed record GitCommitInfo(string Sha, string Author, DateTime CommitTimeUtc, string Message);
+/// <summary>
+/// Commit metadata observed for the configured branch's tip (story #62, AC1). <see cref="AuthorEmail"/>
+/// (story #63, AC1) is additive and defaults to <c>null</c> so existing positional call sites keep
+/// compiling unchanged; a git tip that carries no author email still ingests cleanly.
+/// </summary>
+public sealed record GitCommitInfo(string Sha, string Author, DateTime CommitTimeUtc, string Message, string? AuthorEmail = null);
 
 /// <summary>
 /// A file path matched by the configured glob at a commit, with its Git blob size — returned by
