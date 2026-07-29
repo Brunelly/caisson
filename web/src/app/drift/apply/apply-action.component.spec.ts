@@ -136,6 +136,12 @@ describe('ApplyActionComponent', () => {
 
     const dialog = dialogEl();
     expect(dialog).toBeTruthy();
+
+    // A true modal (focus-trapped, blocks the rest of the page) must be marked as such — CDK Dialog's
+    // `ariaModal` defaults to false, so this is a regression guard for that easy-to-miss opt-in.
+    const dialogContainer = dialog!.closest('[role="dialog"]');
+    expect(dialogContainer?.getAttribute('aria-modal')).toBe('true');
+
     const submit = dialog!.querySelector<HTMLButtonElement>('.apply-dialog__submit');
     expect(submit?.disabled).toBe(true);
     expect(applyCorrection).not.toHaveBeenCalled();

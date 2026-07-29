@@ -193,7 +193,15 @@ export class ApplyActionComponent {
   private openConfirmationDialog(rackId: string, item: DriftItemDto): void {
     const ref = this.dialog.open<ApplyConfirmationDialogResult, ApplyConfirmationDialogData>(
       ApplyConfirmationDialogComponent,
-      { data: { item }, ariaLabelledBy: 'apply-dialog-heading', hasBackdrop: true },
+      {
+        data: { item },
+        ariaLabelledBy: 'apply-dialog-heading',
+        hasBackdrop: true,
+        // CDK Dialog's `ariaModal` is OFF by default (aria-modal="false") — this is a true modal
+        // (focus-trapped, blocks interaction with the rest of the page), so it must opt in explicitly
+        // or assistive tech is told it is NOT modal despite behaving like one.
+        ariaModal: true,
+      },
     );
     ref.closed.subscribe((result) => {
       if (result === 'submit') {
