@@ -5,6 +5,9 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Caisson.Domain.Topology;
 using Caisson.Drivers.Abstractions.Identity;
+using Caisson.Drivers.Abstractions.Registry;
+using Caisson.Drivers.MikroTik.Credentials;
+using Caisson.Drivers.MikroTik.Observability;
 using Caisson.Drivers.Simulators;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Orchestration.Options;
@@ -17,6 +20,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Caisson.VirtualRack.IntegrationTests;
@@ -39,18 +44,37 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
     private const string BmcUsername = "vrack-bmc";
     private const string BmcPassword = "sim-only-password";
 
+    /// <summary>
+    /// The distinct vendor descriptor a <see cref="RackScenario.WithheldRollback"/> rack's switch device
+    /// declares, so <c>ISwitchMutatingDriverRegistry</c>/<c>ISwitchDriverRegistry</c> route it to the
+    /// additively-registered scripted factories instead of the real MikroTik ones (Task #115).
+    /// </summary>
+    public const string MockWithheldVendor = "MockWithheld";
+
     private readonly PostgresHarness _harness = new();
     private readonly RedisHarness _redis = new();
     private readonly ConcurrentDictionary<Guid, RackScenario> _scenarios = new();
 
+    // Task #115: the scripted withheld-confirmation driver factory for RackScenario.WithheldRollback,
+    // registered additively in ConfigureWebHost below. Kept as a field (not a local in the lambda) so
+    // tests can read WithheldDriverCallCount after the host is built.
+    private readonly ScriptedWithheldMutatingDriverFactory _withheldMutatingDriverFactory;
+
     private X509Certificate2? _bmcCertificate;
     private RouterOsApiSimulator? _switchSimulator;
+    private RouterOsApiSimulator? _writeCapableSwitchSimulator;
     private RedfishSimulator? _bmcSimulator;
     private RedfishSimulator? _bmcAuthFailSimulator;
     private TcpListener? _unreachableSwitchListener;
 
+    public VirtualRackApiFactory()
+        => _withheldMutatingDriverFactory = new ScriptedWithheldMutatingDriverFactory(() => _writeCapableSwitchSimulator!);
+
     /// <summary>Whether an ephemeral Postgres was provisioned; when false the suite skips its cases.</summary>
     public bool Available => _harness.Available;
+
+    /// <summary>How many device connections the scripted withheld-confirmation driver created (Task #115).</summary>
+    public int WithheldDriverCallCount => _withheldMutatingDriverFactory.CallCount;
 
     public async Task InitializeAsync()
     {
@@ -72,6 +96,13 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
 
         _switchSimulator = new RouterOsApiSimulator(RouterOsProfileRenderer.Render(), SwitchUsername, SwitchPassword);
         _switchSimulator.Start();
+
+        // A SEPARATE simulator instance (not a mutation of _switchSimulator) seeded with
+        // RenderStateful()'s SimulatorSwitchState — only racks registered under RackScenario.
+        // DriftApplyCapable (or WithheldRollback) are pointed at it, so every existing detection-only test
+        // driving the stateless _switchSimulator is byte-for-byte unaffected (Task #112).
+        _writeCapableSwitchSimulator = new RouterOsApiSimulator(RouterOsProfileRenderer.RenderStateful(), SwitchUsername, SwitchPassword);
+        _writeCapableSwitchSimulator.Start();
 
         _bmcSimulator = new RedfishSimulator(RedfishProfileRenderer.Render(VirtualRackDefinition.ServerId), _bmcCertificate);
         _bmcSimulator.Start();
@@ -135,6 +166,29 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
                 options.SchedulerEnabled = false;
                 options.RetentionEnabled = false;
             });
+
+            // Task #112: fast, deterministic drift-apply job polling — mirrors the
+            // DiscoveryOrchestrationOptions override above. AddCaissonDriftApply is already called
+            // unconditionally by the real Program (the only new registrations tests need are the
+            // additive scripted driver factories some test classes add via ConfigureTestServices).
+            services.Configure<DriftApplyOrchestrationOptions>(options =>
+            {
+                options.RunnerEnabled = true;
+                options.RunnerPollSeconds = 1;
+                options.RetryBaseDelayMs = 0;
+                options.HeartbeatStalenessSeconds = 5;
+            });
+
+            // Task #115: additive registrations for RackScenario.WithheldRollback's ONE rack — the real
+            // RouterOsSwitchMutatingDriverFactory/RouterOsSwitchDriverFactory stay registered (via
+            // AddCaissonOrchestration/AddCaissonDriftApply above) for every other rack's "MikroTik" vendor;
+            // these answer only the distinct MockWithheldVendor. See ScriptedWithheldMutatingDriver.cs.
+            services.AddSingleton<ISwitchMutatingDriverFactory>(_withheldMutatingDriverFactory);
+            services.AddSingleton<ISwitchDriverFactory>(provider => new MockWithheldReadDriverFactory(
+                provider.GetRequiredService<ISwitchCredentialResolver>(),
+                provider.GetRequiredService<RouterOsMetrics>(),
+                provider.GetRequiredService<ILoggerFactory>(),
+                provider.GetRequiredService<IHostEnvironment>()));
         });
     }
 
@@ -160,12 +214,30 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
     {
         var scenario = _scenarios.GetValueOrDefault(rackId, RackScenario.Happy);
 
-        var switchPort = scenario == RackScenario.SwitchUnreachable ? UnreachableSwitchPort : _switchSimulator!.Port;
+        // DriftApplyCapable (and WithheldRollback) racks are pointed at the SEPARATE stateful simulator
+        // instance seeded by RouterOsProfileRenderer.RenderStateful() — every other scenario keeps using
+        // the original stateless _switchSimulator, unaffected (Task #112).
+        var writeCapable = scenario is RackScenario.DriftApplyCapable or RackScenario.WithheldRollback;
+        var activeSimulator = writeCapable ? _writeCapableSwitchSimulator! : _switchSimulator!;
+
+        var switchPort = scenario == RackScenario.SwitchUnreachable ? UnreachableSwitchPort : activeSimulator.Port;
         // The virtual-rack switch simulator speaks plaintext RouterOS API, so the explicit AllowPlaintext
         // opt-in is required now that TLS is the fail-closed default (finding #8).
+        //
+        // WithheldRollback (Task #115) deliberately declares a DISTINCT Vendor/ConnectionKind
+        // ("MockWithheld"/Ssh) — still pointed at the same real, in-process stateful simulator host/port —
+        // so ISwitchMutatingDriverRegistry.TryResolve routes drift-apply's device write to the scripted
+        // withheld-confirmation driver (registered additively for that vendor) instead of the real
+        // RouterOsSwitchMutatingDriverFactory, while a matching "MockWithheld" read-side factory (also
+        // registered additively) keeps discovery talking to the REAL simulator over the real protocol —
+        // see DriftApplyRollbackEndToEndTests / ADR 0035.
+        var switchVendor = scenario == RackScenario.WithheldRollback ? MockWithheldVendor : "MikroTik";
+        var switchConnectionKind = scenario == RackScenario.WithheldRollback
+            ? DriverConnectionKind.Ssh
+            : DriverConnectionKind.RouterOsApi;
         var switchDevice = new DeviceDefinition(
-            VirtualRackDefinition.SwitchId, "MikroTik", null, DriverConnectionKind.RouterOsApi,
-            _switchSimulator!.Host, switchPort, TimeSpan.FromSeconds(5), "sw1_creds",
+            VirtualRackDefinition.SwitchId, switchVendor, null, switchConnectionKind,
+            activeSimulator.Host, switchPort, TimeSpan.FromSeconds(5), "sw1_creds",
             UseTls: false, AllowPlaintext: true);
 
         var bmcSimulator = scenario == RackScenario.BmcAuthFailure ? _bmcAuthFailSimulator! : _bmcSimulator!;
@@ -181,6 +253,11 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
         if (_switchSimulator is not null)
         {
             await _switchSimulator.DisposeAsync();
+        }
+
+        if (_writeCapableSwitchSimulator is not null)
+        {
+            await _writeCapableSwitchSimulator.DisposeAsync();
         }
 
         if (_bmcSimulator is not null)
@@ -222,7 +299,44 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
 
         /// <summary>The switch resolves to a closed loopback port (connection refused, AC3).</summary>
         SwitchUnreachable,
+
+        /// <summary>
+        /// The switch resolves to the stateful, write-capable simulator (RenderStateful) via the real
+        /// MikroTik vendor/connection-kind — drift-apply's device write mutates real simulator state
+        /// (Task #112/#114).
+        /// </summary>
+        DriftApplyCapable,
+
+        /// <summary>
+        /// The switch resolves to the SAME stateful simulator as <see cref="DriftApplyCapable"/>, but under
+        /// the distinct <see cref="MockWithheldVendor"/> descriptor, so drift-apply's device write routes to
+        /// a scripted withheld-confirmation driver double instead of the real one (Task #115).
+        /// </summary>
+        WithheldRollback,
     }
+
+    /// <summary>Reads the write-capable simulator's current access VLAN (PVID) for <paramref name="port"/>, or null if unknown.</summary>
+    public int? GetSwitchPortAccessVlan(string port) => _writeCapableSwitchSimulator!.GetPortAccessVlan(port);
+
+    /// <summary>
+    /// Forces the write-capable simulator's port PVID to a known baseline. The write-capable simulator is
+    /// a SINGLE shared instance across every rack in this xUnit collection (tests within a collection run
+    /// sequentially but in an unspecified order) — a device-mutating test must call this before seeding, so
+    /// its "before" VLAN assumption holds regardless of what an earlier test in the same run left behind.
+    /// </summary>
+    public void ResetSwitchPortAccessVlanForTest(string port, int pvid) => _writeCapableSwitchSimulator!.SetPortAccessVlanForTest(port, pvid);
+
+    /// <summary>Advances the write-capable simulator's virtual clock (no real sleep) so an armed confirmed-commit rollback can become due.</summary>
+    public void AdvanceSwitchTime(TimeSpan delta) => _writeCapableSwitchSimulator!.AdvanceTime(delta);
+
+    /// <summary>Fires any confirmed-commit rollbacks on the write-capable simulator whose window has elapsed.</summary>
+    public void FireDueSwitchRollbacks() => _writeCapableSwitchSimulator!.FireDueRollbacks();
+
+    /// <summary>Whether the write-capable simulator has an armed, not-yet-fired rollback for <paramref name="port"/>.</summary>
+    public bool HasPendingRollback(string port) => _writeCapableSwitchSimulator!.HasPendingRollback(port);
+
+    /// <summary>Every command path the write-capable simulator has received, in order (device-call-count assertions).</summary>
+    public IReadOnlyList<string> ReceivedSwitchCommands => _writeCapableSwitchSimulator!.ReceivedCommands;
 
     /// <summary>
     /// Resolves any rack to the fixed <see cref="VirtualRackDefinition"/> devices, pointed at whichever

@@ -103,6 +103,50 @@ dotnet test tests/Caisson.VirtualRack.IntegrationTests -c Release
 Needs only Docker (for its own isolated Postgres via Testcontainers, or set `CAISSON_TEST_DB` to point
 at the compose Postgres above) — no other setup. It skips (not fails) when Postgres is unavailable.
 
+## Drift detect/apply/rollback/RBAC E2E suite (story #68)
+
+A dedicated, CI-proof suite building on the same in-process simulators, seeded with a deterministic
+single-port access-VLAN drift instead of the happy-path topology above:
+
+```bash
+dotnet test tests/Caisson.VirtualRack.IntegrationTests -c Release --filter "FullyQualifiedName~Drift"
+```
+
+Four test classes, all in `tests/Caisson.VirtualRack.IntegrationTests`:
+
+- **`DriftEndToEndTests`** — real discovery against a mismatched desired revision yields exactly the
+  expected `AccessVlanMismatch` (+ the fixture's already-seeded ambiguity item); severity/subject-detail
+  determinism and `driftItemId` stability across a repeated recompute; the `/drift/latest` and
+  `/drift/reports/{driftReportId}` read contracts (what the Angular UI's data path actually consumes);
+  and a harness-supplied correlation id reaching the discovery-job audit trail.
+- **`DriftApplyEndToEndTests`** — apply success through the REAL `RouterOsSwitchMutatingDriver`: the job
+  reaches `Completed`/`Applied`, the in-process simulator independently confirms the device was mutated,
+  a fresh discovery closes the loop (drift resolved), and both the `drift.apply.job.created`/`.completed`
+  audit rows carry full before/after/actor/correlation detail with no credentials.
+- **`DriftApplyRollbackEndToEndTests`** — the orchestration-level auto-rollback proof: a scripted
+  withheld-confirmation driver (registered only for one rack, under a distinct vendor descriptor) mutates
+  real simulator state, the job reaches `Failed`/`AutoRolledBack` with exactly one device call, and a
+  fresh discovery shows the port reverted to its ORIGINAL VLAN with the drift item still present. See
+  [ADR 0035](adr/0035-drift-apply-e2e-ci-suite-and-rollback-proof-split.md) for why this is deliberately
+  separate from the driver-level rollback proof (`SetAccessVlanIntegrationTests`, in
+  `Caisson.Drivers.MikroTik.IntegrationTests`) rather than duplicating it.
+- **`DriftApplyRbacEndToEndTests`** — an Operator lacking the `DriftApply` role gets `403`, creates no
+  job, and produces an `authorization.forbidden` audit event (see
+  [ADR 0036](adr/0036-forbidden-authorization-audit-event.md)); plus the NFR5 concurrency proof — two
+  concurrent applies for the same `driftItemId` yield one job and exactly one device write.
+
+Every rack these tests create resolves to a SEPARATE, stateful, write-capable switch simulator instance
+(`RouterOsProfileRenderer.RenderStateful`) — the original happy-path simulator used by every other
+detection-only test is never mutated. Because that write-capable simulator's port state is shared across
+every device-mutating test in the same run (tests within one xUnit collection run sequentially, but in an
+order that is not guaranteed to stay fixed across runs), each such test calls
+`VirtualRackApiFactory.ResetSwitchPortAccessVlanForTest` before seeding rather than assuming what an
+earlier test left behind.
+
+In CI this runs as its own named, filtered step (`Drift detect/apply/rollback/RBAC E2E tests
+(simulators)`) immediately after the broad virtual-rack step, uploading `drift-e2e.trx` as an isolated
+artifact on failure — see `.github/workflows/ci.yml`'s `build-and-test` job.
+
 ## The LLDP fidelity guard
 
 Because the switch simulator's LLDP neighbour table (`/ip/neighbor/print`) and bridge/MAC table

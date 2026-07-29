@@ -83,6 +83,15 @@ public sealed class RouterOsApiSimulator : IAsyncDisposable
     /// <summary>Simulator-only observability hook (AC5): the current PVID of a stateful-mode port, or <c>null</c> if not seeded/unknown.</summary>
     public int? GetPortAccessVlan(string port) => _profile.SwitchState?.GetPvid(port);
 
+    /// <summary>
+    /// Simulator-only test seam (Task #115): directly mutates a stateful-mode port's PVID, bypassing the
+    /// wire protocol — lets a scripted <c>ISwitchMutatingDriver</c> test double (standing in for the real
+    /// one-shot <c>RouterOsSwitchMutatingDriver.SetAccessVlanAsync</c> on the ONE rack proving the
+    /// orchestration-level withheld-confirmation/auto-rollback outcome) apply-then-revert against real
+    /// simulator state instead of a hardcoded fake "before" value. No-op if the port was never seeded.
+    /// </summary>
+    public void SetPortAccessVlanForTest(string port, int pvid) => _profile.SwitchState?.SetPvid(port, pvid);
+
     /// <summary>Simulator-only observability hook (AC5): whether an armed confirmed-commit rollback is still pending for <paramref name="port"/>.</summary>
     public bool HasPendingRollback(string port)
     {
