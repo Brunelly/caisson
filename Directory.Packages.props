@@ -83,6 +83,17 @@
 
   <ItemGroup>
     <!--
+      Story #62 (M1 desired-state ingestion, ADR 0026): Caisson.Ingestion only. LibGit2Sharp is a
+      library call (zero command-injection surface) rather than shelling to the `git` CLI; YamlDotNet
+      is parsed as a node DOM (not Deserialize&lt;T&gt;) so line/column Marks survive into validation
+      errors.
+    -->
+    <PackageVersion Include="LibGit2Sharp" Version="0.32.0" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
       Security-review-5 (CI/infra finding): none of these three are direct PackageReferences anywhere —
       each floats in transitively (Caching.Memory/System.Text.Json via the ASP.NET Core/EF Core 8.0.8
       dependency graph; MessagePack via the SignalR client/hub packages above) at a version with a known,

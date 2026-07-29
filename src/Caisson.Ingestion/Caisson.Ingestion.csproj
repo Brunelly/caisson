@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Git-backed desired-state ingestion: fetch, parse, validate, materialise (story #62, ADR 0026).
+    References ONLY Caisson.Domain — no EF Core, no Caisson.Drivers.* — mirroring Caisson.Correlation's
+    pure layering so the M0 driver-boundary guard tests stay intact.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Ingestion</RootNamespace>
+    <AssemblyName>Caisson.Ingestion</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibGit2Sharp" />
+    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Caisson.Ingestion.Tests" />
+  </ItemGroup>
+
+</Project>
