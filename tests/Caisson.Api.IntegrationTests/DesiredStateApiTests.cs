@@ -32,6 +32,16 @@ public sealed class DesiredStateApiTests
     }
 
     [SkippableFact]
+    public async Task Health_ready_stays_green_and_reports_the_ingestion_subsystem()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        var response = await _factory.CreateClient().GetAsync("/health/ready");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [SkippableFact]
     public async Task Status_endpoint_is_forbidden_for_an_unrecognised_role()
     {
         Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");

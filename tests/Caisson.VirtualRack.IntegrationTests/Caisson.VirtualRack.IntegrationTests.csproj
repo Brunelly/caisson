@@ -22,6 +22,9 @@
     <ProjectReference Include="..\..\src\Caisson.Drivers.Abstractions\Caisson.Drivers.Abstractions.csproj" />
     <ProjectReference Include="..\Caisson.Drivers.Simulators\Caisson.Drivers.Simulators.csproj" />
     <ProjectReference Include="..\Caisson.VirtualRack.Fixtures\Caisson.VirtualRack.Fixtures.csproj" />
+    <!-- Story #62: the desired-state ingestion e2e test drives the real DesiredStateIngestionService
+         and LibGit2SharpRepositoryProvider against a local, ephemeral git repository. -->
+    <ProjectReference Include="..\..\src\Caisson.Ingestion\Caisson.Ingestion.csproj" />
   </ItemGroup>
 
   <ItemGroup>

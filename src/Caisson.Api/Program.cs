@@ -268,6 +268,11 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     health.AddNpgSql(connectionString, name: "db", tags: new[] { "ready" });
 }
 
+// Story #62 (NFR8): reports the desired-state ingestion subsystem's last-run status; never touches a
+// device and stays Healthy/Degraded (never Unhealthy) so a malformed commit can never take
+// /health/ready down.
+health.AddCheck<Caisson.Api.HealthChecks.GitIngestionHealthCheck>("git-ingestion", tags: new[] { "ready" });
+
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>
 {

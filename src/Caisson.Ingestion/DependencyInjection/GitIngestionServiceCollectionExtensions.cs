@@ -2,6 +2,7 @@ using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Ingestion.Git;
 using Caisson.Ingestion.Git.ReadOnly;
 using Caisson.Ingestion.Ingestion;
+using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
 using Caisson.Ingestion.Runner;
 using Caisson.Ingestion.Scheduling;
@@ -38,6 +39,7 @@ public static class GitIngestionServiceCollectionExtensions
         services.TryAddSingleton<DesiredStateIngestionSignal>();
         services.TryAddSingleton<IGitIngestionSecretsResolver, EnvGitIngestionSecretsResolver>();
         services.TryAddSingleton<IWebhookSignatureVerifier, GitHubHmacSignatureVerifier>();
+        services.TryAddSingleton<GitIngestionMetrics>();
 
         // Singleton: the bare mirror and its serializing gate are keyed to the one configured
         // repo/branch for the app's lifetime, exactly like the config-bound rack definitions.

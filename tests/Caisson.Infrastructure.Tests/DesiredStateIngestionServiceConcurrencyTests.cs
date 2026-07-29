@@ -3,6 +3,7 @@ using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Ingestion;
+using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -296,5 +297,6 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
             new GuidTopologyIdGenerator(),
             TimeProvider.System,
             Options.Create(new GitIngestionOptions { Enabled = true, RepoUrl = RepoUrl }),
+            new GitIngestionMetrics(),
             NullLogger<DesiredStateIngestionService>.Instance);
 }

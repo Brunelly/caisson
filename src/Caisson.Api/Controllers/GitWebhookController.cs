@@ -2,6 +2,7 @@ using Caisson.Api.Contracts;
 using Caisson.Api.Middleware;
 using Caisson.Api.Security;
 using Caisson.Ingestion.Ingestion;
+using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Webhook;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,15 +25,17 @@ public sealed class GitWebhookController : ControllerBase
     private readonly IWebhookSignatureVerifier _verifier;
     private readonly DesiredStateIngestionSignal _signal;
     private readonly ICorrelationContext _correlation;
+    private readonly GitIngestionMetrics _metrics;
     private readonly ILogger<GitWebhookController> _logger;
 
     public GitWebhookController(
         IWebhookSignatureVerifier verifier, DesiredStateIngestionSignal signal, ICorrelationContext correlation,
-        ILogger<GitWebhookController> logger)
+        GitIngestionMetrics metrics, ILogger<GitWebhookController> logger)
     {
         _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
         _signal = signal ?? throw new ArgumentNullException(nameof(signal));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -57,6 +60,7 @@ public sealed class GitWebhookController : ControllerBase
         var signatureHeader = Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
         if (!_verifier.Verify(rawBody, signatureHeader))
         {
+            _metrics.RecordWebhookSignatureRejection();
             _logger.LogWarning(
                 "Git webhook signature verification failed correlationId={CorrelationId}", _correlation.CorrelationId);
             return Unauthorized();

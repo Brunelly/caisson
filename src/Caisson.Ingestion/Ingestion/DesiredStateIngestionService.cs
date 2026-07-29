@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Caisson.Domain.DesiredState;
@@ -6,6 +7,7 @@ using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Git.ReadOnly;
 using Caisson.Ingestion.Materializer;
+using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
 using Caisson.Ingestion.Schema;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +35,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
     private readonly ITopologyIdGenerator _ids;
     private readonly TimeProvider _time;
     private readonly IOptions<GitIngestionOptions> _options;
+    private readonly GitIngestionMetrics _metrics;
     private readonly ILogger<DesiredStateIngestionService> _logger;
 
     public DesiredStateIngestionService(
@@ -41,6 +44,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         ITopologyIdGenerator ids,
         TimeProvider time,
         IOptions<GitIngestionOptions> options,
+        GitIngestionMetrics metrics,
         ILogger<DesiredStateIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -48,6 +52,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _ids = ids ?? throw new ArgumentNullException(nameof(ids));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -61,12 +66,16 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             var replay = await FindRunIdByWebhookDeliveryIdAsync(webhookDeliveryId, cancellationToken);
             if (replay is { } replayId)
             {
+                _metrics.RecordWebhookReplayRejection();
                 _logger.LogInformation(
                     "Desired-state ingestion webhook delivery already processed, no-op deliveryId={DeliveryId} runId={RunId} correlationId={CorrelationId}",
                     webhookDeliveryId, replayId, correlationId);
                 return new IngestionRunResult(IngestionRunDisposition.IdempotentReplay, replayId);
             }
         }
+
+        var stopwatch = Stopwatch.StartNew();
+        _metrics.RecordRunStarted();
 
         var startedAtUtc = _time.GetUtcNow().UtcDateTime;
         GitCommitInfo commit;
@@ -76,7 +85,8 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return await PersistFetchFailureAsync(trigger, startedAtUtc, correlationId, webhookDeliveryId, ex, cancellationToken);
+            return await PersistFetchFailureAsync(
+                trigger, startedAtUtc, correlationId, webhookDeliveryId, ex, stopwatch, cancellationToken);
         }
 
         var run = new DesiredStateIngestionRun(
@@ -112,6 +122,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
                 var existingId = await FindRunIdByWebhookDeliveryIdAsync(webhookDeliveryId, cancellationToken);
                 if (existingId is { } id)
                 {
+                    _metrics.RecordWebhookReplayRejection();
                     return new IngestionRunResult(IngestionRunDisposition.IdempotentReplay, id);
                 }
             }
@@ -124,6 +135,12 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             run.Id, trigger, commit.Sha, correlationId);
 
         await ProcessCommitAsync(run, commit, correlationId, cancellationToken);
+        stopwatch.Stop();
+        _metrics.RecordRunOutcome(ToOutcome(run.Status), stopwatch.Elapsed);
+        _logger.LogInformation(
+            "Desired-state ingestion run finished runId={RunId} status={Status} durationMs={DurationMs} correlationId={CorrelationId}",
+            run.Id, run.Status, stopwatch.ElapsedMilliseconds, correlationId);
+
         return new IngestionRunResult(IngestionRunDisposition.Started, run.Id);
     }
 
@@ -296,7 +313,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 
     private async Task<IngestionRunResult> PersistFetchFailureAsync(
         IngestionTriggerType trigger, DateTime startedAtUtc, Guid correlationId, string? webhookDeliveryId,
-        Exception ex, CancellationToken cancellationToken)
+        Exception ex, Stopwatch stopwatch, CancellationToken cancellationToken)
     {
         var category = ClassifyFetchException(ex);
         var run = new DesiredStateIngestionRun(
@@ -318,17 +335,28 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             var existingId = await FindRunIdByWebhookDeliveryIdAsync(webhookDeliveryId, cancellationToken);
             if (existingId is { } id)
             {
+                _metrics.RecordWebhookReplayRejection();
                 return new IngestionRunResult(IngestionRunDisposition.IdempotentReplay, id);
             }
 
             throw;
         }
 
+        stopwatch.Stop();
+        _metrics.RecordRunOutcome(IngestionRunOutcome.InfraFailed, stopwatch.Elapsed);
         _logger.LogError(
-            ex, "Failed to fetch latest commit for desired-state ingestion category={Category} correlationId={CorrelationId}",
-            category, correlationId);
+            ex, "Failed to fetch latest commit for desired-state ingestion category={Category} durationMs={DurationMs} correlationId={CorrelationId}",
+            category, stopwatch.ElapsedMilliseconds, correlationId);
         return new IngestionRunResult(IngestionRunDisposition.Started, run.Id);
     }
+
+    private static IngestionRunOutcome ToOutcome(IngestionRunStatus status) => status switch
+    {
+        IngestionRunStatus.Succeeded => IngestionRunOutcome.Succeeded,
+        IngestionRunStatus.PartiallySucceeded => IngestionRunOutcome.PartiallySucceeded,
+        IngestionRunStatus.ValidationFailed => IngestionRunOutcome.ValidationFailed,
+        _ => IngestionRunOutcome.InfraFailed,
+    };
 
     private void AddValidationError(DesiredStateIngestionRun run, string rackSlug, DesiredStateValidationIssue issue)
         => AddValidationError(run, rackSlug, issue.FilePath, issue.Location, issue.Message, issue.Severity, issue.Line, issue.Column);
