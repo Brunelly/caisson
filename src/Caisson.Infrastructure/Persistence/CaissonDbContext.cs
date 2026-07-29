@@ -1,6 +1,7 @@
 using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Drift;
+using Caisson.Domain.Drift.Apply;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
 
@@ -89,6 +90,12 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Drift findings belonging to a <see cref="DriftReport"/>.</summary>
     public DbSet<DriftItem> DriftItems => Set<DriftItem>();
+
+    /// <summary>Durable, resumable single-change drift-correction apply jobs (story #65).</summary>
+    public DbSet<DriftApplyJob> DriftApplyJobs => Set<DriftApplyJob>();
+
+    /// <summary>Per-step status rows for drift-apply jobs.</summary>
+    public DbSet<DriftApplyJobStep> DriftApplyJobSteps => Set<DriftApplyJobStep>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

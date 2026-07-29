@@ -111,11 +111,22 @@ public static class DriftEngine
 
             if (desiredPort!.AccessVlan != observedPort!.Pvid)
             {
+                // Story #65: additively carries the switch/port names the apply API needs to resolve a
+                // device connection, so the apply path never has to parse the deliberately-opaque,
+                // versioned SubjectKey (ADR 0029). Does not affect DriftItemId — that hash is computed
+                // over rack/type/subject/expected/actual only, never DetailsJson.
+                var accessVlanDetails = JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["switchName"] = key.SwitchName,
+                    ["portName"] = key.PortName,
+                });
+
                 yield return BuildPortItem(
                     rackId, DriftType.AccessVlanMismatch, subjectKey,
                     expectedValue: desiredPort.AccessVlan.ToString(CultureInfo.InvariantCulture),
                     actualValue: FormatPvid(observedPort.Pvid),
-                    why: $"Port '{key.PortName}' on switch '{key.SwitchName}' has desired access VLAN {desiredPort.AccessVlan} but observed Pvid {FormatPvid(observedPort.Pvid)}.");
+                    why: $"Port '{key.PortName}' on switch '{key.SwitchName}' has desired access VLAN {desiredPort.AccessVlan} but observed Pvid {FormatPvid(observedPort.Pvid)}.",
+                    detailsJson: accessVlanDetails);
             }
 
             if (observedPort.TaggedVlans.Length > 0)
@@ -219,7 +230,8 @@ public static class DriftEngine
     }
 
     private static DriftItemResult BuildPortItem(
-        Guid rackId, DriftType driftType, string subjectKey, string? expectedValue, string? actualValue, string why)
+        Guid rackId, DriftType driftType, string subjectKey, string? expectedValue, string? actualValue, string why,
+        string? detailsJson = null)
         => new(
             DeterministicGuid.Compute(rackId, driftType, DriftSubjectType.SwitchPort, subjectKey, expectedValue, actualValue),
             driftType,
@@ -230,7 +242,7 @@ public static class DriftEngine
             expectedValue,
             actualValue,
             why,
-            DetailsJson: null);
+            DetailsJson: detailsJson);
 
     private static Dictionary<(string SwitchName, string PortName), DesiredPortIntent> IndexDesiredPorts(
         DesiredStateTree desired, List<string> diagnostics)

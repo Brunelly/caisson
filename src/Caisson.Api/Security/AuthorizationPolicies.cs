@@ -21,4 +21,12 @@ public static class AuthorizationPolicies
     /// configure recurring discovery (story #8, AC4).
     /// </summary>
     public const string ScheduleManage = "ScheduleManage";
+
+    /// <summary>
+    /// Requires the elevated <see cref="CaissonRoles.DriftApply"/> permission (story #65, AC1). Gates the
+    /// single-change drift-correction apply endpoint — the first write endpoint in the API — and is
+    /// deliberately NOT satisfied by <see cref="CaissonRoles.Operator"/> alone, so an Operator without this
+    /// permission is rejected with 403.
+    /// </summary>
+    public const string DriftApply = "DriftApply";
 }

@@ -27,14 +27,17 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
 
     /// <summary>
     /// Fail-closed startup validation (finding #17), mirroring <see cref="TestAuthStartupGuard"/>: every
-    /// configured mapping value must be a genuine canonical role (a typo — e.g. "Admni" — would otherwise
-    /// silently mint a claim that never satisfies any <c>RequireRole</c> policy, effectively locking that
-    /// mapping's holders out without any startup signal), and outside Development the dictionary must be
-    /// non-empty, since an empty map means every deployment would otherwise depend entirely on the
-    /// roles-claim passthrough with no group-based grant reachable at all.
+    /// configured mapping value must be a genuine canonical role or permission (a typo — e.g. "Admni" —
+    /// would otherwise silently mint a claim that never satisfies any <c>RequireRole</c> policy,
+    /// effectively locking that mapping's holders out without any startup signal), and outside Development
+    /// the dictionary must be non-empty, since an empty map means every deployment would otherwise depend
+    /// entirely on the roles-claim passthrough with no group-based grant reachable at all. The legal
+    /// target set is <see cref="CaissonRoles.AllMappableTargets"/> (story #65) — the viewing roles in
+    /// <see cref="CaissonRoles.All"/> plus the elevated <see cref="CaissonRoles.DriftApply"/> permission,
+    /// which is deliberately NOT part of <see cref="CaissonRoles.All"/> itself.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when a mapping value is not in <see cref="CaissonRoles.All"/>, or when
+    /// Thrown when a mapping value is not in <see cref="CaissonRoles.AllMappableTargets"/>, or when
     /// <paramref name="mappings"/> is empty outside Development.
     /// </exception>
     public static void ValidateMappings(IHostEnvironment environment, IReadOnlyDictionary<string, string> mappings)
@@ -44,12 +47,12 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
 
         foreach (var (source, target) in mappings)
         {
-            if (!CaissonRoles.All.Contains(target, StringComparer.Ordinal))
+            if (!CaissonRoles.AllMappableTargets.Contains(target, StringComparer.Ordinal))
             {
                 throw new InvalidOperationException(
                     $"Authentication:RoleMappings maps '{source}' to '{target}', which is not a canonical " +
-                    $"Caisson role ({string.Join(", ", CaissonRoles.All)}). Refusing to start rather than " +
-                    "silently mint an unrecognised role claim.");
+                    $"Caisson role/permission ({string.Join(", ", CaissonRoles.AllMappableTargets)}). Refusing " +
+                    "to start rather than silently mint an unrecognised role claim.");
             }
         }
 
@@ -88,7 +91,7 @@ public sealed class RoleClaimsTransformation : IClaimsTransformation
                 {
                     canonical.Add(mappedRole);
                 }
-                else if (CaissonRoles.All.Contains(claim.Value, StringComparer.Ordinal))
+                else if (CaissonRoles.AllMappableTargets.Contains(claim.Value, StringComparer.Ordinal))
                 {
                     canonical.Add(claim.Value);
                 }

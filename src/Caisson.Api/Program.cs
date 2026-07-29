@@ -183,7 +183,16 @@ builder.Services.AddAuthorizationBuilder()
     // Story #8: trigger/cancel are Admin+Operator; schedule management is Admin-only. Fail-closed is
     // automatic (fallback → 401 for anonymous; RequireRole → 403 for a recognised-but-insufficient role).
     .AddPolicy(AuthorizationPolicies.DiscoveryTrigger, policy => policy.RequireRole(CaissonRoles.Operators))
-    .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin));
+    .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin))
+    // Story #65: the drift-apply endpoint requires the DriftApply role/permission alone — deliberately NOT
+    // CaissonRoles.Operators, so an Operator without this elevated grant is rejected (AC1).
+    .AddPolicy(AuthorizationPolicies.DriftApply, policy => policy.RequireRole(CaissonRoles.DriftApply));
+
+// Story #65 (AC1): a thin decorator over the framework's default authorization-middleware result handler
+// that logs a structured warning (subject, path, correlation id) on every Forbidden result, then delegates
+// — applies uniformly to every policy in the API, not just DriftApply.
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler,
+    Caisson.Api.Security.ForbidLoggingAuthorizationResultHandler>();
 
 // CORS (story #10): the Angular SPA is served from a separate origin. No policy existed before this;
 // allowed origins are config-driven (Cors:AllowedOrigins) and AllowAnyOrigin is never used. Only
@@ -238,6 +247,18 @@ builder.Services.AddRateLimiter(options =>
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    // Story #65: the drift-apply endpoint is the first destructive, device-mutating write in the API —
+    // a materially tighter window than even DiscoveryTrigger, layered on top of the global limiter.
+    options.AddPolicy(RateLimitPolicies.DriftApply, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitionKey(httpContext),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));

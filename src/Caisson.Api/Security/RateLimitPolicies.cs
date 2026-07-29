@@ -15,4 +15,10 @@ public static class RateLimitPolicies
     /// <see cref="DiscoveryTrigger"/>, layered on top of the global limiter.
     /// </summary>
     public const string GitWebhook = "GitWebhook";
+
+    /// <summary>
+    /// A tight fixed window for the drift-apply endpoint (story #65) — the first destructive,
+    /// device-mutating write in the API — mirroring <see cref="DiscoveryTrigger"/>'s shape.
+    /// </summary>
+    public const string DriftApply = "DriftApply";
 }
