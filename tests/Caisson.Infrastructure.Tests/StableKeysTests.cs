@@ -41,7 +41,25 @@ public sealed class StableKeysTests
 
     [Fact]
     public void SwitchPort_is_switch_key_pipe_port_name()
-        => StableKeys.ForSwitchPort("dev-1|SER-1", "ether1").Should().Be("dev-1%7CSER-1|ether1");
+        // switchKey is itself an already-composed, already-escaped key (ForSwitch's own output) — it is
+        // appended verbatim, not re-escaped, so its internal '|' stays a real separator rather than being
+        // turned into the literal text "%7C".
+        => StableKeys.ForSwitchPort("dev-1|SER-1", "ether1").Should().Be("dev-1|SER-1|ether1");
+
+    [Fact]
+    public void SwitchPort_composed_from_a_real_ForSwitch_key_does_not_double_escape_the_device_key_separator()
+    {
+        // Regression test: ForSwitchPort must treat its switchKey parameter as an already-composed,
+        // already-escaped key (ForSwitch's own output), not a raw segment to escape again — escaping it
+        // a second time turns the real separator between the device key and serial into the literal three
+        // characters "%7C", corrupting the key end-to-end callers (the API route, the SPA's URL builder)
+        // must be able to reconstruct.
+        var switchKey = StableKeys.ForSwitch("sw1", "SW-1", null);
+        var portKey = StableKeys.ForSwitchPort(switchKey, "1/1/1");
+
+        portKey.Should().Be("sw1|SW-1|1/1/1");
+        portKey.Should().NotContain("%7C");
+    }
 
     [Fact]
     public void SwitchPort_escapes_a_pipe_in_the_port_name_so_segments_cannot_collide()
@@ -57,7 +75,7 @@ public sealed class StableKeysTests
     public void TryForSwitchPort_succeeds_when_port_name_is_present()
     {
         StableKeys.TryForSwitchPort("dev-1|SER-1", "ether1", out var key).Should().BeTrue();
-        key.Should().Be("dev-1%7CSER-1|ether1");
+        key.Should().Be("dev-1|SER-1|ether1");
     }
 
     [Theory]

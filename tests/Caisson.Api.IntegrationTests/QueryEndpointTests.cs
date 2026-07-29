@@ -82,7 +82,7 @@ public sealed class QueryEndpointTests
         var diffs = doc.RootElement.GetProperty("diffs").EnumerateArray().ToList();
         diffs.Should().Contain(d =>
             d.GetProperty("entityType").GetString() == "Server"
-            && d.GetProperty("entityStableKey").GetString() == "uuid-1"
+            && d.GetProperty("entityStableKey").GetString() == _factory.Seed.ServerStableKey
             && d.GetProperty("changeType").GetString() == "Modified");
     }
 
@@ -91,12 +91,16 @@ public sealed class QueryEndpointTests
     {
         Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
-        using var doc = await GetJson($"{Base}/entities/Server/uuid-1");
+        // "srv1|uuid-1" — StableKeys.ForServer prefixes with the device key (finding #3); '|' is
+        // percent-encoded (Uri.EscapeDataString does not touch the unreserved 'srv1'/'uuid-1' halves).
+        var key = Uri.EscapeDataString(_factory.Seed.ServerStableKey);
+        using var doc = await GetJson($"{Base}/entities/Server/{key}");
         doc.RootElement.GetProperty("latest").ValueKind.Should().NotBe(JsonValueKind.Null);
         doc.RootElement.GetProperty("history").GetArrayLength().Should().BeGreaterThan(0);
 
-        using var history = await GetJson($"{Base}/entities/Server/history/uuid-1");
-        history.RootElement.GetArrayLength().Should().BeGreaterThan(0);
+        // Finding #4: history is now a PagedResult<EntityDiffDto>, not a bare array.
+        using var history = await GetJson($"{Base}/entities/Server/history/{key}");
+        history.RootElement.GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [SkippableFact]
@@ -104,17 +108,19 @@ public sealed class QueryEndpointTests
     {
         Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
-        // The seeded switch port "1/1/1" has stable key "SW-1|1/1/1" — the '/' segments must be bound by
-        // the catch-all route, not split into extra path segments (which would 404). The '|' is encoded;
-        // the slashes are left literal so the catch-all captures them.
-        const string key = "SW-1%7C1/1/1";
+        // The seeded switch port "1/1/1" has stable key "sw1|SW-1|1/1/1" — StableKeys.ForSwitch prefixes
+        // with the device key "sw1" (finding #3), then ForSwitchPort appends the port name. The '/'
+        // segments must be bound by the catch-all route, not split into extra path segments (which would
+        // 404). Both '|' separators are encoded; the slashes are left literal so the catch-all captures them.
+        const string key = "sw1%7CSW-1%7C1/1/1";
 
         using var detail = await GetJson($"{Base}/entities/SwitchPort/{key}");
-        detail.RootElement.GetProperty("stableKey").GetString().Should().Be("SW-1|1/1/1");
+        detail.RootElement.GetProperty("stableKey").GetString().Should().Be("sw1|SW-1|1/1/1");
         detail.RootElement.GetProperty("history").GetArrayLength().Should().BeGreaterThan(0);
 
+        // Finding #4: history is now a PagedResult<EntityDiffDto>, not a bare array.
         using var history = await GetJson($"{Base}/entities/SwitchPort/history/{key}");
-        history.RootElement.GetArrayLength().Should().BeGreaterThan(0);
+        history.RootElement.GetProperty("items").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [SkippableFact]

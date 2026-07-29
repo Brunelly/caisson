@@ -51,12 +51,19 @@ public static class StableKeys
         return ForSwitch(@switch.ExternalDeviceKey, @switch.Serial, @switch.ManagementIp);
     }
 
-    /// <summary>Stable key for a switch port: <c>{switchKey}|{portName}</c>, with each segment escaped.</summary>
+    /// <summary>
+    /// Stable key for a switch port: <c>{switchKey}|{portName}</c>. <paramref name="switchKey"/> is
+    /// itself an already-composed, already-escaped key (the output of <see cref="ForSwitch(Switch)"/>,
+    /// carrying its own internal <c>|</c> between the device key and serial/IP) — it is appended verbatim,
+    /// NOT re-escaped, so that internal separator stays a real segment boundary rather than being turned
+    /// into the literal three characters <c>%7C</c>. Only <paramref name="portName"/>, the one genuinely
+    /// raw/unescaped device-reported value here, is escaped.
+    /// </summary>
     public static string ForSwitchPort(string switchKey, string portName)
     {
         ArgumentException.ThrowIfNullOrEmpty(switchKey);
         ArgumentException.ThrowIfNullOrEmpty(portName);
-        return EscapeSegment(switchKey) + "|" + EscapeSegment(portName);
+        return switchKey + "|" + EscapeSegment(portName);
     }
 
     /// <summary>Stable key for a persisted <see cref="SwitchPort"/> given its owning switch's key.</summary>
