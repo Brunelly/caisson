@@ -4,6 +4,7 @@
 // construction: only the discriminant and HTTP status survive into the result, never response bodies.
 import { HttpErrorResponse } from '@angular/common/http';
 import { catchError, map, type Observable, of } from 'rxjs';
+import { CORRELATION_ID_HEADER } from '../../core/auth/auth.interceptor';
 
 export type ApiResult<T> =
   | { kind: 'ok'; value: T }
@@ -14,9 +15,12 @@ export type ApiResult<T> =
   // 0032/0033) — reasonCode is read straight off the ProblemDetails extension, never parsed further.
   | { kind: 'unprocessable'; reasonCode: string | null }
   // 429: the drift-apply endpoint's fixed-window rate-limit policy (Caisson.Api.Security.
-  // RateLimitPolicies.DriftApply) short-circuits before the action runs, so there is no response body.
-  | { kind: 'rateLimited' }
-  | { kind: 'error'; status: number };
+  // RateLimitPolicies.DriftApply) short-circuits before the action runs, so there is no response body —
+  // correlationId (NFR4, echoed by the backend's correlation-id middleware even on non-2xx responses)
+  // is the only thing worth surfacing to the user for a support request.
+  | { kind: 'rateLimited'; correlationId: string | null }
+  // Unexpected statuses (5xx etc.) likewise surface correlationId for the same reason.
+  | { kind: 'error'; status: number; correlationId: string | null };
 
 export function toApiResult<T>(source: Observable<T>): Observable<ApiResult<T>> {
   return source.pipe(
@@ -45,13 +49,17 @@ export function apiResultFromError<T>(error: unknown): Exclude<ApiResult<T>, { k
     case 422:
       return { kind: 'unprocessable', reasonCode: extractReasonCode(error) };
     case 429:
-      return { kind: 'rateLimited' };
+      return { kind: 'rateLimited', correlationId: extractCorrelationId(error) };
     default:
-      return { kind: 'error', status: error.status };
+      return { kind: 'error', status: error.status, correlationId: extractCorrelationId(error) };
   }
 }
 
 function extractReasonCode(error: HttpErrorResponse): string | null {
   const body = error.error as { reasonCode?: unknown } | null;
   return body && typeof body.reasonCode === 'string' ? body.reasonCode : null;
+}
+
+function extractCorrelationId(error: HttpErrorResponse): string | null {
+  return error.headers.get(CORRELATION_ID_HEADER);
 }

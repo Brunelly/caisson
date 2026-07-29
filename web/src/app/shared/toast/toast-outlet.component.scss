@@ -1,0 +1,61 @@
+@use '../styles/tokens';
+
+.toast-outlet {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 24rem;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+.toast--success {
+  background: var(--color-status-confirmed-bg);
+  color: var(--color-status-confirmed);
+}
+
+.toast--error {
+  background: var(--color-status-unmapped-bg);
+  color: var(--color-status-unmapped);
+}
+
+.toast__text {
+  flex: 1;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.toast__correlation {
+  // Same colour as the toast text (never dimmed via opacity, which would drop contrast below WCAG AA
+  // against the toast background) — distinguished by size only.
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+}
+
+.toast__dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0.125rem;
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
+  @include tokens.focus-visible-ring;
+}

@@ -62,7 +62,23 @@ describe('DriftApplyService', () => {
     const req = httpMock.expectOne(`${environment.apiBaseUrl}/api/racks/${rackId}/drift/apply`);
     req.flush('too many requests', { status: 429, statusText: 'Too Many Requests' });
 
-    await expect(resultPromise).resolves.toEqual({ kind: 'rateLimited' });
+    await expect(resultPromise).resolves.toEqual({ kind: 'rateLimited', correlationId: null });
+  });
+
+  it('carries the echoed X-Correlation-Id (NFR4) on a 429 response', async () => {
+    const resultPromise = firstValueFrom(service.applyCorrection(rackId, 'item-1'));
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/api/racks/${rackId}/drift/apply`);
+    req.flush('too many requests', {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'X-Correlation-Id': 'corr-429' },
+    });
+
+    await expect(resultPromise).resolves.toEqual({
+      kind: 'rateLimited',
+      correlationId: 'corr-429',
+    });
   });
 
   it('maps a 403 response to a forbidden result', async () => {

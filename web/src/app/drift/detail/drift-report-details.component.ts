@@ -8,6 +8,7 @@ import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
+import { ApplyActionComponent } from '../apply/apply-action.component';
 import type { DriftItemDto } from '../model/drift-contracts';
 import { DriftReportService } from '../services/drift-report.service';
 import { DriftSeverityBadgeComponent } from '../shared/drift-severity-badge.component';
@@ -23,7 +24,7 @@ interface DetailEntry {
 @Component({
   selector: 'app-drift-report-details',
   standalone: true,
-  imports: [DatePipe, DriftSeverityBadgeComponent],
+  imports: [DatePipe, DriftSeverityBadgeComponent, ApplyActionComponent],
   styleUrl: './drift-report-details.component.scss',
   template: `
     <section class="drift-detail" role="main">
@@ -73,7 +74,11 @@ interface DetailEntry {
         }
 
         <section class="drift-detail__apply-slot" aria-label="Apply action">
-          <!-- Apply action slot: ApplyActionComponent is wired in here by story #67 step 4. -->
+          <app-apply-action
+            [item]="driftItem"
+            [rackId]="currentRackId() ?? ''"
+            (refreshRequested)="refresh()"
+          />
         </section>
       }
     </section>
