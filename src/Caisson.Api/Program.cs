@@ -73,6 +73,12 @@ builder.Services.AddCaissonGitIngestion(builder.Configuration);
 // scheduler/event-runner/retention-pruner background services.
 builder.Services.AddCaissonDrift(builder.Configuration);
 
+// Single-change drift-correction apply (story #65, ADR 0032): the write-capable RouterOS driver, the
+// request-apply/query job service, the revalidation+device-apply orchestrator, and the background
+// runner. Builds on AddCaissonOrchestration's driver registries; Caisson.Api still names no driver
+// assembly (Api_references_no_driver_assembly stays green).
+builder.Services.AddCaissonDriftApply(builder.Configuration);
+
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
 // to boot rather than run with an ambiguous or silently-ignored security setting.

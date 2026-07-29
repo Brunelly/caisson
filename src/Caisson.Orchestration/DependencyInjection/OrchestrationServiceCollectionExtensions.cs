@@ -4,6 +4,7 @@ using Caisson.Drivers.MikroTik.DependencyInjection;
 using Caisson.Drivers.Redfish.DependencyInjection;
 using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Orchestration.Discovery;
+using Caisson.Orchestration.DriftApply;
 using Caisson.Orchestration.Options;
 using Caisson.Orchestration.RackDefinitions;
 using Caisson.Orchestration.Runner;
@@ -60,6 +61,36 @@ public static class OrchestrationServiceCollectionExtensions
         // Background hosts (each honours its RunnerEnabled/SchedulerEnabled option).
         services.AddHostedService<DiscoveryJobRunner>();
         services.AddHostedService<DiscoveryScheduler>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the single-change drift-apply orchestration layer (story #65): the write-capable RouterOS
+    /// driver, the job/query service, the revalidation+device-apply orchestrator, and the background
+    /// runner. Assumes <see cref="AddCaissonOrchestration"/> has already been called on the same
+    /// <paramref name="services"/> — it builds the shared driver registries
+    /// (<c>AddCaissonDriverRegistry()</c>) that this method's write-capable driver factory registers into.
+    /// Keeps <c>Caisson.Api</c> driver-assembly-free: it references only this project, never
+    /// <c>Caisson.Drivers.*</c> directly (the <c>Api_references_no_driver_assembly</c> guard).
+    /// </summary>
+    public static IServiceCollection AddCaissonDriftApply(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<DriftApplyOrchestrationOptions>()
+            .Bind(configuration.GetSection(DriftApplyOrchestrationOptions.SectionName));
+
+        // Write-capable driver (Orchestration is the one layer allowed to touch Caisson.Drivers.*).
+        services.AddMikroTikRouterOsSwitchMutatingDriver();
+
+        services.TryAddSingleton<DriftApplyJobSignal>();
+
+        services.TryAddScoped<IDriftApplyJobService, DriftApplyJobService>();
+        services.TryAddScoped<IDriftApplyOrchestrator, DriftApplyOrchestrator>();
+
+        services.AddHostedService<DriftApplyJobRunner>();
 
         return services;
     }

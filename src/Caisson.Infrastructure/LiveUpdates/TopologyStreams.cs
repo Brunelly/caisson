@@ -13,4 +13,8 @@ public static class TopologyStreams
     /// <summary>The seq stream carrying discovery-job status events for a single job.</summary>
     public static string ForJob(Guid jobId)
         => "job:" + jobId.ToString("N", CultureInfo.InvariantCulture);
+
+    /// <summary>The seq stream carrying drift-apply-job status events for a single job (story #65).</summary>
+    public static string ForDriftApplyJob(Guid jobId)
+        => "drift-apply-job:" + jobId.ToString("N", CultureInfo.InvariantCulture);
 }

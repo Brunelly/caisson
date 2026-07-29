@@ -13,6 +13,7 @@ namespace Caisson.Infrastructure.LiveUpdates;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(SnapshotUpdatedEvent), "snapshot-updated")]
 [JsonDerivedType(typeof(DiscoveryJobStatusChangedEvent), "discovery-job-status-changed")]
+[JsonDerivedType(typeof(DriftApplyJobStatusChangedEvent), "drift-apply-job-status-changed")]
 [JsonDerivedType(typeof(HeartbeatEvent), "heartbeat")]
 public abstract record TopologyEvent
 {
