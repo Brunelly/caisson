@@ -36,6 +36,16 @@
   color: var(--color-text-muted);
 }
 
+.apply-action__job-link {
+  color: var(--color-link);
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  @include tokens.focus-visible-ring;
+}
+
 .apply-action__stale {
   display: flex;
   flex-direction: column;

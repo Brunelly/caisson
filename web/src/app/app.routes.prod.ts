@@ -27,5 +27,11 @@ export const routes: Routes = [
         (m) => m.DriftReportDetailsComponent,
       ),
   },
+  {
+    path: 'racks/:rackId/drift/jobs/:jobId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
   { path: 'access-denied', component: AccessDeniedComponent },
 ];

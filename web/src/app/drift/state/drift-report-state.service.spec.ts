@@ -135,7 +135,10 @@ describe('DriftReportStateService', () => {
 
     service.loadRackDrift('rack-1');
 
-    expect(service.jobStatusByDriftItemId().get('item-1')).toBe('Executing');
+    expect(service.jobStatusByDriftItemId().get('item-1')).toEqual({
+      jobId: 'j2',
+      status: 'Executing',
+    });
   });
 
   it('renders "—" (via the consumer) when no job exists for a drift item — covered by an empty map', () => {

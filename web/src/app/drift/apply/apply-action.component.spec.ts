@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { Subject, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
@@ -74,6 +75,7 @@ describe('ApplyActionComponent', () => {
     TestBed.configureTestingModule({
       imports: [HostComponent],
       providers: [
+        provideRouter([]),
         {
           provide: DriftPermissionService,
           useValue: { canApplyDrift: signal(canApplyDrift) },

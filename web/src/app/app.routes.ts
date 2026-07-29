@@ -26,6 +26,12 @@ export const routes: Routes = [
         (m) => m.DriftReportDetailsComponent,
       ),
   },
+  {
+    path: 'racks/:rackId/drift/jobs/:jobId',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
   { path: 'access-denied', component: AccessDeniedComponent },
   // Dev/CI-only route (no roleGuard, fixture data + a fake SignalR hub — see dev-harness.providers.ts):
   // lets Playwright exercise the real topology page/search/details-panel/graph components in a real

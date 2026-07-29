@@ -9,14 +9,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { ParamMap } from '@angular/router';
 import { combineLatest } from 'rxjs';
-import type {
-  DriftApplyJobStatus,
-  DriftItemDto,
-  DriftSeverity,
-  DriftType,
-} from '../model/drift-contracts';
+import type { DriftItemDto, DriftSeverity, DriftType } from '../model/drift-contracts';
 import { DriftSeverityBadgeComponent } from '../shared/drift-severity-badge.component';
-import type { DriftReportFilters } from '../state/drift-report-state.service';
+import type { DriftItemJobStatus, DriftReportFilters } from '../state/drift-report-state.service';
 import { DriftReportStateService, EMPTY_DRIFT_FILTERS } from '../state/drift-report-state.service';
 
 const SEVERITY_OPTIONS: readonly DriftSeverity[] = ['High', 'Medium', 'Low'];
@@ -149,7 +144,18 @@ export function driftFiltersToQueryParams(
                 <td><app-drift-severity-badge [severity]="item.severity" /></td>
                 <td>{{ item.createdAt | date: 'medium' }}</td>
                 <td>{{ item.actionable ? 'Yes' : 'No' }}</td>
-                <td>{{ statusFor(item) }}</td>
+                <td>
+                  @if (jobFor(item); as job) {
+                    <a
+                      class="drift-list__status-link"
+                      [routerLink]="['/racks', state.rackId(), 'drift', 'jobs', job.jobId]"
+                    >
+                      {{ job.status }}
+                    </a>
+                  } @else {
+                    —
+                  }
+                </td>
               </tr>
             }
           </tbody>
@@ -188,8 +194,8 @@ export class DriftReportsListComponent {
       });
   }
 
-  protected statusFor(item: DriftItemDto): DriftApplyJobStatus | '—' {
-    return this.state.jobStatusByDriftItemId().get(item.driftItemId) ?? '—';
+  protected jobFor(item: DriftItemDto): DriftItemJobStatus | null {
+    return this.state.jobStatusByDriftItemId().get(item.driftItemId) ?? null;
   }
 
   protected actionableSelectValue(): string {

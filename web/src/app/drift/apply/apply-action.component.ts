@@ -6,6 +6,7 @@
 // on the backend's one-active-job-per-item dedup (ADR 0032) — there is no client idempotency key.
 import { Dialog } from '@angular/cdk/dialog';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { ToastService } from '../../shared/toast/toast.service';
@@ -27,7 +28,7 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
 @Component({
   selector: 'app-apply-action',
   standalone: true,
-  imports: [JobStatusTimelineComponent],
+  imports: [RouterLink, JobStatusTimelineComponent],
   styleUrl: './apply-action.component.scss',
   template: `
     @if (permission.canApplyDrift()) {
@@ -53,7 +54,15 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
 
       @if (activeJobId(); as jobId) {
         <div class="apply-action__job" role="status">
-          <p>Apply job {{ jobId }}</p>
+          <p>
+            Apply job
+            <a
+              class="apply-action__job-link"
+              [routerLink]="['/racks', rackId(), 'drift', 'jobs', jobId]"
+            >
+              {{ jobId }}
+            </a>
+          </p>
           <app-job-status-timeline [status]="liveStatus() ?? 'Pending'" />
           @if (isTerminal()) {
             <p class="apply-action__outcome">{{ outcomeText() }}</p>

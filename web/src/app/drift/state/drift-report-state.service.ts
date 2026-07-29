@@ -11,6 +11,11 @@ import type {
   DriftSeverity,
   DriftType,
 } from '../model/drift-contracts';
+
+export interface DriftItemJobStatus {
+  jobId: string;
+  status: DriftApplyJobStatus;
+}
 import { DriftApplyService } from '../services/drift-apply.service';
 import { DriftReportService } from '../services/drift-report.service';
 
@@ -41,7 +46,7 @@ export class DriftReportStateService {
   private readonly _items = signal<DriftItemDto[]>([]);
   private readonly _nextCursor = signal<string | null>(null);
   private readonly _filters = signal<DriftReportFilters>(EMPTY_DRIFT_FILTERS);
-  private readonly _jobStatusByDriftItemId = signal<ReadonlyMap<string, DriftApplyJobStatus>>(
+  private readonly _jobStatusByDriftItemId = signal<ReadonlyMap<string, DriftItemJobStatus>>(
     new Map(),
   );
   private readonly _loading = signal(false);
@@ -153,13 +158,13 @@ export class DriftReportStateService {
         // Non-fatal: the item list itself loaded fine, only the derived status column is unavailable.
         return;
       }
-      const byDriftItemId = new Map<string, DriftApplyJobStatus>();
+      const byDriftItemId = new Map<string, DriftItemJobStatus>();
       const newestFirst = [...result.value.items].sort(
         (a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt),
       );
       for (const job of newestFirst) {
         if (!byDriftItemId.has(job.driftItemId)) {
-          byDriftItemId.set(job.driftItemId, job.status);
+          byDriftItemId.set(job.driftItemId, { jobId: job.jobId, status: job.status });
         }
       }
       this._jobStatusByDriftItemId.set(byDriftItemId);

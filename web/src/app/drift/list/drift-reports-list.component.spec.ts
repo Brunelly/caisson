@@ -75,7 +75,7 @@ describe('DriftReportsListComponent', () => {
       items: () => [item()],
       nextCursor: () => null,
       filters: () => EMPTY_DRIFT_FILTERS,
-      jobStatusByDriftItemId: () => new Map([['item-1', 'Executing']]),
+      jobStatusByDriftItemId: () => new Map([['item-1', { jobId: 'job-99', status: 'Executing' }]]),
       loading: () => false,
       loadingMore: () => false,
       error: () => null,
@@ -113,14 +113,14 @@ describe('DriftReportsListComponent', () => {
     });
   });
 
-  it('renders the derived job status from the state service, joined by driftItemId', () => {
+  it('renders the derived job status as a link to the audit view, joined by driftItemId', () => {
     fixture.detectChanges();
     paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));
     queryParamMap$.next(convertToParamMap({}));
     fixture.detectChanges();
 
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('Executing');
+    const link: HTMLAnchorElement = fixture.nativeElement.querySelector('.drift-list__status-link');
+    expect(link.textContent?.trim()).toBe('Executing');
   });
 
   it('renders "—" for a drift item with no matching apply job', () => {
@@ -128,10 +128,10 @@ describe('DriftReportsListComponent', () => {
     paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));
     queryParamMap$.next(convertToParamMap({}));
 
-    const statusFor = (
-      fixture.componentInstance as unknown as { statusFor(i: DriftItemDto): string }
-    ).statusFor(item({ driftItemId: 'no-job-item' }));
-    expect(statusFor).toBe('—');
+    const jobFor = (
+      fixture.componentInstance as unknown as { jobFor(i: DriftItemDto): unknown }
+    ).jobFor(item({ driftItemId: 'no-job-item' }));
+    expect(jobFor).toBeNull();
   });
 
   it('navigates with a merged severity query param on filter change (state survives navigation)', () => {
