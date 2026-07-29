@@ -73,6 +73,12 @@
     -->
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    <!--
+      Interfaces-only health-check package for DriftComputationHealthCheck (story #64): IHealthCheck/
+      HealthCheckResult only, no ASP.NET Core hosting dependency — lets the plain class-library
+      Caisson.Infrastructure implement IHealthCheck without a FrameworkReference to Microsoft.AspNetCore.App.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.8" />
   </ItemGroup>
 
   <ItemGroup>

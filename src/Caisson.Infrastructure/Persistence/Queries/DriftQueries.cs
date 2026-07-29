@@ -14,6 +14,33 @@ namespace Caisson.Infrastructure.Persistence.Queries;
 /// </summary>
 public static class DriftQueries
 {
+    /// <summary>
+    /// Resolves the most recently (re)computed drift report across ALL racks, or <c>null</c> if none has
+    /// been computed yet — the last-run status <c>DriftComputationHealthCheck</c> reports (mirrors
+    /// <c>DesiredStateIngestionRunQueries.LatestIngestionRunAsync</c>'s global-latest shape).
+    /// </summary>
+    public static Task<DriftReport?> LatestReportAcrossRacksAsync(
+        this CaissonDbContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return context.DriftReports.AsNoTracking()
+            .OrderByDescending(r => r.ComputedAtUtc)
+            .ThenByDescending(r => r.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>The timestamp of the most recent successful drift computation across all racks, if any.</summary>
+    public static Task<DateTime?> LastSuccessfulComputationAtUtcAsync(
+        this CaissonDbContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return context.DriftReports
+            .Where(r => r.Status == DriftComputationStatus.Succeeded)
+            .MaxAsync(r => (DateTime?)r.ComputedAtUtc, cancellationToken);
+    }
+
     /// <summary>Resolves the latest drift report for a rack, or <c>null</c> if none has been computed yet.</summary>
     public static Task<DriftReport?> LatestReportForRackAsync(
         this CaissonDbContext context, Guid rackId, CancellationToken cancellationToken = default)

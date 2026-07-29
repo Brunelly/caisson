@@ -39,6 +39,8 @@
     <PackageReference Include="StackExchange.Redis" />
     <!-- Bind RealtimeOptions from the Realtime configuration section (OptionsBuilder.Bind / Get<T>). -->
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <!-- DriftComputationHealthCheck implements IHealthCheck (story #64) without an ASP.NET Core framework reference. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" />
   </ItemGroup>
 
 </Project>

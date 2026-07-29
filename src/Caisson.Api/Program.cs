@@ -277,6 +277,10 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 // /health/ready down.
 health.AddCheck<Caisson.Api.HealthChecks.GitIngestionHealthCheck>("git-ingestion", tags: new[] { "ready" });
 
+// Story #64: reports the drift computation subsystem's last-run status across all racks; same
+// Healthy/Degraded-only philosophy — a failing/stuck drift computation must not take /health/ready down.
+health.AddCheck<Caisson.Infrastructure.HealthChecks.DriftComputationHealthCheck>("drift-computation", tags: new[] { "ready" });
+
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>
 {

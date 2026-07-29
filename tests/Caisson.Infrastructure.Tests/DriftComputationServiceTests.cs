@@ -167,10 +167,47 @@ public sealed class DriftComputationServiceTests : IClassFixture<PostgresFixture
         (await context.DriftReports.CountAsync(r => r.RackId == rackId)).Should().Be(0);
     }
 
-    private static DriftComputationService Service(CaissonDbContext context)
+    [Fact]
+    public async Task Successful_compute_logs_rack_desired_revision_snapshot_report_and_correlation_ids()
+    {
+        // NFR4: every drift computation must emit structured logs carrying rackId, desiredRevisionId,
+        // observedSnapshotId, driftReportId and correlationId — verified here via a capturing test sink.
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync("rack-logging");
+        await SeedDesiredAsync("rack-logging", accessVlan: 10);
+        await SeedSnapshotAsync(rackId, pvid: 20);
+
+        var logger = new CapturingLogger<DriftComputationService>();
+        var correlationId = Guid.NewGuid();
+
+        Guid driftReportId;
+        Guid desiredRevisionId;
+        Guid observedSnapshotId;
+        await using (var context = _fixture.CreateContext())
+        {
+            await Service(context, logger).ComputeAndPersistAsync(rackId, correlationId);
+        }
+
+        await using (var verify = _fixture.CreateContext())
+        {
+            var report = await verify.LatestReportForRackAsync(rackId);
+            driftReportId = report!.Id;
+            desiredRevisionId = report.DesiredRevisionId;
+            observedSnapshotId = report.ObservedSnapshotId;
+        }
+
+        var successLine = logger.Messages.Should().ContainSingle(m => m.StartsWith("Drift computed", StringComparison.Ordinal)).Subject;
+        successLine.Should().Contain(rackId.ToString());
+        successLine.Should().Contain(desiredRevisionId.ToString());
+        successLine.Should().Contain(observedSnapshotId.ToString());
+        successLine.Should().Contain(driftReportId.ToString());
+        successLine.Should().Contain(correlationId.ToString());
+    }
+
+    private static DriftComputationService Service(CaissonDbContext context, Microsoft.Extensions.Logging.ILogger<DriftComputationService>? logger = null)
         => new(
             context, new GuidTopologyIdGenerator(), TimeProvider.System,
-            Options.Create(new DriftComputationOptions()), NullLogger<DriftComputationService>.Instance);
+            Options.Create(new DriftComputationOptions()), logger ?? NullLogger<DriftComputationService>.Instance);
 
     private async Task<Guid> SeedRackAsync(string externalKey)
     {

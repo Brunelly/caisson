@@ -82,12 +82,19 @@ public sealed class DriftComputationService : IDriftComputationService
             var engineInput = new DesiredStateTree(desiredTree.Version, desiredTree.Rack, desiredTree.Switches, desiredTree.Ports);
             var result = DriftEngine.Compute(engineInput, observed, rackId, computedAtUtc, _options.Value);
 
-            await PersistWithRetryAsync(rackId, desiredRevisionId, observedSnapshotId, correlationId, computedAtUtc, result, cancellationToken);
+            var driftReportId = await PersistWithRetryAsync(rackId, desiredRevisionId, observedSnapshotId, correlationId, computedAtUtc, result, cancellationToken);
 
             _logger.LogInformation(
                 "Drift computed rackId={RackId} desiredRevisionId={DesiredRevisionId} observedSnapshotId={ObservedSnapshotId} " +
-                "totalItems={TotalItems} hasAmbiguities={HasAmbiguities} isTruncated={IsTruncated} correlationId={CorrelationId}",
-                rackId, desiredRevisionId, observedSnapshotId, result.Items.Count, result.HasAmbiguities, result.IsTruncated, correlationId);
+                "driftReportId={DriftReportId} totalItems={TotalItems} hasAmbiguities={HasAmbiguities} isTruncated={IsTruncated} correlationId={CorrelationId}",
+                rackId, desiredRevisionId, observedSnapshotId, driftReportId, result.Items.Count, result.HasAmbiguities, result.IsTruncated, correlationId);
+
+            if (result.IsTruncated)
+            {
+                _logger.LogWarning(
+                    "Drift report truncated rackId={RackId} driftReportId={DriftReportId} correlationId={CorrelationId}: {Diagnostics}",
+                    rackId, driftReportId, correlationId, string.Join(" | ", result.Diagnostics));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -103,7 +110,7 @@ public sealed class DriftComputationService : IDriftComputationService
         }
     }
 
-    private async Task PersistWithRetryAsync(
+    private async Task<Guid> PersistWithRetryAsync(
         Guid rackId, Guid desiredRevisionId, Guid observedSnapshotId, Guid correlationId, DateTime computedAtUtc,
         DriftComputationResult result, CancellationToken cancellationToken)
     {
@@ -111,8 +118,7 @@ public sealed class DriftComputationService : IDriftComputationService
         {
             try
             {
-                await PersistAsync(rackId, desiredRevisionId, observedSnapshotId, correlationId, computedAtUtc, result, cancellationToken);
-                return;
+                return await PersistAsync(rackId, desiredRevisionId, observedSnapshotId, correlationId, computedAtUtc, result, cancellationToken);
             }
             catch (DbUpdateException ex) when (attempt < MaxPersistAttempts && IsUniqueViolation(ex))
             {
@@ -123,7 +129,7 @@ public sealed class DriftComputationService : IDriftComputationService
         }
     }
 
-    private async Task PersistAsync(
+    private async Task<Guid> PersistAsync(
         Guid rackId, Guid desiredRevisionId, Guid observedSnapshotId, Guid correlationId, DateTime computedAtUtc,
         DriftComputationResult result, CancellationToken cancellationToken)
     {
@@ -188,6 +194,7 @@ public sealed class DriftComputationService : IDriftComputationService
 
         // Single implicit transaction → all-or-nothing (mirrors TopologySnapshotIngestionService, NFR3).
         await _context.SaveChangesAsync(cancellationToken);
+        return report.Id;
     }
 
     private async Task PersistFailureAsync(
@@ -235,6 +242,11 @@ public sealed class DriftComputationService : IDriftComputationService
                 })));
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            _logger.LogWarning(
+                "Drift report marked Failed rackId={RackId} desiredRevisionId={DesiredRevisionId} observedSnapshotId={ObservedSnapshotId} " +
+                "driftReportId={DriftReportId} correlationId={CorrelationId}",
+                rackId, desiredRevisionId, observedSnapshotId, report.Id, correlationId);
         }
         catch (Exception persistEx) when (persistEx is not OperationCanceledException)
         {
