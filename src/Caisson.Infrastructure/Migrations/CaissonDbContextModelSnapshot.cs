@@ -619,6 +619,170 @@ namespace Caisson.Infrastructure.Migrations
                     b.ToTable("rack_discovery_schedule", (string)null);
                 });
 
+            modelBuilder.Entity("Caisson.Domain.Drift.DriftItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Actionable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("actionable");
+
+                    b.Property<string>("ActualValue")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("actual_value");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(8192)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details_json");
+
+                    b.Property<Guid>("DriftItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("drift_item_id");
+
+                    b.Property<Guid>("DriftReportId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("drift_report_id");
+
+                    b.Property<string>("DriftType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("drift_type");
+
+                    b.Property<string>("ExpectedValue")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("expected_value");
+
+                    b.Property<Guid>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("severity");
+
+                    b.Property<string>("SubjectKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("subject_key");
+
+                    b.Property<string>("SubjectType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("subject_type");
+
+                    b.Property<string>("Why")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("why");
+
+                    b.HasKey("Id")
+                        .HasName("pk_drift_item");
+
+                    b.HasIndex("DriftReportId", "CreatedAtUtc")
+                        .HasDatabaseName("ix_drift_item_report_id_created_at");
+
+                    b.HasIndex("DriftReportId", "DriftItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_drift_item_report_id_drift_item_id");
+
+                    b.HasIndex("RackId", "DriftItemId")
+                        .HasDatabaseName("ix_drift_item_rack_id_drift_item_id");
+
+                    b.ToTable("drift_item", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Drift.DriftReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ComputationVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("computation_version");
+
+                    b.Property<DateTime>("ComputedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("computed_at_utc");
+
+                    b.Property<string>("CountsBySeverityJson")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("counts_by_severity_json");
+
+                    b.Property<Guid>("DesiredRevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("desired_revision_id");
+
+                    b.Property<string>("ErrorSummary")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("error_summary");
+
+                    b.Property<bool>("HasAmbiguities")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_ambiguities");
+
+                    b.Property<bool>("IsTruncated")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_truncated");
+
+                    b.Property<Guid>("ObservedSnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("observed_snapshot_id");
+
+                    b.Property<Guid>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("TotalItems")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_items");
+
+                    b.HasKey("Id")
+                        .HasName("pk_drift_report");
+
+                    b.HasIndex("DesiredRevisionId")
+                        .HasDatabaseName("ix_drift_report_desired_revision_id");
+
+                    b.HasIndex("ObservedSnapshotId")
+                        .HasDatabaseName("ix_drift_report_observed_snapshot_id");
+
+                    b.HasIndex("RackId", "ComputedAtUtc")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_drift_report_rack_id_computed_at");
+
+                    b.HasIndex("RackId", "DesiredRevisionId", "ObservedSnapshotId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_drift_report_rack_desired_observed");
+
+                    b.ToTable("drift_report", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.Topology.LldpNeighbour", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1447,6 +1611,47 @@ namespace Caisson.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_rack_discovery_schedule_rack_rack_id");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Drift.DriftItem", b =>
+                {
+                    b.HasOne("Caisson.Domain.Drift.DriftReport", null)
+                        .WithMany()
+                        .HasForeignKey("DriftReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_drift_item_drift_reports_drift_report_id");
+
+                    b.HasOne("Caisson.Domain.Topology.Rack", null)
+                        .WithMany()
+                        .HasForeignKey("RackId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_drift_item_racks_rack_id");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Drift.DriftReport", b =>
+                {
+                    b.HasOne("Caisson.Domain.DesiredState.DesiredStateVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DesiredRevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_drift_report_desired_state_version_desired_revision_id");
+
+                    b.HasOne("Caisson.Domain.Topology.TopologySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("ObservedSnapshotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_drift_report_snapshots_observed_snapshot_id");
+
+                    b.HasOne("Caisson.Domain.Topology.Rack", null)
+                        .WithMany()
+                        .HasForeignKey("RackId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_drift_report_racks_rack_id");
                 });
 
             modelBuilder.Entity("Caisson.Domain.Topology.LldpNeighbour", b =>

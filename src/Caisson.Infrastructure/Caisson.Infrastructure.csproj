@@ -14,6 +14,12 @@
       engine; Correlation stays EF-free.
     -->
     <ProjectReference Include="..\Caisson.Correlation\Caisson.Correlation.csproj" />
+    <!--
+      The drift persistence bridge (story #64) maps the persisted desired/observed graphs into the pure
+      engine's inputs and the pure result back into persisted DriftReport/DriftItem rows. Same shape as
+      the Correlation reference above: Caisson.Drift stays EF-free (PurityGuardTests enforces this).
+    -->
+    <ProjectReference Include="..\Caisson.Drift\Caisson.Drift.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +39,8 @@
     <PackageReference Include="StackExchange.Redis" />
     <!-- Bind RealtimeOptions from the Realtime configuration section (OptionsBuilder.Bind / Get<T>). -->
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <!-- DriftComputationHealthCheck implements IHealthCheck (story #64) without an ASP.NET Core framework reference. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" />
   </ItemGroup>
 
 </Project>

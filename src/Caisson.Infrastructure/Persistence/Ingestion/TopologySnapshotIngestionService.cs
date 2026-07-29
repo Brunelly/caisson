@@ -4,6 +4,7 @@ using Caisson.Correlation.Results;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -28,17 +29,20 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
     private readonly CaissonDbContext _context;
     private readonly ITopologyIdGenerator _ids;
     private readonly ITopologyEventPublisher _events;
+    private readonly IDriftRecomputeSignal _driftSignal;
     private readonly ILogger<TopologySnapshotIngestionService> _logger;
 
     public TopologySnapshotIngestionService(
         CaissonDbContext context,
         ITopologyIdGenerator ids,
         ITopologyEventPublisher events,
+        IDriftRecomputeSignal driftSignal,
         ILogger<TopologySnapshotIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _ids = ids ?? throw new ArgumentNullException(nameof(ids));
         _events = events ?? throw new ArgumentNullException(nameof(events));
+        _driftSignal = driftSignal ?? throw new ArgumentNullException(nameof(driftSignal));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -164,6 +168,12 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
                 "snapshot-updated publish failed (swallowed) rackId={RackId} snapshotId={SnapshotId} correlationId={CorrelationId}",
                 request.RackId, snapshot.Id, request.CorrelationId);
         }
+
+        // Story #64, AC4: nudge a low-latency drift recompute for the rack this snapshot belongs to, from
+        // this same atomic choke point. IDriftRecomputeSignal's hard contract is to never throw, so no
+        // try/catch is needed here — a dropped/failed enqueue only delays recompute until the next
+        // DriftScheduler sweep, never aborting snapshot ingestion.
+        _driftSignal.Enqueue(request.RackId);
     }
 
     /// <summary>

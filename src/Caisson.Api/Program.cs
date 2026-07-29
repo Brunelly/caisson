@@ -69,6 +69,10 @@ builder.Services.AddCaissonOrchestration(builder.Configuration);
 // and webhook drainer background services, and the shared idempotent RunAsync entry point.
 builder.Services.AddCaissonGitIngestion(builder.Configuration);
 
+// Drift computation (story #64, ADR 0030): the compute service, the real event-signal, and the
+// scheduler/event-runner/retention-pruner background services.
+builder.Services.AddCaissonDrift(builder.Configuration);
+
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
 // to boot rather than run with an ambiguous or silently-ignored security setting.
@@ -272,6 +276,10 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 // device and stays Healthy/Degraded (never Unhealthy) so a malformed commit can never take
 // /health/ready down.
 health.AddCheck<Caisson.Api.HealthChecks.GitIngestionHealthCheck>("git-ingestion", tags: new[] { "ready" });
+
+// Story #64: reports the drift computation subsystem's last-run status across all racks; same
+// Healthy/Degraded-only philosophy — a failing/stuck drift computation must not take /health/ready down.
+health.AddCheck<Caisson.Infrastructure.HealthChecks.DriftComputationHealthCheck>("drift-computation", tags: new[] { "ready" });
 
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>

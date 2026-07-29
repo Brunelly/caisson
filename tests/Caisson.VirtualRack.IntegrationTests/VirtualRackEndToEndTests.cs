@@ -19,7 +19,8 @@ namespace Caisson.VirtualRack.IntegrationTests;
 /// no-secret-leak assertion. Gated on <see cref="VirtualRackApiFactory.Available"/> (Postgres);
 /// self-skips (not fails) when Docker/Postgres is unavailable, matching every other DB-backed suite.
 /// </summary>
-public sealed class VirtualRackEndToEndTests : IClassFixture<VirtualRackApiFactory>
+[Collection(VirtualRackCollection.Name)]
+public sealed class VirtualRackEndToEndTests
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

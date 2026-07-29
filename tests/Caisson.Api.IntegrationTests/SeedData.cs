@@ -8,6 +8,7 @@ using Caisson.Drivers.Abstractions.Bmc;
 using Caisson.Drivers.Abstractions.Switches;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence.Ingestion;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Caisson.Api.IntegrationTests;
@@ -31,10 +32,16 @@ public sealed record SeededTopology(
 
     /// <summary>The discovery rack seeded with a schedule and a completed job (story #8).</summary>
     public SeededDiscovery Discovery { get; init; } = null!;
+
+    /// <summary>The drift report computed for this rack (story #64).</summary>
+    public SeededDrift Drift { get; init; } = null!;
 }
 
 /// <summary>The discovery orchestration fixtures seeded for the story-8 API tests.</summary>
 public sealed record SeededDiscovery(Guid RackId, string ExternalKey, Guid CompletedJobId);
+
+/// <summary>The drift report computed for the story-64 API tests, deliberately containing a real mismatch.</summary>
+public sealed record SeededDrift(Guid RackId, Guid DriftReportId, int TotalItems);
 
 /// <summary>Seeds a rack with two snapshots (the second modifies a server) via the real ingestion service.</summary>
 internal static class SeedData
@@ -56,6 +63,7 @@ internal static class SeedData
         {
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             first = await service.IngestAsync(Request(rackId, Observed("node-1"), Correlation(), V1At));
         }
@@ -64,15 +72,60 @@ internal static class SeedData
         {
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             second = await service.IngestAsync(Request(rackId, Observed("node-1-renamed"), Correlation(), V2At));
         }
 
         var discovery = await SeedDiscoveryAsync(harness);
+        var drift = await SeedDriftAsync(harness, rackId, "rack-" + rackId.ToString("N"));
         return new SeededTopology(rackId, first.SnapshotId, first.Version, second.SnapshotId, second.Version)
         {
             Discovery = discovery,
+            Drift = drift,
         };
+    }
+
+    /// <summary>
+    /// Seeds a desired-state revision for the already-snapshotted rack — with a deliberate access-VLAN
+    /// mismatch on "ether1" (desired 99 vs. observed Pvid 10) — and computes a real drift report via the
+    /// production <see cref="DriftComputationService"/>, so the API tests exercise real persisted data.
+    /// </summary>
+    private static async Task<SeededDrift> SeedDriftAsync(PostgresHarness harness, Guid rackId, string rackSlug)
+    {
+        await using (var context = harness.CreateContext())
+        {
+            var run = new Caisson.Domain.DesiredState.DesiredStateIngestionRun(
+                Guid.NewGuid(), Caisson.Domain.DesiredState.IngestionTriggerType.Poll, DateTime.UtcNow,
+                "https://example.com/repo.git", "main", Guid.NewGuid());
+            run.RecordCommit("a".PadLeft(40, '0'), "author", DateTime.UtcNow, "message");
+            run.Succeed(DateTime.UtcNow);
+            context.DesiredStateIngestionRuns.Add(run);
+
+            var version = new Caisson.Domain.DesiredState.DesiredStateVersion(
+                Guid.NewGuid(), rackSlug, "a".PadLeft(40, '0'), run.Id, DateTime.UtcNow, "hash-" + Guid.NewGuid().ToString("N"),
+                "{}", 1, "desired-state-ingestion");
+            var rackIntent = new Caisson.Domain.DesiredState.DesiredRackIntent(Guid.NewGuid(), version.Id, rackSlug, "rack-key");
+            var switchIntent = new Caisson.Domain.DesiredState.DesiredSwitchIntent(Guid.NewGuid(), rackIntent.Id, "sw1", "switch-key");
+            var port = new Caisson.Domain.DesiredState.DesiredPortIntent(Guid.NewGuid(), switchIntent.Id, "ether1", "port-key", accessVlan: 99);
+
+            context.DesiredStateVersions.Add(version);
+            context.DesiredRackIntents.Add(rackIntent);
+            context.DesiredSwitchIntents.Add(switchIntent);
+            context.DesiredPortIntents.Add(port);
+            await context.SaveChangesAsync();
+        }
+
+        await using var computeContext = harness.CreateContext();
+        var service = new Caisson.Infrastructure.Persistence.Drift.DriftComputationService(
+            computeContext, new GuidTopologyIdGenerator(), TimeProvider.System,
+            Microsoft.Extensions.Options.Options.Create(new Caisson.Drift.DriftComputationOptions()),
+            NullLogger<Caisson.Infrastructure.Persistence.Drift.DriftComputationService>.Instance);
+        await service.ComputeAndPersistAsync(rackId, Guid.NewGuid());
+
+        await using var verify = harness.CreateContext();
+        var report = await verify.DriftReports.SingleAsync(r => r.RackId == rackId);
+        return new SeededDrift(rackId, report.Id, report.TotalItems);
     }
 
     /// <summary>Seeds a discovery rack with a disabled schedule and a completed job (story #8).</summary>

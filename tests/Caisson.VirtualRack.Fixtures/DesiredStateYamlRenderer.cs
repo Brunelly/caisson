@@ -44,4 +44,29 @@ public static class DesiredStateYamlRenderer
               - name: {VirtualRackDefinition.CleanPort}
                 accessVlan: 5000
         """;
+
+    /// <summary>
+    /// Renders the same, otherwise-matching rack (story #64) with <see cref="VirtualRackDefinition.CleanPort"/>'s
+    /// desired <c>accessVlan</c> deliberately mismatched against the simulator's actual observed Pvid
+    /// (<see cref="VirtualRackDefinition.CleanVlan"/> = 10) — a valid, in-schema value, unlike
+    /// <see cref="RenderWithInvalidVlan"/>'s out-of-range 5000, so ingestion succeeds cleanly and the
+    /// mismatch surfaces only as drift (<c>DriftType.AccessVlanMismatch</c>), not a validation error. Every
+    /// other port's desired VLAN still matches its simulated observed Pvid, so this is the ONLY port-level
+    /// drift item the engine should produce for this rack.
+    /// </summary>
+    public static string RenderWithMismatchedVlan(string? rackSlug = null, int mismatchedVlan = 99) => $"""
+        rackSlug: {rackSlug ?? RackSlug}
+        switches:
+          - name: {VirtualRackDefinition.SwitchId}
+            ports:
+              - name: {VirtualRackDefinition.CleanPort}
+                accessVlan: {mismatchedVlan}
+                description: clean-port
+              - name: {VirtualRackDefinition.AmbiguousPortA}
+                accessVlan: {VirtualRackDefinition.AmbiguousVlanA}
+              - name: {VirtualRackDefinition.AmbiguousPortB}
+                accessVlan: {VirtualRackDefinition.AmbiguousVlanB}
+              - name: {VirtualRackDefinition.UnmappedPort}
+                accessVlan: {VirtualRackDefinition.UnmappedPortVlan}
+        """;
 }

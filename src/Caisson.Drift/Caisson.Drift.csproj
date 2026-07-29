@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pure, deterministic drift computation engine (story #64, ADR forthcoming). NO EF Core / Npgsql /
+    System.Net.Http references — mirrors Caisson.Correlation's pure layering (NFR1: engine stays
+    side-effect free and Postgres-free). Consumes only Caisson.Domain types; the DB-touching bridge
+    (DriftComputationService) and orchestration live in Caisson.Infrastructure/Caisson.Orchestration.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Caisson.Drift</RootNamespace>
+    <AssemblyName>Caisson.Drift</AssemblyName>
+    <!--
+      Unlike Caisson.Correlation, this engine serializes JSON payloads (counts-by-severity, ambiguity
+      details) via reflection-based System.Text.Json, so it is NOT marked IsAotCompatible — that is a
+      separate concern from NFR1's actual requirement (no EF Core/Npgsql/HTTP), which PurityGuardTests
+      enforces directly against the shipped assembly's references.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caisson.Domain\Caisson.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Caisson.Drift.Tests" />
+  </ItemGroup>
+
+</Project>

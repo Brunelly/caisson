@@ -6,6 +6,7 @@ using Caisson.Domain.DesiredState;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Git.ReadOnly;
@@ -46,6 +47,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
     private readonly TimeProvider _time;
     private readonly IOptions<GitIngestionOptions> _options;
     private readonly GitIngestionMetrics _metrics;
+    private readonly IDriftRecomputeSignal _driftSignal;
     private readonly ILogger<DesiredStateIngestionService> _logger;
 
     public DesiredStateIngestionService(
@@ -55,6 +57,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         TimeProvider time,
         IOptions<GitIngestionOptions> options,
         GitIngestionMetrics metrics,
+        IDriftRecomputeSignal driftSignal,
         ILogger<DesiredStateIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -63,6 +66,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        _driftSignal = driftSignal ?? throw new ArgumentNullException(nameof(driftSignal));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -183,6 +187,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 
         var succeeded = 0;
         var failed = 0;
+        var affectedRackSlugs = new List<string>();
 
         foreach (var file in files)
         {
@@ -191,7 +196,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 
             try
             {
-                if (await ProcessFileAsync(run, commit, file, fallbackRackSlug, cancellationToken))
+                if (await ProcessFileAsync(run, commit, file, fallbackRackSlug, affectedRackSlugs, cancellationToken))
                 {
                     succeeded++;
                 }
@@ -231,16 +236,30 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             run.Succeed(completedAtUtc);
         }
 
-        await SaveFinalAsync(run, cancellationToken);
+        var committed = await SaveFinalAsync(run, cancellationToken);
         _logger.LogInformation(
             "Desired-state ingestion run completed runId={RunId} status={Status} succeeded={Succeeded} failed={Failed} correlationId={CorrelationId}",
             run.Id, run.Status, succeeded, failed, correlationId);
+
+        // Story #64, AC4: enqueue only AFTER the revisions are durably committed (mirrors
+        // TopologySnapshotIngestionService's post-SaveChangesAsync enqueue) — enqueuing earlier would let
+        // DriftRecomputeRunner observe the rack before its new DesiredStateVersion is visible on another
+        // connection/transaction, recomputing against the stale prior revision (or skipping entirely for
+        // a rack's first-ever revision). A failed commit means these revisions never landed, so there is
+        // nothing new to recompute.
+        if (committed)
+        {
+            foreach (var rackSlug in affectedRackSlugs.Distinct(StringComparer.Ordinal))
+            {
+                await EnqueueDriftRecomputeAsync(rackSlug, correlationId, cancellationToken);
+            }
+        }
     }
 
     /// <summary>Returns <c>true</c> if the file's rack validated cleanly (and, if changed, was materialised).</summary>
     private async Task<bool> ProcessFileAsync(
         DesiredStateIngestionRun run, GitCommitInfo commit, GitFileEntry file, string fallbackRackSlug,
-        CancellationToken cancellationToken)
+        List<string> affectedRackSlugs, CancellationToken cancellationToken)
     {
         if (file.SizeBytes > _options.Value.MaxFileBytes)
         {
@@ -308,7 +327,36 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _context.DesiredSwitchIntents.AddRange(materialized.Switches);
         _context.DesiredPortIntents.AddRange(materialized.Ports);
         _context.AuditEvents.Add(audit);
+
+        affectedRackSlugs.Add(document.RackSlug);
         return true;
+    }
+
+    /// <summary>
+    /// Story #64, AC4: nudge a low-latency drift recompute for the rack this revision belongs to, resolved
+    /// from the git-ingested <c>rackSlug</c> to the observed-state <c>Rack.Id</c> the drift engine keys on.
+    /// A rack slug with no aliased observed-state <c>Rack</c> row yet has nothing to compute drift against,
+    /// so it is silently skipped rather than treated as an error. The rack-lookup query can genuinely
+    /// fail (e.g. a transient DB fault); that must never abort desired-state ingestion (AC4), so it is
+    /// caught here — <see cref="IDriftRecomputeSignal.Enqueue"/> itself never throws.
+    /// </summary>
+    private async Task EnqueueDriftRecomputeAsync(string rackSlug, Guid correlationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rack = await _context.Racks.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.ExternalKey == rackSlug, cancellationToken);
+            if (rack is not null)
+            {
+                _driftSignal.Enqueue(rack.Id);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex, "Drift recompute enqueue failed (swallowed) rackSlug={RackSlug} correlationId={CorrelationId}",
+                rackSlug, correlationId);
+        }
     }
 
     /// <summary>
@@ -324,16 +372,19 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             ["contentHash"] = contentHash,
         });
 
-    private async Task SaveFinalAsync(DesiredStateIngestionRun run, CancellationToken cancellationToken)
+    /// <summary>Returns <c>true</c> once the run's staged changes are durably committed.</summary>
+    private async Task<bool> SaveFinalAsync(DesiredStateIngestionRun run, CancellationToken cancellationToken)
     {
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
+            return true;
         }
         catch (DbUpdateException ex)
         {
             _logger.LogError(ex, "Failed to persist desired-state ingestion results runId={RunId}", run.Id);
             await FailRunAsync(run, IngestionErrorCategory.Persistence, $"Failed to persist ingestion results: {ex.Message}", cancellationToken);
+            return false;
         }
     }
 

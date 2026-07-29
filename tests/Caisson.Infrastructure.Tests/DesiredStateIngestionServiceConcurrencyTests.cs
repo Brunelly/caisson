@@ -1,5 +1,7 @@
 using Caisson.Domain.DesiredState;
+using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Ingestion;
@@ -313,7 +315,60 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
         (await verify.ActiveVersionForRackAsync(rackSlug)).Should().NotBeNull();
     }
 
-    private static DesiredStateIngestionService Service(CaissonDbContext context, FakeGitRepositoryProvider git)
+    [Fact]
+    public async Task Drift_recompute_is_enqueued_only_after_the_new_revision_is_durably_committed()
+    {
+        await _fixture.MigrateAsync();
+        var rackSlug = "rack-enqueue-" + Guid.NewGuid().ToString("N");
+
+        // An observed-state Rack row aliasing rackSlug, so EnqueueDriftRecomputeAsync can resolve it.
+        Guid rackId;
+        await using (var seed = _fixture.CreateContext())
+        {
+            var rack = new Rack(Guid.NewGuid(), rackSlug, "display", DateTime.UtcNow);
+            seed.Racks.Add(rack);
+            await seed.SaveChangesAsync();
+            rackId = rack.Id;
+        }
+
+        var git = new FakeGitRepositoryProvider { NextCommit = new("sha-enqueue", "author", DateTime.UtcNow, "message") };
+        git.SetFile($"desired-state/racks/{rackSlug}.yaml", RackYaml(rackSlug));
+
+        var signal = new RecordingDriftRecomputeSignal();
+        var wasCommittedWhenEnqueued = false;
+        signal.OnEnqueue = _ =>
+        {
+            // Reads from a SEPARATE connection/context — if the enqueue fired before the ingesting
+            // context's SaveChangesAsync committed, this would see nothing (the bug this test guards
+            // against: enqueuing from inside the per-file loop, before SaveFinalAsync).
+            using var verify = _fixture.CreateContext();
+            wasCommittedWhenEnqueued = verify.DesiredStateVersions.Any(v => v.RackSlug == rackSlug);
+        };
+
+        await using (var context = _fixture.CreateContext())
+        {
+            await Service(context, git, signal).RunAsync(IngestionTriggerType.Poll, null, Guid.NewGuid(), default);
+        }
+
+        signal.Enqueued.Should().ContainSingle().Which.Should().Be(rackId);
+        wasCommittedWhenEnqueued.Should().BeTrue();
+    }
+
+    private sealed class RecordingDriftRecomputeSignal : IDriftRecomputeSignal
+    {
+        private readonly List<Guid> _enqueued = new();
+        public IReadOnlyList<Guid> Enqueued => _enqueued;
+        public Action<Guid>? OnEnqueue { get; set; }
+
+        public void Enqueue(Guid rackId)
+        {
+            _enqueued.Add(rackId);
+            OnEnqueue?.Invoke(rackId);
+        }
+    }
+
+    private static DesiredStateIngestionService Service(
+        CaissonDbContext context, FakeGitRepositoryProvider git, IDriftRecomputeSignal? driftSignal = null)
         => new(
             context,
             git,
@@ -321,5 +376,6 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
             TimeProvider.System,
             Options.Create(new GitIngestionOptions { Enabled = true, RepoUrl = RepoUrl }),
             new GitIngestionMetrics(),
+            driftSignal ?? new NoOpDriftRecomputeSignal(),
             NullLogger<DesiredStateIngestionService>.Instance);
 }
