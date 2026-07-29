@@ -1,0 +1,43 @@
+using Caisson.Domain.DesiredState;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace Caisson.Infrastructure.Persistence.Configurations;
+
+/// <summary>
+/// Maps <see cref="DesiredStateVersion"/> (story #62, ADR 0025): append-only — <c>GuardAppendOnly</c>
+/// rejects update/delete, backed by a database trigger (see the
+/// <c>DesiredStateIngestion</c> migration) for tamper-evidence against raw SQL too (NFR7). "The active
+/// version for a rack" is always derived by the covering
+/// <c>(rack_slug, created_at DESC, id DESC)</c> index below via
+/// <c>LatestDesiredStateVersionQueries</c> — never a raw <c>WHERE is_active</c> read.
+/// </summary>
+public sealed class DesiredStateVersionConfiguration : IEntityTypeConfiguration<DesiredStateVersion>
+{
+    public void Configure(EntityTypeBuilder<DesiredStateVersion> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("desired_state_version");
+        builder.HasKey(v => v.Id);
+
+        builder.Property(v => v.RackSlug).IsRequired().HasMaxLength(DesiredStateSchema.MaxRackSlugLength);
+        builder.Property(v => v.CommitSha).IsRequired().HasMaxLength(64);
+        builder.Property(v => v.CreatedAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(v => v.IsActive).IsRequired();
+        builder.Property(v => v.ContentHash).IsRequired().HasMaxLength(64);
+
+        // Restrict, not cascade: a version references the run that produced it, but the run's own
+        // lifecycle (mutable, non-append-only) must never ripple into deleting historical versions.
+        builder.HasOne<DesiredStateIngestionRun>()
+            .WithMany()
+            .HasForeignKey(v => v.IngestionRunId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Covering index for "newest version per rack": ORDER BY created_at DESC, id DESC (ADR 0002's
+        // tie-break), scoped to one rack slug.
+        builder.HasIndex(v => new { v.RackSlug, v.CreatedAtUtc, v.Id })
+            .IsDescending(false, true, true)
+            .HasDatabaseName("ix_desired_state_version_rack_slug_created_at_id");
+    }
+}
