@@ -76,6 +76,8 @@ public sealed class DomainGuardTests
         "TriggerDiscoveryRequest.IdempotencyKey",
         "EntityDetailDto.StableKey",
         "EntityDiffDto.EntityStableKey",
+        // Story #64: same *.StableKey/EntityStableKey rationale — a natural-key identifier, not a secret.
+        "DriftItemDto.SubjectKey",
         "UnmappedPortDto.SwitchStableKey",
         "PortAttachmentDto.SwitchStableKey",
         "ServerNodeDto.StableKey",

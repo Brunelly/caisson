@@ -124,17 +124,34 @@ public sealed class VirtualRackApiFactory : WebApplicationFactory<Program>, IAsy
                 options.RetryBaseDelayMs = 0;
                 options.HeartbeatStalenessSeconds = 5;
             });
+
+            // Story #64: the periodic scheduler/pruner ticks are not needed for determinism in these
+            // tests — DriftRecomputeRunner (always on, no enable flag) already reacts immediately to the
+            // real event hooks fired by snapshot/desired-state ingestion, so disabling the sweeps here
+            // avoids a second, timing-dependent recompute racing the one under test (mirrors the
+            // DiscoveryOrchestrationOptions determinism override immediately above).
+            services.Configure<DriftOrchestrationOptions>(options =>
+            {
+                options.SchedulerEnabled = false;
+                options.RetentionEnabled = false;
+            });
         });
     }
 
-    /// <summary>Creates a fresh rack bound to <paramref name="scenario"/> and returns its id.</summary>
-    public async Task<Guid> CreateRackAsync(string? name = null, RackScenario scenario = RackScenario.Happy)
+    /// <summary>
+    /// Creates a fresh rack bound to <paramref name="scenario"/> and returns its id.
+    /// <paramref name="externalKey"/> defaults to a random <c>"rack-{guid}"</c> slug; pass an explicit
+    /// value (e.g. <c>DesiredStateYamlRenderer.RackSlug</c>) when a test also ingests desired state for
+    /// this rack — drift joins desired↔observed via <c>DesiredStateVersion.RackSlug == Rack.ExternalKey</c>
+    /// (ADR 0029), so the two must be seeded with the SAME slug for that rack's drift to compute at all.
+    /// </summary>
+    public async Task<Guid> CreateRackAsync(string? name = null, RackScenario scenario = RackScenario.Happy, string? externalKey = null)
     {
         var rackId = Guid.NewGuid();
         _scenarios[rackId] = scenario;
 
         await using var context = _harness.CreateContext();
-        context.Racks.Add(new Rack(rackId, "rack-" + rackId.ToString("N"), name ?? "Virtual Rack", DateTime.UtcNow));
+        context.Racks.Add(new Rack(rackId, externalKey ?? "rack-" + rackId.ToString("N"), name ?? "Virtual Rack", DateTime.UtcNow));
         await context.SaveChangesAsync();
         return rackId;
     }
