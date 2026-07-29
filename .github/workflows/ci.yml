@@ -189,6 +189,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # e2e/harness auth-bypass isolation (security-review-5 #7): the production bundle must NOT contain
+      # the e2e fake-token marker. build:e2e / build:harness emit to dist/web-e2e / dist/web-harness (a
+      # distinct outputPath), and this guard makes an accidental bypass in the prod bundle a hard failure.
+      - name: Assert prod bundle has no e2e auth bypass
+        run: |
+          if grep -rqF 'e2e-fake-token' dist/web/browser; then
+            echo "::error::e2e auth-bypass marker 'e2e-fake-token' found in the production bundle (dist/web/browser)"; exit 1
+          fi
+          echo "Production bundle is clean of the e2e auth-bypass marker."
+
       # Angular 22's default unit-test builder (Vitest + jsdom) runs headless with no Chrome
       # install needed; --watch=false is explicit here even though it is already the CI default
       # (ng test defaults --watch to false outside a TTY) — see ADR 0015.

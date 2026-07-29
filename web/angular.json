@@ -64,6 +64,7 @@
               "sourceMap": true
             },
             "e2e": {
+              "outputPath": "dist/web-e2e",
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
@@ -80,6 +81,7 @@
               ]
             },
             "harness": {
+              "outputPath": "dist/web-harness",
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
