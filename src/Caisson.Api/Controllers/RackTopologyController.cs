@@ -38,6 +38,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<SnapshotDetailDto>> GetLatest(Guid rackId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var snapshot = await _context.LatestSnapshotWithGraphAsync(rackId, cancellationToken);
         if (snapshot is null)
         {
@@ -45,7 +50,7 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         }
 
         await _audit.WriteReadAsync(User, rackId, "topology.latest.read", "snapshot", snapshot.Id.ToString(), cancellationToken);
-        return Ok(ToDetail(snapshot));
+        return Ok(ToDetail(snapshot, IsPrivileged()));
     }
 
     /// <summary>Returns a paginated snapshot history for a rack, newest-first.</summary>
@@ -63,6 +68,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         if (!RequestPaging.TryResolve(pageSize, cursor, rackId, endpoint, out var limit, out var after, out var error))
         {
             return ValidationError(error!.Value);
+        }
+
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
@@ -84,6 +94,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
     public async Task<ActionResult<SnapshotDetailDto>> GetById(
         Guid rackId, Guid snapshotId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var snapshot = await _context.SnapshotWithGraphAsync(rackId, snapshotId, cancellationToken);
         if (snapshot is null)
         {
@@ -91,7 +106,7 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         }
 
         await _audit.WriteReadAsync(User, rackId, "topology.snapshot.read", "snapshot", snapshotId.ToString(), cancellationToken);
-        return Ok(ToDetail(snapshot));
+        return Ok(ToDetail(snapshot, IsPrivileged()));
     }
 
     /// <summary>Returns the topology graph for the latest snapshot.</summary>
@@ -100,6 +115,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TopologyGraphDto>> GetLatestGraph(Guid rackId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var snapshot = await _context.LatestSnapshotWithGraphAsync(rackId, cancellationToken);
         if (snapshot is null)
         {
@@ -107,7 +127,7 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         }
 
         await _audit.WriteReadAsync(User, rackId, "topology.graph.read", "snapshot", snapshot.Id.ToString(), cancellationToken);
-        return Ok(ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot)));
+        return Ok(ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot), IsPrivileged()));
     }
 
     /// <summary>Returns the topology graph for a specific snapshot.</summary>
@@ -117,6 +137,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
     public async Task<ActionResult<TopologyGraphDto>> GetGraph(
         Guid rackId, Guid snapshotId, CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var snapshot = await _context.SnapshotWithGraphAsync(rackId, snapshotId, cancellationToken);
         if (snapshot is null)
         {
@@ -124,7 +149,7 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         }
 
         await _audit.WriteReadAsync(User, rackId, "topology.graph.read", "snapshot", snapshotId.ToString(), cancellationToken);
-        return Ok(ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot)));
+        return Ok(ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot), IsPrivileged()));
     }
 
     /// <summary>Computes the drift between two snapshots of a rack live (AC3).</summary>
@@ -137,6 +162,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
         [FromQuery] Guid to,
         CancellationToken cancellationToken)
     {
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var fromSnapshot = await _context.SnapshotWithGraphAsync(rackId, from, cancellationToken);
         if (fromSnapshot is null)
         {
@@ -162,8 +192,11 @@ public sealed class RackTopologyController : ReadOnlyControllerBase
             result.Diffs.Select(ContractMappers.ToEntityDiff).ToList()));
     }
 
-    private static SnapshotDetailDto ToDetail(TopologySnapshot snapshot)
-        => new(ContractMappers.ToMetadata(snapshot), ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot)));
+    private static SnapshotDetailDto ToDetail(TopologySnapshot snapshot, bool isPrivileged)
+        => new(ContractMappers.ToMetadata(snapshot), ContractMappers.ToGraph(TopologyGraphProjector.Project(snapshot), isPrivileged));
+
+    /// <summary>Finding #29: whether the caller may see management-plane addresses / full MACs (Operator/Admin).</summary>
+    private bool IsPrivileged() => User.IsInRole(CaissonRoles.Operator) || User.IsInRole(CaissonRoles.Admin);
 
     private async Task<ObjectResult> NotFoundSnapshotAsync(Guid rackId, CancellationToken cancellationToken)
     {

@@ -160,12 +160,18 @@ WHERE status = 'InProgress'
   AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1})
   AND attempt_count >= {4}";
 
-        return context.Database.ExecuteSqlRawAsync(
-            sql, now, stale,
+        // NOTE: ExecuteSqlRawAsync's params-array overload greedily captures a trailing CancellationToken
+        // as if it were another SQL parameter (it boxes to object like everything else) — it must be
+        // passed via the explicit IEnumerable<object> + CancellationToken overload instead, or EF throws
+        // "no store type mapping for CancellationToken" trying to bind it as a query parameter.
+        object[] parameters =
+        {
+            now, stale,
             DiscoveryErrorCodes.MaxAttemptsExceeded,
             DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.MaxAttemptsExceeded),
             maxAttempts,
-            cancellationToken);
+        };
+        return context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
     }
 
     /// <summary>

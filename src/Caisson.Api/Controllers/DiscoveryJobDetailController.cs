@@ -4,6 +4,7 @@ using Caisson.Api.Security;
 using Caisson.Orchestration.Discovery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Caisson.Api.Controllers;
 
@@ -46,6 +47,7 @@ public sealed class DiscoveryJobDetailController : DiscoveryControllerBase
     /// <summary>Requests cancellation of a running job (Q3).</summary>
     [HttpPost("{jobId:guid}/cancel")]
     [Authorize(Policy = AuthorizationPolicies.DiscoveryTrigger)]
+    [EnableRateLimiting(RateLimitPolicies.DiscoveryTrigger)]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]

@@ -11,6 +11,7 @@ using Caisson.Orchestration.RackDefinitions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -24,6 +25,16 @@ var builder = WebApplication.CreateBuilder(args);
 // appsettings file — CI supplies it solely via the Testing__EnableTestAuth environment variable.
 var enableTestAuth = builder.Configuration.GetValue("Testing:EnableTestAuth", defaultValue: false);
 TestAuthStartupGuard.Validate(builder.Environment, enableTestAuth);
+
+// Fail-closed JWT authority/audience validation (finding #16) — same "refuse to boot" shape.
+var jwtAuthority = builder.Configuration["AzureAd:Authority"];
+var jwtAudience = builder.Configuration["AzureAd:Audience"];
+JwtAuthorityStartupGuard.Validate(builder.Environment, jwtAuthority, jwtAudience);
+
+// Fail-closed RoleMappings validation (finding #17).
+var roleMappingsForValidation = builder.Configuration
+    .GetSection("Authentication:RoleMappings").Get<Dictionary<string, string>>() ?? new();
+RoleClaimsTransformation.ValidateMappings(builder.Environment, roleMappingsForValidation);
 
 // Structured logging (ADR 0012): compact JSON to the console, with the correlation id enriched onto
 // every log line via the LogContext property pushed by CorrelationIdMiddleware.
@@ -41,6 +52,10 @@ var connectionString = ResolveConnectionString(builder.Configuration);
 builder.Services.AddDbContext<CaissonDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddCaissonPersistence();
 builder.Services.AddSingleton(TimeProvider.System);
+
+// Finding #14: short-TTL cache for the per-entity-type field-map extraction (immutable snapshots, so no
+// invalidation is needed — see TopologyEntitiesController).
+builder.Services.AddMemoryCache();
 
 // Discovery orchestration (story #8, ADR 0013): the config-bound rack definitions, driver-touching
 // pipeline, job/schedule services and the background runner + scheduler. The API names no driver type;
@@ -61,13 +76,28 @@ builder.Services.AddCaissonRealtime(builder.Configuration);
 // Correlation-id context (scoped) and the API-access audit writer.
 builder.Services.AddScoped<CorrelationContext>();
 builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<CorrelationContext>());
-builder.Services.AddScoped<IAuditEventWriter, AuditEventWriter>();
+
+// Off-request-path audit writer (finding #5): a bounded Channel<AuditWriteRequest> decouples the
+// synchronous per-request INSERT from the request path; AuditEventBackgroundWriter drains and batches
+// it. FullMode=DropWrite (never blocks the request) — a saturated channel drops the newest event with a
+// logged warning rather than let the audit trail apply backpressure to reads.
+var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteRequest>(
+    new System.Threading.Channels.BoundedChannelOptions(4096)
+    {
+        FullMode = System.Threading.Channels.BoundedChannelFullMode.DropWrite,
+        SingleReader = true,
+    });
+builder.Services.AddSingleton(auditChannel.Writer);
+builder.Services.AddSingleton(auditChannel.Reader);
+builder.Services.AddScoped<IAuditEventWriter, ChannelAuditEventWriter>();
+builder.Services.AddHostedService<AuditEventBackgroundWriter>();
+
+// Per-rack access seam (finding #29): allow-all today — see IRackAccessPolicy's own remarks.
+builder.Services.AddSingleton<IRackAccessPolicy, AllowAllRackAccessPolicy>();
 
 // Role mapping: Entra group/app-role claims → canonical Caisson roles (config-driven, no custom store).
-var roleMappings = builder.Configuration
-    .GetSection("Authentication:RoleMappings").Get<Dictionary<string, string>>() ?? new();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authentication.IClaimsTransformation>(
-    new RoleClaimsTransformation(roleMappings));
+    new RoleClaimsTransformation(roleMappingsForValidation));
 
 // AuthN: JWT bearer against Entra ID / OIDC (config-driven; no custom identity system). When the
 // environment-gated test-auth scheme is active (Testing:EnableTestAuth, fail-closed outside
@@ -80,15 +110,22 @@ var defaultAuthenticationScheme = enableTestAuth
 var authenticationBuilder = builder.Services.AddAuthentication(defaultAuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var authority = builder.Configuration["AzureAd:Authority"];
-        if (!string.IsNullOrWhiteSpace(authority))
+        if (!string.IsNullOrWhiteSpace(jwtAuthority))
         {
-            options.Authority = authority;
+            options.Authority = jwtAuthority;
+            // Finding #16: pin the accepted issuer explicitly rather than trusting whatever the
+            // discovery document at Authority happens to advertise — JwtAuthorityStartupGuard already
+            // refused to boot on an empty/multi-tenant authority outside Development/Testing, so this is
+            // the tenant-specific value in every environment that reaches this line.
+            options.TokenValidationParameters.ValidIssuers = new[] { jwtAuthority };
         }
 
-        options.Audience = builder.Configuration["AzureAd:Audience"];
+        options.Audience = jwtAudience;
         options.TokenValidationParameters.RoleClaimType = RoleClaimsTransformation.RoleClaimType;
         options.TokenValidationParameters.NameClaimType = "name";
+        // Finding #16: pin the accepted signing algorithm so a token signed with a weaker/unexpected
+        // algorithm is rejected outright rather than relying on the library's broader default set.
+        options.TokenValidationParameters.ValidAlgorithms = new[] { "RS256" };
 
         // WebSocket auth (story #9): browsers cannot set the Authorization header on the WS upgrade, so
         // read the bearer token from the access_token query-string parameter for the topology hub. Without
@@ -142,6 +179,36 @@ builder.Services.AddCors(options => options.AddPolicy(AngularClientCorsPolicy, p
     .WithMethods("GET", "POST")
     .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
 
+// Rate limiting (finding #5): partitioned per authenticated subject (the "oid" claim) so one caller
+// cannot exhaust the budget for another. Windows are deliberately generous — the virtual-rack e2e
+// seeder's discovery-status polling burst must not trip them — with a materially tighter window
+// layered on top for the discovery trigger/cancel endpoints, the only control-plane writes in the API.
+// Runs AFTER UseAuthorization() (below) so the oid claim is reliably present by the time it applies.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitionKey(httpContext),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 600,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    options.AddPolicy(RateLimitPolicies.DiscoveryTrigger, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitionKey(httpContext),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
@@ -171,18 +238,60 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     health.AddNpgSql(connectionString, name: "db", tags: new[] { "ready" });
 }
 
+// Finding #19: HSTS (non-Development) with a one-year max-age.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
+
+// Finding #19: honour X-Forwarded-For/-Proto from a trusted reverse proxy so IsHttps and the client IP
+// are correct behind one — otherwise UseHttpsRedirection/HSTS and any IP-based logic would see the
+// proxy's own scheme/address instead of the original request's.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // No KnownProxies/KnownNetworks are configured out of the box (deployment-specific); operators behind
+    // a reverse proxy must add their proxy's address via configuration for the headers to be honoured —
+    // ForwardedHeadersMiddleware ignores XFF/XFP from an unrecognised source by default (fail-closed).
+});
+
 var app = builder.Build();
 
+// Finding #19: AllowedHosts "*" (the shipped default, since real deployment hostnames are
+// environment-specific and cannot be hard-coded here) disables ASP.NET Core's host-header filtering
+// entirely. That is fine in Development; outside it, an operator MUST override AllowedHosts with the
+// deployment's real hostname(s) via configuration — surfaced loudly here rather than silently trusting
+// any Host header.
+if (!app.Environment.IsDevelopment()
+    && string.Equals(app.Configuration["AllowedHosts"], "*", StringComparison.Ordinal))
+{
+    app.Logger.LogError(
+        "AllowedHosts is \"*\" under ASPNETCORE_ENVIRONMENT={Environment}. Set AllowedHosts to the " +
+        "deployment's real hostname(s) via configuration — host-header filtering is currently disabled.",
+        app.Environment.EnvironmentName);
+}
+
+app.UseForwardedHeaders();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+    app.UseHsts();
+}
+
+app.UseMiddleware<Caisson.Api.Middleware.SecurityHeadersMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(options => options.IncludeQueryInRequestPath = false);
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-// Swagger/OpenAPI discloses the full API surface, so it is gated to non-production environments rather
-// than exposed unauthenticated on a hosted control plane (ADR 0012). A hosted deployment that needs the
-// schema can serve it behind auth via configuration.
-if (!app.Environment.IsProduction())
+// Swagger/OpenAPI discloses the full API surface, so it is gated to an explicit allow-list of
+// non-production environments (finding #18) rather than a negative "!IsProduction()" check — which
+// would also expose it, unauthenticated, on Staging/QA or any custom environment name. A hosted
+// deployment that needs the schema can serve it behind auth via configuration.
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -192,12 +301,17 @@ app.UseCors(AngularClientCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 app.MapHub<TopologyHub>("/hubs/topology");
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+// Health checks are exempt from rate limiting (finding #5) — a load balancer/orchestrator probes these
+// frequently and unauthenticated, so the global per-subject limiter would otherwise apply to every
+// caller under the same "anonymous" partition key.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
+    .AllowAnonymous().DisableRateLimiting();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") })
-    .AllowAnonymous();
+    .AllowAnonymous().DisableRateLimiting();
 
 // Test-auth startup visibility (ADR 0018): make it unmistakable in the logs whenever every request is
 // being authenticated as the fixed, non-privileged caisson-ci-e2e principal instead of a real token.
@@ -231,6 +345,9 @@ static string ResolveConnectionString(IConfiguration configuration)
     => Environment.GetEnvironmentVariable("CAISSON_DB")
         ?? configuration.GetConnectionString("Caisson")
         ?? string.Empty;
+
+static string RateLimitPartitionKey(HttpContext httpContext)
+    => httpContext.User.FindFirst("oid")?.Value ?? "anonymous";
 
 /// <summary>Exposed so <c>WebApplicationFactory&lt;Program&gt;</c> can host the API in integration tests.</summary>
 public partial class Program

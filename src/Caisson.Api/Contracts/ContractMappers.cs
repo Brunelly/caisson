@@ -27,15 +27,19 @@ public static class ContractMappers
             ParseOptional(snapshot.ChangeSummary?.ChangeCountsJson));
     }
 
-    /// <summary>Maps a projected graph view onto the wire graph contract.</summary>
-    public static TopologyGraphDto ToGraph(TopologyGraphView view)
+    /// <summary>
+    /// Maps a projected graph view onto the wire graph contract. Finding #29: <paramref name="isPrivileged"/>
+    /// (Operator/Admin) gates whether NIC MACs are returned in full or OUI+masked — ReadOnly still gets a
+    /// usable value for search/display, never the raw address.
+    /// </summary>
+    public static TopologyGraphDto ToGraph(TopologyGraphView view, bool isPrivileged)
     {
         ArgumentNullException.ThrowIfNull(view);
         return new TopologyGraphDto(
             view.SnapshotId,
             view.Version,
             view.CorrelationId,
-            view.Servers.Select(ToServer).ToList(),
+            view.Servers.Select(s => ToServer(s, isPrivileged)).ToList(),
             view.UnmappedPorts.Select(p => new UnmappedPortDto(p.SwitchStableKey, p.SwitchSerial, p.PortName)).ToList());
     }
 
@@ -72,21 +76,37 @@ public static class ContractMappers
             auditEvent.CorrelationId);
     }
 
-    private static ServerNodeDto ToServer(ServerNode server)
+    private static ServerNodeDto ToServer(ServerNode server, bool isPrivileged)
         => new(
             server.StableKey,
             server.Hostname,
             server.BmcUuid,
-            server.Nics.Select(ToNic).ToList());
+            server.Nics.Select(n => ToNic(n, isPrivileged)).ToList());
 
-    private static NicNodeDto ToNic(NicNode nic)
+    private static NicNodeDto ToNic(NicNode nic, bool isPrivileged)
         => new(
             nic.StableKey,
             nic.Name,
-            nic.Mac,
+            isPrivileged ? nic.Mac : RedactMac(nic.Mac),
             nic.BestAttachment is null ? null : ToAttachment(nic.BestAttachment),
             nic.Candidates.Select(ToAttachment).ToList(),
             nic.UnmappedReasonCode);
+
+    /// <summary>
+    /// Finding #29: masks a colon-grouped MAC's NIC-specific portion (the last three octets) while
+    /// keeping the OUI (vendor) — enough for a ReadOnly caller's search/display to still group and
+    /// recognise devices by manufacturer without exposing the individually-identifying full address.
+    /// </summary>
+    private static string RedactMac(string macDisplay)
+    {
+        var octets = macDisplay.Split(':');
+        if (octets.Length != 6)
+        {
+            return "xx:xx:xx:xx:xx:xx";
+        }
+
+        return string.Join(':', octets[0], octets[1], octets[2], "xx", "xx", "xx");
+    }
 
     private static PortAttachmentDto ToAttachment(PortAttachment attachment)
         => new(
@@ -97,6 +117,39 @@ public static class ContractMappers
             attachment.Band,
             attachment.ReasonCode,
             attachment.Vlans);
+
+    /// <summary>
+    /// Management-plane address field names redacted from the entity latest-fields dictionary for a
+    /// non-privileged (ReadOnly) caller (finding #29): a switch's <c>managementIp</c>, a server's
+    /// <c>bmcAddress</c>, and an LLDP neighbour's <c>mgmtAddress</c> — every field an operator could use
+    /// to actually reach a device's management plane.
+    /// </summary>
+    private static readonly string[] ManagementAddressFieldNames = { "managementIp", "bmcAddress", "mgmtAddress" };
+
+    /// <summary>
+    /// Redacts management-plane address fields from an entity's latest-fields dictionary for a
+    /// non-privileged caller (finding #29) — returns <paramref name="fields"/> unchanged for
+    /// Operator/Admin, or a copy with the address fields nulled out for ReadOnly.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string?>? RedactManagementFields(
+        IReadOnlyDictionary<string, string?>? fields, bool isPrivileged)
+    {
+        if (fields is null || isPrivileged)
+        {
+            return fields;
+        }
+
+        var redacted = new Dictionary<string, string?>(fields, StringComparer.Ordinal);
+        foreach (var name in ManagementAddressFieldNames)
+        {
+            if (redacted.ContainsKey(name))
+            {
+                redacted[name] = null;
+            }
+        }
+
+        return redacted;
+    }
 
     private static JsonElement Parse(string json)
     {

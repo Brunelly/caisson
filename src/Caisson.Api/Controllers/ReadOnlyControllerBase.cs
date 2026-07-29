@@ -1,4 +1,6 @@
+using Caisson.Api.Security;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Caisson.Api.Controllers;
 
@@ -39,4 +41,17 @@ public abstract class ReadOnlyControllerBase : ControllerBase
             statusCode: StatusCodes.Status404NotFound,
             title: "Rack not found",
             detail: $"Rack '{rackId}' does not exist.");
+
+    /// <summary>
+    /// The per-rack access seam (finding #29): returns the 404 result to short-circuit with when
+    /// <see cref="IRackAccessPolicy"/> denies access, or <c>null</c> when the caller may proceed.
+    /// Resolved via <see cref="HttpContext"/> rather than constructor injection so every existing
+    /// controller derived from this base picks it up without a constructor-signature change. A denial is
+    /// surfaced as the same 404 as a missing rack (never 403), so rack existence is never an oracle.
+    /// </summary>
+    protected async Task<ObjectResult?> CheckRackAccessAsync(Guid rackId, CancellationToken cancellationToken)
+    {
+        var policy = HttpContext.RequestServices.GetRequiredService<IRackAccessPolicy>();
+        return await policy.CanReadAsync(User, rackId, cancellationToken) ? null : RackNotFound(rackId);
+    }
 }

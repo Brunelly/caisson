@@ -49,6 +49,11 @@ public sealed class AuditController : ReadOnlyControllerBase
             return ValidationError(pagingError!.Value);
         }
 
+        if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
+        {
+            return denied;
+        }
+
         var fromUtc = AsUtc(from) ?? DateTime.UnixEpoch;
         var toUtc = AsUtc(to) ?? DateTime.UtcNow;
         if (fromUtc >= toUtc)
