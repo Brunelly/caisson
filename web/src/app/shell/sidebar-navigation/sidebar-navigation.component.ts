@@ -70,12 +70,37 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
             </svg>
             <span class="sidebar__nav-label-text">Drift</span>
           </a>
+          <a
+            class="sidebar__nav-item"
+            [routerLink]="['/racks', id, 'network-config']"
+            routerLinkActive="sidebar__nav-item--active"
+          >
+            <svg
+              class="sidebar__nav-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="4" width="18" height="6" rx="1.5" />
+              <rect x="3" y="14" width="18" height="6" rx="1.5" />
+              <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
+              <circle cx="8" cy="17" r="1" fill="currentColor" stroke="none" />
+            </svg>
+            <span class="sidebar__nav-label-text">Network Config</span>
+          </a>
         } @else {
           <span class="sidebar__nav-item sidebar__nav-item--disabled" aria-disabled="true">
             <span class="sidebar__nav-label-text">Topology</span>
           </span>
           <span class="sidebar__nav-item sidebar__nav-item--disabled" aria-disabled="true">
             <span class="sidebar__nav-label-text">Drift</span>
+          </span>
+          <span class="sidebar__nav-item sidebar__nav-item--disabled" aria-disabled="true">
+            <span class="sidebar__nav-label-text">Network Config</span>
           </span>
         }
 

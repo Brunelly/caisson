@@ -1,0 +1,138 @@
+@use '../../shared/styles/cds-mixins';
+
+.vlan-catalogue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  color: var(--cds-text-primary);
+}
+
+.vlan-catalogue__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cds-sp-4);
+
+  h2 {
+    font-size: var(--cds-fs-xl);
+    font-weight: 700;
+    margin: 0;
+  }
+}
+
+.vlan-catalogue__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-primary-hover);
+    border-color: var(--cds-primary-hover);
+  }
+
+  @include cds-mixins.cds-focus-visible-ring;
+  @include cds-mixins.cds-respond-below(sm) {
+    @include cds-mixins.cds-touch-target;
+  }
+}
+
+.vlan-catalogue__server-errors {
+  @include cds-mixins.cds-banner(error);
+
+  p {
+    margin: 0 0 var(--cds-sp-1);
+    font-weight: 600;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--cds-sp-5);
+  }
+}
+
+.vlan-catalogue__table-wrapper {
+  @include cds-mixins.cds-elevated-card;
+  box-shadow: var(--cds-shadow-sm);
+  overflow-x: auto;
+}
+
+.vlan-catalogue__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cds-fs-md);
+
+  th,
+  td {
+    text-align: left;
+    padding: var(--cds-sp-2) var(--cds-sp-3);
+    border-bottom: 1px solid var(--cds-border-default);
+  }
+
+  th {
+    color: var(--cds-text-secondary);
+    font-weight: 600;
+    font-size: var(--cds-fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--cds-surface-sunken);
+  }
+
+  tbody tr:nth-child(even) {
+    background: var(--cds-surface-sunken);
+  }
+
+  tbody tr:hover {
+    background: var(--cds-surface-elevated);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.vlan-catalogue__identifier {
+  @include cds-mixins.cds-identifier-text;
+}
+
+.vlan-catalogue__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cds-sp-2);
+
+  button {
+    background: transparent;
+    color: var(--cds-primary);
+    border: 1px solid var(--cds-border-default);
+    border-radius: var(--cds-radius-sm);
+    padding: var(--cds-sp-1) var(--cds-sp-3);
+    font-size: var(--cds-fs-sm);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cds-surface-elevated);
+    }
+
+    @include cds-mixins.cds-focus-visible-ring;
+    @include cds-mixins.cds-respond-below(sm) {
+      @include cds-mixins.cds-touch-target;
+    }
+  }
+}
+
+.vlan-catalogue__retire-blocked {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--cds-fs-sm);
+  color: var(--cds-error-fg);
+}

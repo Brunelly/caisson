@@ -36,6 +36,13 @@ const TOPOLOGY_DRIFT_TOKEN_FILES = [
   'shared/styles/_cds-topology-tokens.scss',
   'shared/connection-status/live-connection-status-bar.component.scss',
   'topology/discovery-status/discovery-job-status-widget.component.scss',
+  // Story #168 — Network Config authoring (VLAN catalogue + port intent) style files.
+  'network-config/network-config-shell.component.scss',
+  'network-config/shared/discard-changes-dialog.component.scss',
+  'network-config/vlan-catalogue/vlan-catalogue.component.scss',
+  'network-config/vlan-catalogue/vlan-form-dialog.component.scss',
+  'network-config/port-intent/port-intent.component.scss',
+  'network-config/port-intent/port-intent-editor.component.scss',
 ];
 
 const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/;

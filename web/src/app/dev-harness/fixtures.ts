@@ -16,6 +16,12 @@ import type {
   DriftReportDetailDto,
   DriftReportSummaryDto,
 } from '../drift/model/drift-contracts';
+import type {
+  NetworkIntentDto,
+  NetworkIntentSaveRequest,
+  PortAccessIntentDto,
+  VlanCatalogueEntryDto,
+} from '../network-config/model/network-intent-contracts';
 
 let version = 4;
 
@@ -378,4 +384,48 @@ export function harnessDriftApplyJobDetail(
     steps: [],
     ...overrides,
   };
+}
+
+// --- Story #168 network-intent (VLAN catalogue / port intent) fixtures -----------------------
+
+let networkIntentEtag = 1;
+let networkIntentVlanCatalogue: VlanCatalogueEntryDto[] = [
+  { id: 10, name: 'default', description: null },
+  { id: 20, name: 'storage', description: 'iSCSI' },
+];
+let networkIntentPortIntents: PortAccessIntentDto[] = [
+  { switchStableKey: 'SW-1', portName: 'ether2', accessVlanId: 20 },
+];
+
+/** Resets the mutable harness network-intent state — Playwright drives catalogue/port-intent scenarios
+ * against this same mutable module state the fake NetworkIntentService reads/writes, mirroring the
+ * driftJobStatus mutable-state pattern above. */
+export function resetHarnessNetworkIntent(): void {
+  networkIntentEtag = 1;
+  networkIntentVlanCatalogue = [
+    { id: 10, name: 'default', description: null },
+    { id: 20, name: 'storage', description: 'iSCSI' },
+  ];
+  networkIntentPortIntents = [{ switchStableKey: 'SW-1', portName: 'ether2', accessVlanId: 20 }];
+}
+
+export function harnessNetworkIntentDto(): NetworkIntentDto {
+  return {
+    rackId: 'rack-1',
+    vlanCatalogue: networkIntentVlanCatalogue,
+    portIntents: networkIntentPortIntents,
+    updatedAtUtc: harnessSnapshotMeta().createdAt,
+    updatedBy: 'harness-user',
+  };
+}
+
+export function harnessNetworkIntentEtag(): string {
+  return String(networkIntentEtag);
+}
+
+export function harnessSaveNetworkIntent(request: NetworkIntentSaveRequest): NetworkIntentDto {
+  networkIntentEtag += 1;
+  networkIntentVlanCatalogue = request.vlanCatalogue;
+  networkIntentPortIntents = request.portIntents;
+  return harnessNetworkIntentDto();
 }

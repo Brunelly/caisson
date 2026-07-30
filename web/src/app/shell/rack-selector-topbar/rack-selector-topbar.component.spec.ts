@@ -76,7 +76,7 @@ describe('RackSelectorTopBarComponent', () => {
     // .component.ts).
     const navLinks = await vi.waitFor(() => {
       const links = drawer.querySelectorAll('a.sidebar__nav-item');
-      expect(links.length).toBe(2);
+      expect(links.length).toBe(3);
       return links;
     });
     expect([...navLinks].some((a) => a.getAttribute('href')?.includes('rack-1'))).toBe(true);

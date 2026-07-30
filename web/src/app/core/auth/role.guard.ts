@@ -49,6 +49,16 @@ export function hasDriftApplyPermission(payload: unknown): boolean {
   return extractRoles(payload).includes(DRIFT_APPLY_ROLE);
 }
 
+/** Mirrors Caisson.Api.Security.CaissonRoles.NetworkConfigAuthor (story #168, formalised per #174) —
+ * same rationale as DRIFT_APPLY_ROLE above: a dedicated, independently-revocable permission excluded
+ * from RECOGNISED_ROLES, never implied by Operator/Admin. The server is the sole enforcement point
+ * (403 on a missing claim); this is a UX-only gate for the network-intent authoring controls. */
+export const NETWORK_CONFIG_AUTHOR_ROLE = 'NetworkConfigAuthor';
+
+export function hasNetworkConfigAuthorPermission(payload: unknown): boolean {
+  return extractRoles(payload).includes(NETWORK_CONFIG_AUTHOR_ROLE);
+}
+
 export const roleGuard: CanActivateFn = () => {
   const oidc = inject(OidcSecurityService);
   const router = inject(Router);

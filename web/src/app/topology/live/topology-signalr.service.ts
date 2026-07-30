@@ -329,7 +329,11 @@ export class TopologySignalRService {
         return;
       }
       const graph = deriveTopologyGraph(result.value.graph);
-      this.state.applyRefreshedSnapshot(result.value.snapshot, graph);
+      this.state.applyRefreshedSnapshot(
+        result.value.snapshot,
+        graph,
+        result.value.graph.switches ?? [],
+      );
       this.telemetry.snapshotApplied(rackId, result.value.snapshot.version, correlationId);
     });
   }

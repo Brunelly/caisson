@@ -17,6 +17,10 @@ import { DriftApplyService } from '../drift/services/drift-apply.service';
 import type { DriftReportItemFilters } from '../drift/services/drift-report.service';
 import { DriftReportService } from '../drift/services/drift-report.service';
 import { DriftReportStateService } from '../drift/state/drift-report-state.service';
+import { validateNetworkIntent } from '../network-config/model/network-intent-validation';
+import { NetworkConfigPermissionService } from '../network-config/services/network-config-permission.service';
+import { NetworkIntentService } from '../network-config/services/network-intent.service';
+import { NetworkIntentStateService } from '../network-config/state/network-intent-state.service';
 import {
   HUB_CONNECTION_FACTORY,
   TopologySignalRService,
@@ -40,7 +44,11 @@ import {
   harnessDriftReportSummary,
   harnessEntityDetail,
   harnessGraphDto,
+  harnessNetworkIntentDto,
+  harnessNetworkIntentEtag,
+  harnessSaveNetworkIntent,
   harnessSnapshotMeta,
+  resetHarnessNetworkIntent,
   setDriftJobStatus,
 } from './fixtures';
 
@@ -145,6 +153,44 @@ const fakeDriftApplyService: Pick<DriftApplyService, 'applyCorrection' | 'getJob
   },
 };
 
+// Story #168: mirrors DriftApplyService's fake above — the mutable harness network-intent state lives
+// in fixtures.ts (resetHarnessNetworkIntent/harnessSaveNetworkIntent) so Playwright's catalogue CRUD ->
+// port intent set/clear -> save -> reload-shows-same-state scenario round-trips through a real (if
+// in-memory) upsert rather than always returning a fixed fixture.
+const fakeNetworkIntentService: Pick<
+  NetworkIntentService,
+  'getIntent' | 'saveIntent' | 'validate'
+> = {
+  getIntent: () =>
+    of({
+      kind: 'ok' as const,
+      value: { intent: harnessNetworkIntentDto(), etag: harnessNetworkIntentEtag() },
+    }),
+  saveIntent: (_rackId, request) => {
+    const errors = validateNetworkIntent(request.vlanCatalogue, request.portIntents);
+    if (errors.length > 0) {
+      return of({
+        kind: 'validationError' as const,
+        errors: errors.map((e) => ({ field: e.field, messages: [e.message] })),
+      });
+    }
+    return of({
+      kind: 'ok' as const,
+      value: { intent: harnessSaveNetworkIntent(request), etag: harnessNetworkIntentEtag() },
+    });
+  },
+  validate: (_rackId, request) => {
+    const errors = validateNetworkIntent(request.vlanCatalogue, request.portIntents);
+    return of({
+      kind: 'ok' as const,
+      value: {
+        isValid: errors.length === 0,
+        errors: errors.map((e) => ({ field: e.field, message: e.message })),
+      },
+    });
+  },
+};
+
 const fakeAuditService: Pick<AuditService, 'getAudit'> = {
   getAudit: () =>
     of({
@@ -180,6 +226,7 @@ declare global {
       bumpVersion: () => number;
       setDriftJobStatus: typeof setDriftJobStatus;
       getApplyCorrectionCallCount: typeof getApplyCorrectionCallCount;
+      resetNetworkIntent: typeof resetHarnessNetworkIntent;
     };
   }
 }
@@ -188,6 +235,7 @@ window.__harness__ = {
   bumpVersion,
   setDriftJobStatus,
   getApplyCorrectionCallCount,
+  resetNetworkIntent: resetHarnessNetworkIntent,
 };
 
 export const DEV_HARNESS_PROVIDERS: Provider[] = [
@@ -199,6 +247,7 @@ export const DEV_HARNESS_PROVIDERS: Provider[] = [
   { provide: DriftReportService, useValue: fakeDriftReportService },
   { provide: DriftApplyService, useValue: fakeDriftApplyService },
   { provide: AuditService, useValue: fakeAuditService },
+  { provide: NetworkIntentService, useValue: fakeNetworkIntentService },
   // Re-provided with useClass (not left to resolve from root) so their own inject() calls above pick up
   // the fakes registered in this same route-scoped environment injector.
   { provide: TopologyStateService, useClass: TopologyStateService },
@@ -206,4 +255,6 @@ export const DEV_HARNESS_PROVIDERS: Provider[] = [
   { provide: DriftPermissionService, useClass: DriftPermissionService },
   { provide: DriftApplyJobStatusService, useClass: DriftApplyJobStatusService },
   { provide: DriftReportStateService, useClass: DriftReportStateService },
+  { provide: NetworkConfigPermissionService, useClass: NetworkConfigPermissionService },
+  { provide: NetworkIntentStateService, useClass: NetworkIntentStateService },
 ];

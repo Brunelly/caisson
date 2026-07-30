@@ -3,6 +3,18 @@ import { AccessDeniedComponent } from './core/access-denied/access-denied.compon
 import { roleGuard } from './core/auth/role.guard';
 import { DEV_HARNESS_PROVIDERS } from './dev-harness/dev-harness.providers';
 
+// A statically-imported `unsavedNetworkIntentChangesGuard` would pull @angular/cdk/dialog (and
+// DiscardChangesDialogComponent) into the eagerly-loaded root routes module — the SAME budget concern
+// `loadComponent`'s dynamic import already solves for every route component here. Dynamically importing
+// the guard module itself at the point it actually runs (only when navigating away from a vlans/ports
+// route) keeps that whole dependency graph in its own lazy chunk instead. Left untyped (no
+// `CanDeactivateFn<unknown>` annotation) so it infers the narrower `Promise<Observable<boolean>>` —
+// see unsaved-changes.guard.ts's own comment for why the wider alias breaks this dynamic-import wrapper.
+const lazyUnsavedNetworkIntentChangesGuard = () =>
+  import('./network-config/shared/unsaved-changes.guard').then((m) =>
+    m.unsavedNetworkIntentChangesGuard(),
+  );
+
 // Rack selection/listing is out of scope for story #10 (assumed to already exist per the story's own
 // assumptions); this app's only route is the topology page for an already-known rackId.
 export const routes: Routes = [
@@ -31,6 +43,36 @@ export const routes: Routes = [
     canActivate: [roleGuard],
     loadComponent: () =>
       import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
+  // Story #168: Network Config authoring (VLAN Catalogue + Port Intent). The shell hosts the
+  // tab bar/persistent Save action; vlans/ports are child routes so switching tabs never re-navigates
+  // away from the shell (and its in-progress, unsaved draft) itself.
+  {
+    path: 'racks/:rackId/network-config',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./network-config/network-config-shell.component').then(
+        (m) => m.NetworkConfigShellComponent,
+      ),
+    children: [
+      { path: '', redirectTo: 'vlans', pathMatch: 'full' },
+      {
+        path: 'vlans',
+        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
+        loadComponent: () =>
+          import('./network-config/vlan-catalogue/vlan-catalogue.component').then(
+            (m) => m.VlanCatalogueComponent,
+          ),
+      },
+      {
+        path: 'ports',
+        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
+        loadComponent: () =>
+          import('./network-config/port-intent/port-intent.component').then(
+            (m) => m.PortIntentComponent,
+          ),
+      },
+    ],
   },
   { path: 'access-denied', component: AccessDeniedComponent },
   // Dev/CI-only route (no roleGuard, fixture data + a fake SignalR hub — see dev-harness.providers.ts):
@@ -69,5 +111,33 @@ export const routes: Routes = [
     providers: DEV_HARNESS_PROVIDERS,
     loadComponent: () =>
       import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
+  },
+  // Story #168: the same dev/CI-only harness mechanism, mirroring the production network-config route
+  // nesting so Playwright can exercise catalogue CRUD -> port intent set/clear -> save -> reload end to
+  // end (see web/e2e/network-config-harness.spec.ts) without a live OIDC tenant or backend.
+  {
+    path: '__dev-harness__/network-config/:rackId',
+    providers: DEV_HARNESS_PROVIDERS,
+    loadComponent: () =>
+      import('./network-config/network-config-shell.component').then(
+        (m) => m.NetworkConfigShellComponent,
+      ),
+    children: [
+      { path: '', redirectTo: 'vlans', pathMatch: 'full' },
+      {
+        path: 'vlans',
+        loadComponent: () =>
+          import('./network-config/vlan-catalogue/vlan-catalogue.component').then(
+            (m) => m.VlanCatalogueComponent,
+          ),
+      },
+      {
+        path: 'ports',
+        loadComponent: () =>
+          import('./network-config/port-intent/port-intent.component').then(
+            (m) => m.PortIntentComponent,
+          ),
+      },
+    ],
   },
 ];
