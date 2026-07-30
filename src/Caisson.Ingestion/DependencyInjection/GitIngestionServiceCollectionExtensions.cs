@@ -1,4 +1,5 @@
 using Caisson.Infrastructure.DependencyInjection;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Ingestion.Git;
 using Caisson.Ingestion.Git.ReadOnly;
 using Caisson.Ingestion.Ingestion;
@@ -51,6 +52,11 @@ public static class GitIngestionServiceCollectionExtensions
         });
 
         services.TryAddScoped<IDesiredStateIngestionService, DesiredStateIngestionService>();
+
+        // Fail-open default (mirrors AddCaissonPersistence's own IDriftRecomputeSignal default):
+        // DesiredStateIngestionService depends on IDriftRecomputeSignal, so this holds even for composition
+        // roots that call AddCaissonGitIngestion without also wiring Orchestration's AddCaissonDrift.
+        services.TryAddSingleton<IDriftRecomputeSignal, NoOpDriftRecomputeSignal>();
 
         services.AddHostedService<GitPollingBackgroundService>();
         services.AddHostedService<DesiredStateIngestionRunner>();

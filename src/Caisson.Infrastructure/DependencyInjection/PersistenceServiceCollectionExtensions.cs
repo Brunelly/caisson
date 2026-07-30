@@ -1,4 +1,5 @@
 using Caisson.Infrastructure.LiveUpdates;
+using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -31,6 +32,12 @@ public static class PersistenceServiceCollectionExtensions
         // replaces these with the Redis-backed implementations when a connection string is configured.
         services.TryAddSingleton<ITopologyEventPublisher, NoOpTopologyEventPublisher>();
         services.TryAddSingleton<ITopologyEventSequencer, InProcessTopologyEventSequencer>();
+
+        // Fail-open default (mirrors the ITopologyEventPublisher default above): TopologySnapshotIngestionService
+        // depends on IDriftRecomputeSignal, so composition roots that never call AddCaissonDrift (e.g. the
+        // VirtualRack Seeder) still get a working service graph. AddCaissonDrift overrides this with the real
+        // bounded-channel signal when Orchestration is wired.
+        services.TryAddSingleton<IDriftRecomputeSignal, NoOpDriftRecomputeSignal>();
 
         return services;
     }
