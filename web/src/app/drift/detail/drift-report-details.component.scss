@@ -104,6 +104,12 @@
     margin: 0;
     word-break: break-word;
   }
+
+  // Story #123 Task #141: matches the `__before-after` grid above — was overlooked in the #122 audit.
+  @include cds-mixins.cds-respond-below(md) {
+    grid-template-columns: 1fr;
+    gap: var(--cds-sp-0-5);
+  }
 }
 
 .drift-detail__apply-slot {
