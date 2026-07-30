@@ -74,4 +74,28 @@ public sealed class ContractMappersRedactionTests
         redacted.Servers[0].Nics[0].Mac.Should().Be("aa:bb:cc:xx:xx:xx");
         privileged.Servers[0].Nics[0].Mac.Should().Be("aa:bb:cc:dd:ee:ff");
     }
+
+    [Fact]
+    public void ToGraph_does_not_throw_and_preserves_a_null_mac_for_a_non_privileged_caller()
+    {
+        // A NIC can be discovered with no MAC; NicNode.Mac is annotated non-null but is null at runtime.
+        // The ReadOnly redaction path used to call macDisplay.Split(':') on it and throw an NRE -> HTTP 500
+        // on GET /api/racks/{id}/topology/snapshots/latest for a least-privilege principal
+        // (TestAuthSchemeTests.Least_privilege_principal_can_read_topology_but_cannot_trigger_discovery).
+        var view = new TopologyGraphView(
+            Guid.NewGuid(), 1, Guid.NewGuid(),
+            new List<ServerNode>
+            {
+                new(
+                    "dev-1|srv-1", "server-1", "uuid-1",
+                    new List<NicNode> { new("nomac-nic", "eth1", null!, null, new List<PortAttachment>(), null) }),
+            },
+            new List<UnmappedPortNode>(),
+            new List<SwitchInventoryNode>());
+
+        var toUnprivileged = () => ContractMappers.ToGraph(view, isPrivileged: false);
+
+        toUnprivileged.Should().NotThrow("a NIC with no MAC has nothing to redact, and must not 500");
+        toUnprivileged().Servers[0].Nics[0].Mac.Should().BeNull();
+    }
 }
