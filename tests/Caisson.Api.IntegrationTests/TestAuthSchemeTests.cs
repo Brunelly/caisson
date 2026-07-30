@@ -1,9 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using Caisson.Api.Security;
+using Caisson.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -141,6 +146,20 @@ public sealed class TestAuthSchemeTests
             builder.UseEnvironment("Testing");
             builder.UseSetting("Testing:EnableTestAuth", "true");
             builder.UseSetting("ConnectionStrings:Caisson", _harness.ConnectionString);
+
+            // Program.cs's ResolveConnectionString prefers the CAISSON_DB *environment variable* over
+            // ConnectionStrings:Caisson (the secret-injection path). In CI, CAISSON_DB is set process-wide
+            // to the Postgres service container, whose schema the migration-apply/rollback gate reverts to
+            // 0 — so the real DbContext registration would bind there and every query 500s (relation
+            // "topology_snapshot" does not exist) instead of hitting this test's isolated, migrated+seeded
+            // harness database. Rebind the DbContext straight to the harness connection (mirroring
+            // CaissonApiFactory) so the end-to-end real-auth boot runs against the correct database.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll(typeof(DbContextOptions<CaissonDbContext>));
+                services.RemoveAll(typeof(DbContextOptions));
+                services.AddDbContext<CaissonDbContext>(options => options.UseNpgsql(_harness.ConnectionString));
+            });
         }
 
         async Task IAsyncLifetime.DisposeAsync()
