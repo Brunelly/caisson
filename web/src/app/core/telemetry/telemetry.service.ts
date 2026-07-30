@@ -88,6 +88,24 @@ export class TelemetryService {
     this.record('network-intent.validation-error', null, { rackId, fieldCount });
   }
 
+  // Story #169 — desired-state YAML import/export outcomes. Carries only rackId/status/count strings —
+  // never the YAML body, VLAN names/descriptions, or port stable keys (NFR4).
+  desiredStateImportOutcome(
+    rackId: string,
+    status: string,
+    correlationId: string | null = null,
+  ): void {
+    this.record('desired-state.import.outcome', correlationId, { rackId, status });
+  }
+
+  desiredStateExportOutcome(
+    rackId: string,
+    status: string,
+    correlationId: string | null = null,
+  ): void {
+    this.record('desired-state.export.outcome', correlationId, { rackId, status });
+  }
+
   record(type: string, correlationId: string | null, detail?: TelemetryEvent['detail']): void {
     const event: TelemetryEvent = {
       type,

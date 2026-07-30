@@ -1,0 +1,137 @@
+@use '../../shared/styles/cds-mixins';
+
+.yaml-import-dialog {
+  @include cds-mixins.cds-elevated-card;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  color: var(--cds-text-primary);
+  width: 40rem;
+  max-width: 92vw;
+  max-height: 90vh;
+  padding: var(--cds-sp-6);
+  box-shadow: var(--cds-shadow-overlay);
+  overflow-y: auto;
+  box-sizing: border-box;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+  }
+}
+
+.yaml-import-dialog__heading {
+  margin: 0;
+  font-size: var(--cds-fs-xl);
+  font-weight: 700;
+}
+
+.yaml-import-dialog__body {
+  margin: 0;
+  font-size: var(--cds-fs-sm);
+  color: var(--cds-text-secondary);
+
+  code {
+    @include cds-mixins.cds-identifier-text;
+    font-size: var(--cds-fs-xs);
+  }
+}
+
+.yaml-import-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-1);
+  font-size: var(--cds-fs-base);
+
+  label {
+    color: var(--cds-text-secondary);
+    font-weight: 500;
+  }
+}
+
+.yaml-import-dialog__file {
+  @include cds-mixins.cds-form-input;
+
+  &:focus-visible {
+    @include cds-mixins.cds-focus-visible-ring;
+  }
+}
+
+.yaml-import-dialog__textarea {
+  @include cds-mixins.cds-form-input;
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-sm);
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 12rem;
+  // The shared form-input mixin already sets caret-color and placeholder/disabled colours that meet
+  // contrast in light, dark and hc-dark.
+}
+
+.yaml-import-dialog__server-error {
+  @include cds-mixins.cds-banner(error);
+  margin: 0;
+  font-size: var(--cds-fs-sm);
+}
+
+.yaml-import-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cds-sp-3);
+  margin-top: var(--cds-sp-2);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    flex-direction: column-reverse;
+  }
+}
+
+.yaml-import-dialog__cancel,
+.yaml-import-dialog__import {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  cursor: pointer;
+
+  @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+.yaml-import-dialog__cancel {
+  background: transparent;
+  color: var(--cds-text-secondary);
+  border: 1px solid var(--cds-border-default);
+
+  &:hover {
+    color: var(--cds-text-primary);
+    background: var(--cds-surface-elevated);
+  }
+}
+
+.yaml-import-dialog__import {
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--cds-primary-hover);
+    border-color: var(--cds-primary-hover);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--cds-primary-active);
+    border-color: var(--cds-primary-active);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
