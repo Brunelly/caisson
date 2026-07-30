@@ -98,6 +98,8 @@ public sealed class DomainGuardTests
         "NicNodeDto.StableKey",
         "StableKeyCollision.StableKey",
         "Rack.ExternalKey",
+        // bug-231: the rack-catalogue list DTO's copy of Rack.ExternalKey — same natural-key rationale.
+        "RackSummaryDto.ExternalKey",
         "Server.ExternalDeviceKey",
         "Switch.ExternalDeviceKey",
         "TopologyEntityDiff.EntityStableKey",
