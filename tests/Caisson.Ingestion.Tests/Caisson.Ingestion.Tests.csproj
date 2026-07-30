@@ -7,6 +7,11 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
+  <!-- Golden-file round-trip fixtures (story #169) copied verbatim; LF-normalised in the test reader. -->
+  <ItemGroup>
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Caisson.Domain\Caisson.Domain.csproj" />
     <ProjectReference Include="..\..\src\Caisson.Ingestion\Caisson.Ingestion.csproj" />
