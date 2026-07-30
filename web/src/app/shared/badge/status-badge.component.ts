@@ -13,7 +13,7 @@
 // from mapping-state/confidence: pending/success/failure is a different axis entirely from mapping
 // confidence or drift severity (a job can be "success" while its subject is "unmapped"). Prefer
 // drift/apply/job-status-badge.component.ts over binding `kind` to a job-status string directly.
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { ConfidenceBand, MappingState } from '../../topology/model/topology-graph-model';
 
 export type SeverityBadgeKind = 'severity-high' | 'severity-medium' | 'severity-low';
@@ -59,6 +59,7 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
 @Component({
   selector: 'app-status-badge',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span class="status-badge" [class]="cssClass()">
       @if (icon(); as ic) {

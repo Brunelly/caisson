@@ -5,7 +5,7 @@
 // StatusBadgeComponent's mapping-state/confidence/severity kinds — pending/success/error is a different
 // axis entirely (a job can be "success" while its subject stays "unmapped") — see
 // shared/badge/status-badge.component.ts's `JobStatusBadgeKind`.
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { JobStatusBadgeKind } from '../../shared/badge/status-badge.component';
 import type { DriftApplyJobStatus } from '../model/drift-contracts';
@@ -50,6 +50,7 @@ const BADGE_KIND: Record<DriftApplyJobStatus, JobStatusBadgeKind> = {
   selector: 'app-job-status-badge',
   standalone: true,
   imports: [StatusBadgeComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-status-badge [kind]="badgeKind()" [labelText]="label()" [iconOverride]="icon()" />
   `,

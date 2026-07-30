@@ -5,7 +5,7 @@
 // Submit click (gated by the acknowledgement checkbox) closes with 'submit', which the caller
 // (apply-action.component.ts) is the only thing that ever triggers the actual applyCorrection call.
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import type { DriftItemDto } from '../model/drift-contracts';
 import { DriftSeverityBadgeComponent } from '../shared/drift-severity-badge.component';
 
@@ -20,6 +20,7 @@ export type ApplyConfirmationDialogResult = 'submit' | undefined;
   standalone: true,
   imports: [DriftSeverityBadgeComponent],
   styleUrl: './apply-confirmation-dialog.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="apply-dialog">
       <header class="apply-dialog__header">

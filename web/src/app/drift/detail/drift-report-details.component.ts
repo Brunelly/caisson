@@ -5,7 +5,7 @@
 // a raw dictionary dump of anything not present on the DTO. Hosts the Apply action slot wired by step 4
 // (ApplyActionComponent).
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
@@ -34,6 +34,7 @@ const IDENTIFIER_DETAIL_KEYS = new Set(['switchName', 'portName']);
   standalone: true,
   imports: [DatePipe, DriftSeverityBadgeComponent, ApplyActionComponent],
   styleUrl: './drift-report-details.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="drift-detail" role="main">
       @if (loading()) {

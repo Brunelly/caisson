@@ -4,7 +4,7 @@
 // server-side (getReportById re-fetch, never a client-side array filter) so keyset pagination stays
 // correct. Filters are query-param-bound so filter state survives navigation/back-forward.
 import { DatePipe } from '@angular/common';
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { ParamMap } from '@angular/router';
@@ -61,6 +61,7 @@ export function driftFiltersToQueryParams(
   standalone: true,
   imports: [DatePipe, RouterLink, DriftSeverityBadgeComponent, JobStatusBadgeComponent],
   styleUrl: './drift-reports-list.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="drift-list" role="main">
       <header class="drift-list__header">
