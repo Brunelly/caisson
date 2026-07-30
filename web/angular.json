@@ -3,7 +3,9 @@
   "version": 1,
   "cli": {
     "packageManager": "npm",
-    "schematicCollections": ["angular-eslint"]
+    "schematicCollections": [
+      "angular-eslint"
+    ]
   },
   "newProjectRoot": "projects",
   "projects": {
@@ -30,7 +32,10 @@
                 "input": "public"
               }
             ],
-            "styles": ["@angular/cdk/overlay-prebuilt.css", "src/styles.scss"]
+            "styles": [
+              "@angular/cdk/overlay-prebuilt.css",
+              "src/styles.scss"
+            ]
           },
           "configurations": {
             "production": {
@@ -90,6 +95,22 @@
                 {
                   "replace": "src/app/core/auth/auth.config.ts",
                   "with": "src/app/core/auth/auth.config.e2e.ts"
+                }
+              ]
+            },
+            "azuredemo": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.azuredemo.ts"
+                },
+                {
+                  "replace": "src/app/core/auth/auth.config.ts",
+                  "with": "src/app/core/auth/auth.config.e2e.ts"
+                },
+                {
+                  "replace": "src/app/app.routes.ts",
+                  "with": "src/app/app.routes.prod.ts"
                 }
               ]
             }

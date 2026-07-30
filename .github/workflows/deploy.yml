@@ -20,8 +20,11 @@ permissions:
 env:
   RG: by-rg-caisson-dev
   APP_API: by-azuks-app-caisson-api
+  APP_WEB: by-azuks-app-caisson-web
   PG_SERVER: by-azuks-psql-caisson-dev
   IMAGE: ghcr.io/brunelly/caisson-api
+  IMAGE_WEB: ghcr.io/brunelly/caisson-web
+  WEB_FQDN: by-azuks-app-caisson-web.lemontree-7bffb5af.uksouth.azurecontainerapps.io
 
 jobs:
   build-push-api:
@@ -126,3 +129,65 @@ jobs:
             sleep 10
           done
           echo "::error::/health/ready never returned 200"; exit 1
+
+  build-push-web:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: web
+          file: web/Dockerfile
+          # TEST-only demo build: auth-bypass SPA pointed at the deployed API (see environment.azuredemo.ts).
+          build-args: |
+            NG_CONFIG=azuredemo
+          push: true
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_WEB }}:latest
+
+  deploy-web:
+    needs: [build-push-web, deploy-api]
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Allow the SPA origin through the API's CORS
+        run: |
+          az containerapp update -g "$RG" -n "$APP_API" \
+            --set-env-vars "Cors__AllowedOrigins__0=https://${WEB_FQDN}"
+      - name: Point the web app at ghcr (pull auth) + deploy the demo image
+        run: |
+          az containerapp registry set -g "$RG" -n "$APP_WEB" \
+            --server ghcr.io --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+          az containerapp update -g "$RG" -n "$APP_WEB" \
+            --image "${IMAGE_WEB}:${{ needs.build-push-web.outputs.tag }}"
+          az containerapp ingress update -g "$RG" -n "$APP_WEB" --target-port 8080
+      - name: Health check the SPA
+        run: |
+          fqdn=$(az containerapp show -g "$RG" -n "$APP_WEB" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Web: https://$fqdn"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$fqdn/" || true)
+            echo "attempt $i: / -> $code"
+            if [ "$code" = "200" ]; then
+              echo "::notice::Caisson SPA (demo) is live at https://$fqdn"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::SPA / never returned 200"; exit 1

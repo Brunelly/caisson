@@ -6,7 +6,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# Which Angular build configuration to bundle. Defaults to the real production build; the TEST
+# deployment passes NG_CONFIG=azuredemo (auth-bypass demo pointed at the deployed Caisson.Api).
+ARG NG_CONFIG=production
+RUN npx ng build --configuration ${NG_CONFIG}
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
