@@ -34,14 +34,14 @@ export type PortIntentEditorResult = { accessVlanId: number | null } | undefined
 
       <div class="port-intent-editor__field">
         <label for="port-intent-editor-select">Access VLAN intent</label>
-        <select
-          id="port-intent-editor-select"
-          [value]="selectedValue()"
-          (change)="onSelectChange($event)"
-        >
-          <option [value]="inheritValue">Unchanged / Inherit</option>
+        <select id="port-intent-editor-select" (change)="onSelectChange($event)">
+          <option [value]="inheritValue" [selected]="isSelected(inheritValue)">
+            Unchanged / Inherit
+          </option>
           @for (vlan of data.catalogue; track vlan.id) {
-            <option [value]="vlan.id">VLAN {{ vlan.id }} — {{ vlan.name }}</option>
+            <option [value]="vlan.id" [selected]="isSelected(vlan.id + '')">
+              VLAN {{ vlan.id }} — {{ vlan.name }}
+            </option>
           }
         </select>
       </div>
@@ -64,6 +64,17 @@ export class PortIntentEditorComponent {
 
   protected onSelectChange(event: Event): void {
     this.selectedValue.set((event.target as HTMLSelectElement).value);
+  }
+
+  /** Per-option `[selected]` (rather than relying solely on the parent `<select>`'s own `[value]`
+   * binding) so the initially-current VLAN is reliably pre-selected regardless of DOM creation order:
+   * Angular's control-flow (`@for`) options are inserted as a separate, later update than the `<select>`
+   * element's own bindings, so setting `[value]` on the select alone can race the browser's native
+   * value-matching algorithm against option elements that don't exist yet at that instant — some engines
+   * silently self-heal once the options DO exist, but the WHATWG spec text for the `value` IDL setter
+   * does not guarantee that reconciliation, so it cannot be relied on across browsers. */
+  protected isSelected(value: string): boolean {
+    return this.selectedValue() === value;
   }
 
   protected cancel(): void {
