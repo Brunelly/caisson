@@ -3,7 +3,7 @@
 // Pending -> Revalidating -> Executing stage ladder (all that a live DriftApplyJobStatusChangedEvent or
 // a job-summary poll carries); given `steps` (only the full DriftApplyJobDetailDto carries these), the
 // audit view gets the precise per-step timeline instead.
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { JobStatusBadgeKind } from '../../shared/badge/status-badge.component';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { DriftApplyJobStatus, DriftApplyStepDto } from '../model/drift-contracts';
@@ -39,6 +39,7 @@ function stepStatusBadgeKind(status: string): JobStatusBadgeKind {
   standalone: true,
   imports: [JobStatusBadgeComponent, StatusBadgeComponent],
   styleUrl: './job-status-timeline.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (steps(); as detailedSteps) {
       <ol class="job-timeline" aria-label="Apply job steps">

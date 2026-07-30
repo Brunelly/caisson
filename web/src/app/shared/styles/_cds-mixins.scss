@@ -4,6 +4,7 @@
 // duplicate its whole ~6kB of theme declarations into that component's compiled output, blowing the
 // `anyComponentStyle` budget instantly. Mixins emit no CSS unless invoked, so this file is safe for
 // every shell component to `@use`.
+@use 'sass:map';
 
 // Visible keyboard-focus ring for shell controls — mirrors `tokens.focus-visible-ring` but reads
 // `--cds-*` so shell components never fall back to the `--color-*` layer.
@@ -60,14 +61,25 @@
   @include cds-focus-visible-ring;
 }
 
-// Reusable "needs attention" amber notice (stale drift / write-warning / details-panel notice) — a
-// single shared class so the amber-token pairing isn't duplicated across topology and drift SCSS.
-@mixin cds-status-notice {
-  background: var(--cds-warning-bg);
-  color: var(--cds-warning-fg);
+// Tone-parameterized banner surface — resolves to the matching `--cds-{tone}-bg`/`-fg` pair (Story
+// #122 Task #137/#138: the apply dialog needs both an amber "write warning" and a cyan "rollback
+// window" banner, and the drift/topology surfaces already had the amber-only `cds-status-notice`).
+// `warning`/`error`/`info`/`success` are the only tones with a `--cds-{tone}-bg/-fg` pair in
+// `_cds-tokens.scss`.
+@mixin cds-banner($tone) {
+  background: var(--cds-#{$tone}-bg);
+  color: var(--cds-#{$tone}-fg);
   border-radius: var(--cds-radius-md);
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
+}
+
+// Reusable "needs attention" amber notice (stale drift / write-warning / details-panel notice) — a
+// single shared class so the amber-token pairing isn't duplicated across topology and drift SCSS.
+// Thin wrapper over `cds-banner(warning)` (ADR 0041) — kept as its own mixin so the three existing
+// call sites (apply-action, topology-details-panel, apply-confirmation-dialog) need zero changes.
+@mixin cds-status-notice {
+  @include cds-banner(warning);
 }
 
 // DS monospace + tabular-numeral treatment for technical identifiers (MAC addresses, switch ports,
@@ -77,4 +89,39 @@
   font-family: var(--cds-font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
+}
+
+// Opaque panel surface for drift/apply feature surfaces (list/detail/dialog/audit wrappers) — Story
+// #122 (ADR 0041). Deliberately NOT `cds-glass-surface`: the design mocks render these panels as a
+// flat `--cds-surface-elevated` fill with no backdrop-filter, reserving glass for floating shell chrome
+// (sidebar/topbar) only. Also sidesteps the NFR4 perf risk of blurring behind a 500-row drift list.
+@mixin cds-elevated-card {
+  background: var(--cds-surface-elevated);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-lg);
+  box-shadow: var(--cds-shadow-md);
+}
+
+// DS breakpoint map (`platforms.web.breakpoints` in the design-system tokens JSON) — the first
+// `@media` convention in this app (Story #122 ADR 0041; a repo-wide grep before this story found zero
+// existing `@media` rules). `cds-respond-below(md)` emits `@media (max-width: 767px)`: one pixel below
+// the named breakpoint's own min-width, so "below md" and "at md" never both match the same viewport.
+$cds-breakpoints: (
+  sm: 640px,
+  md: 768px,
+  lg: 1024px,
+  xl: 1280px,
+  2xl: 1536px,
+);
+
+@mixin cds-respond-below($name) {
+  $width: map.get($cds-breakpoints, $name);
+
+  @if $width == null {
+    @error 'cds-respond-below: unknown breakpoint `#{$name}` — expected one of #{map.keys($cds-breakpoints)}';
+  }
+
+  @media (max-width: $width - 1px) {
+    @content;
+  }
 }

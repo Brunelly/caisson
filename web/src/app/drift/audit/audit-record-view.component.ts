@@ -10,7 +10,7 @@
 // timestamps and filtered client-side to targetType === 'drift-apply-job' && targetId === jobId (the
 // exact values Caisson.Api.Controllers.DriftApplyController/DriftApplyJobRunner write).
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import type { AuditEventDto } from '../../topology/model/topology-contracts';
@@ -67,6 +67,7 @@ function auditResultBadgeKind(result: string): JobStatusBadgeKind {
   standalone: true,
   imports: [DatePipe, JobStatusTimelineComponent, StatusBadgeComponent],
   styleUrl: './audit-record-view.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="audit-view" role="main">
       @if (loading()) {

@@ -5,7 +5,15 @@
 // primary guard). Disabled-until-settled (`submitting`) is the sole client double-submit guard, layered
 // on the backend's one-active-job-per-item dedup (ADR 0032) — there is no client idempotency key.
 import { Dialog } from '@angular/cdk/dialog';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
@@ -32,6 +40,7 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
   standalone: true,
   imports: [RouterLink, LiveConnectionStatusBarComponent, JobStatusTimelineComponent],
   styleUrl: './apply-action.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (permission.canApplyDrift()) {
       @if (stale()) {

@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1rem;
+  padding: var(--cds-sp-4);
   box-sizing: border-box;
   overflow-y: auto;
   // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of what the
@@ -18,11 +18,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: var(--cds-sp-4);
+  margin-bottom: var(--cds-sp-4);
 
   h1 {
-    font-size: 1.125rem;
+    font-size: var(--cds-fs-2xl);
+    font-weight: 700;
     margin: 0;
   }
 }
@@ -30,17 +31,24 @@
 .drift-list__filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: var(--cds-sp-4);
+
+  @include cds-mixins.cds-respond-below(md) {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
 }
 
 .drift-list__filter {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.8125rem;
+  gap: var(--cds-sp-1);
+  font-size: var(--cds-fs-base);
 
   label {
     color: var(--cds-text-secondary);
+    font-weight: 500;
   }
 
   // Native <select>: the simplest control that satisfies the full interactive-UI baseline for free
@@ -52,24 +60,47 @@
   }
 }
 
+// Story #122 (ADR 0041): opaque elevated panel wrapping the table, matching the mock's `.drift-panel`.
+.drift-list__table-wrapper {
+  @include cds-mixins.cds-elevated-card;
+  box-shadow: var(--cds-shadow-sm);
+  overflow-x: auto;
+}
+
 .drift-list__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--cds-fs-md);
 
   th,
   td {
     text-align: left;
-    padding: 0.5rem 0.75rem;
+    padding: var(--cds-sp-2) var(--cds-sp-3);
     border-bottom: 1px solid var(--cds-border-default);
+    white-space: nowrap;
   }
 
   th {
     color: var(--cds-text-secondary);
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--cds-fs-xs);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
+    background: var(--cds-surface-sunken);
+  }
+
+  // Alternating row fills so a dense, 500-item drift table stays scannable — flat fills only, never a
+  // filter/shadow, to keep this cheap to repaint (NFR4).
+  tbody tr:nth-child(even) {
+    background: var(--cds-surface-sunken);
+  }
+
+  tbody tr:hover {
+    background: var(--cds-surface-elevated);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
   }
 }
 
@@ -94,13 +125,13 @@
 
 .drift-list__load-more {
   align-self: flex-start;
-  margin-top: 1rem;
+  margin-top: var(--cds-sp-4);
   background: var(--cds-bg-page);
   color: var(--cds-text-primary);
   border: 1px solid var(--cds-border-default);
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
   cursor: pointer;
 
   &:hover:not(:disabled) {

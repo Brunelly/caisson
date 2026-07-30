@@ -3,7 +3,7 @@
 // of `severity` onto StatusBadgeComponent's confidence-band kinds, since confidence High renders green
 // ("good") while drift severity High is "bad". Built on the shared, token-only StatusBadgeComponent so
 // colours/icons never drift from the rest of the app's badge vocabulary.
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { SeverityBadgeKind } from '../../shared/badge/status-badge.component';
 import type { DriftSeverity } from '../model/drift-contracts';
@@ -18,6 +18,7 @@ const SEVERITY_BADGE_KIND: Record<DriftSeverity, SeverityBadgeKind> = {
   selector: 'app-drift-severity-badge',
   standalone: true,
   imports: [StatusBadgeComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<app-status-badge [kind]="badgeKind()" />`,
 })
 export class DriftSeverityBadgeComponent {

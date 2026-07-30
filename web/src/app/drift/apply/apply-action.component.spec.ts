@@ -166,6 +166,21 @@ describe('ApplyActionComponent', () => {
     expect(fixture.componentInstance.jobCreatedIds).toEqual(['job-1']);
   });
 
+  it('Story #122 re-skin: renders the current→desired VLAN value pills with the same actual/expected values', async () => {
+    setup(true);
+
+    applyButton()!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const dialog = dialogEl();
+    const current = dialog!.querySelector('.apply-dialog__value--current');
+    const desired = dialog!.querySelector('.apply-dialog__value--desired');
+    expect(current?.textContent?.trim()).toBe('100');
+    expect(desired?.textContent?.trim()).toBe('200');
+  });
+
   it('Cancel makes zero API calls and closes the dialog', async () => {
     setup(true);
 

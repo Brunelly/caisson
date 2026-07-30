@@ -13,7 +13,7 @@
 // from mapping-state/confidence: pending/success/failure is a different axis entirely from mapping
 // confidence or drift severity (a job can be "success" while its subject is "unmapped"). Prefer
 // drift/apply/job-status-badge.component.ts over binding `kind` to a job-status string directly.
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { ConfidenceBand, MappingState } from '../../topology/model/topology-graph-model';
 
 export type SeverityBadgeKind = 'severity-high' | 'severity-medium' | 'severity-low';
@@ -59,6 +59,7 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
 @Component({
   selector: 'app-status-badge',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span class="status-badge" [class]="cssClass()">
       @if (icon(); as ic) {
@@ -69,13 +70,16 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
   `,
   styles: [
     `
+      // Story #122 (Task #137): DS pill treatment — full-round radius, --cds-fs-xs, token spacing.
+      // Purely a token/shape refresh; the kind -> colour/glyph/label maps below are untouched, so
+      // every badge (mapping-state, confidence, drift severity, job status) keeps its exact meaning.
       .status-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
-        border-radius: 999px;
-        padding: 0.125rem 0.625rem;
-        font-size: 0.75rem;
+        gap: var(--cds-sp-1);
+        border-radius: var(--cds-radius-full);
+        padding: var(--cds-sp-0-5) var(--cds-sp-2-5);
+        font-size: var(--cds-fs-xs);
         font-weight: 600;
         line-height: 1.4;
         white-space: nowrap;
