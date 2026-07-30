@@ -35,13 +35,24 @@ Once deployed:
 Actions → **Deploy (Test)** → *Run workflow* (it is `workflow_dispatch` only — nothing auto-deploys).
 Dev/Test deploys are self-service; a production pipeline (when it exists) stays gated on a human approver.
 
+## The web SPA (demo)
+
+The Angular SPA is deployed to `by-azuks-app-caisson-web` from `ghcr.io/brunelly/caisson-web`, built with
+the **`azuredemo`** configuration: the same auth-bypass as the `e2e` build (a fake OidcSecurityService
+instead of a real Entra flow) pointed at the deployed API. This is a **deliberate, signed-off TEST demo**
+so the UI can be browsed read-only without a real Entra tenant — production would use real Entra OIDC (a
+separate story) and drop the bypass. The API's CORS `AllowedOrigins` is set to the SPA origin so the
+cross-origin XHR/SignalR calls are allowed.
+
+## ghcr pull is durable
+
+Both `caisson-api` and `caisson-web` packages are **public**, so the container apps pull them
+**anonymously** — no registry credential is stored on the apps (an ephemeral `GITHUB_TOKEN` cred would
+expire and break later autoscale/cold-start pulls). Keep the packages public, or switch to a long-lived
+read:packages credential if they ever need to go private.
+
 ## Known follow-ups
 
-- **ghcr pull auth is not yet durable.** The deploy sets the container app's registry credential to the
-  workflow's `GITHUB_TOKEN`, which is short-lived. The image pulls fine on deploy, but a much later
-  autoscale pull could fail once the token expires. Fix: make the `caisson-api` package public, or set a
-  long-lived read:packages credential on the container app.
-- **The web SPA is not deployed here yet.** Its routes require real Entra OIDC (the "OIDC via Entra"
-  backlog feature); a public build would redirect to an unconfigured Entra. A deliberate demo build using
-  the `e2eAuthBypass` path is possible but is a security-diverging choice to be signed off explicitly.
 - Custom domains / TLS beyond the default `*.azurecontainerapps.io` FQDN are not set up.
+- Container apps use single-revision mode; `migrate-seed` re-seeds a fresh virtual rack on every run
+  (harmless — it just adds another rack).

@@ -98,10 +98,10 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Point the app at ghcr (pull auth) + the DB secret
+      - name: Set the DB secret on the app
+        # The ghcr images are PUBLIC, so the container app pulls them anonymously — no registry
+        # credential is configured (an ephemeral GITHUB_TOKEN cred would expire and break later pulls).
         run: |
-          az containerapp registry set -g "$RG" -n "$APP_API" \
-            --server ghcr.io --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
           az containerapp secret set -g "$RG" -n "$APP_API" \
             --secrets "caisson-db=${{ secrets.CAISSON_DB }}"
       - name: Deploy image + runtime config
@@ -169,10 +169,8 @@ jobs:
         run: |
           az containerapp update -g "$RG" -n "$APP_API" \
             --set-env-vars "Cors__AllowedOrigins__0=https://${WEB_FQDN}"
-      - name: Point the web app at ghcr (pull auth) + deploy the demo image
+      - name: Deploy the demo image (public ghcr → anonymous pull, no registry cred)
         run: |
-          az containerapp registry set -g "$RG" -n "$APP_WEB" \
-            --server ghcr.io --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
           az containerapp update -g "$RG" -n "$APP_WEB" \
             --image "${IMAGE_WEB}:${{ needs.build-push-web.outputs.tag }}"
           az containerapp ingress update -g "$RG" -n "$APP_WEB" --target-port 8080
