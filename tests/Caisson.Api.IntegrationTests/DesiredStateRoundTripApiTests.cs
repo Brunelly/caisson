@@ -31,7 +31,7 @@ public sealed class DesiredStateRoundTripApiTests
           rackSlug: {rackSlug}
         spec:
           vlans:
-            - vlanId: 10
+            - vlanId: 10 # comment in a supported section => not preserved
               name: storage
               description: iSCSI
           switches:
