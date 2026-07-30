@@ -18,6 +18,13 @@ const lazyUnsavedNetworkIntentChangesGuard = () =>
 // production bundle. Keep in lock-step with app.routes.ts's real routes.
 export const routes: Routes = [
   {
+    path: '',
+    pathMatch: 'full',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./shell/rack-landing/rack-landing.component').then((m) => m.RackLandingComponent),
+  },
+  {
     path: 'racks/:rackId/topology',
     canActivate: [roleGuard],
     loadComponent: () =>

@@ -126,7 +126,15 @@ export class TopologySignalRService {
     this.currentRackId = rackId;
 
     if (!this.connection) {
-      this.connection = this.buildConnection();
+      try {
+        this.connection = this.buildConnection();
+      } catch (error: unknown) {
+        this.telemetry.error('connect', String(error));
+        this.state.setConnectionStatus('disconnected');
+        this.startPolling();
+        this.scheduleInitialConnectRetry();
+        return;
+      }
     }
 
     if (this.connection.state === HubConnectionState.Disconnected) {
@@ -218,8 +226,18 @@ export class TopologySignalRService {
       return;
     }
 
-    connection
-      .start()
+    let start: Promise<void>;
+    try {
+      start = connection.start();
+    } catch (error: unknown) {
+      this.telemetry.error('connect', String(error));
+      this.state.setConnectionStatus('disconnected');
+      this.startPolling();
+      this.scheduleInitialConnectRetry();
+      return;
+    }
+
+    start
       .then(() => {
         this.telemetry.connect(this.currentRackId ?? '');
         this.state.setConnectionStatus('live');

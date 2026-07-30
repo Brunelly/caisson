@@ -59,11 +59,30 @@
   font-size: var(--cds-fs-sm);
   color: var(--cds-text-secondary);
 
+  cursor: pointer;
+  @include cds-mixins.cds-focus-visible-ring;
+  &:hover:not(:disabled) {
+    background: var(--cds-bg-hover);
+    color: var(--cds-text-primary);
+  }
+  &:active:not(:disabled) {
+    background: var(--cds-surface-sunken);
+  }
+  &:disabled {
+    color: var(--cds-text-disabled);
+    cursor: not-allowed;
+  }
+
   // Never truncated (AC1) — the chip wraps onto its own row via `.topbar`'s `flex-wrap` instead of
   // clipping the rack id.
   @include cds-mixins.cds-respond-below(sm) {
     @include cds-mixins.cds-touch-target;
   }
+}
+
+.topbar__rack-name {
+  color: var(--cds-text-primary);
+  font-weight: 600;
 }
 
 .topbar__rack-label {
@@ -85,4 +104,37 @@
   align-items: center;
   gap: var(--cds-sp-2-5);
   flex-wrap: wrap;
+}
+
+.rack-options {
+  margin: var(--cds-sp-1) 0 0;
+  padding: var(--cds-sp-1);
+  min-width: 16rem;
+  list-style: none;
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  background: var(--cds-surface-elevated);
+  box-shadow: var(--cds-shadow-overlay);
+}
+.rack-option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--cds-sp-4);
+  padding: var(--cds-sp-2) var(--cds-sp-3);
+  border-radius: var(--cds-radius-sm);
+  color: var(--cds-text-primary);
+  cursor: pointer;
+  outline: none;
+}
+.rack-option:hover,
+.rack-option--active,
+.rack-option:focus-visible {
+  background: var(--cds-bg-hover);
+}
+.rack-option:focus-visible {
+  @include cds-mixins.cds-focus-visible-ring;
+}
+.rack-option__id {
+  font-family: var(--cds-font-mono);
+  color: var(--cds-text-secondary);
 }

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type { DriftItemDto } from '../../drift/model/drift-contracts';
 import { DriftReportService } from '../../drift/services/drift-report.service';
@@ -170,5 +170,57 @@ describe('TopologyStateService drift wiring (story #67)', () => {
     expect(state.driftOverlay().get(portNodeId('SW-1|sw1', 'ether1'))?.driftItemId).toBe(
       'drift-item-1',
     );
+  });
+
+  it('cancels an older rack load so its later response cannot overwrite the active rack', () => {
+    const responses = new Map<string, Subject<unknown>>();
+    const response = (key: string) => {
+      const subject = new Subject<unknown>();
+      responses.set(key, subject);
+      return subject;
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: TopologySnapshotService,
+          useValue: { getLatest: vi.fn((rackId: string) => response(`detail-${rackId}`)) },
+        },
+        {
+          provide: DiscoveryStatusService,
+          useValue: { getStatus: vi.fn((rackId: string) => response(`status-${rackId}`)) },
+        },
+        {
+          provide: DriftReportService,
+          useValue: { getLatest: vi.fn((rackId: string) => response(`drift-${rackId}`)) },
+        },
+      ],
+    });
+    const state = TestBed.inject(TopologyStateService);
+    state.loadRackTopology('rack-1');
+    state.loadRackTopology('rack-2');
+
+    const rack2Detail = snapshotDetail();
+    rack2Detail.snapshot.snapshotId = 'rack-2-snapshot';
+    responses.get('detail-rack-2')!.next({ kind: 'ok', value: rack2Detail });
+    responses.get('detail-rack-2')!.complete();
+    responses.get('status-rack-2')!.next({ kind: 'ok', value: null });
+    responses.get('status-rack-2')!.complete();
+    responses.get('drift-rack-2')!.next({ kind: 'forbidden' });
+    responses.get('drift-rack-2')!.complete();
+
+    const rack1Detail = snapshotDetail();
+    rack1Detail.snapshot.snapshotId = 'rack-1-stale-snapshot';
+    for (const [key, value] of [
+      ['detail-rack-1', { kind: 'ok', value: rack1Detail }],
+      ['status-rack-1', { kind: 'ok', value: null }],
+      ['drift-rack-1', { kind: 'forbidden' }],
+    ] as const) {
+      responses.get(key)!.next(value);
+      responses.get(key)!.complete();
+    }
+
+    expect(state.rackId()).toBe('rack-2');
+    expect(state.snapshot()?.snapshotId).toBe('rack-2-snapshot');
+    expect(state.loading()).toBe(false);
   });
 });

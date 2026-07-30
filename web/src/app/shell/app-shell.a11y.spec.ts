@@ -9,6 +9,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import axe from 'axe-core';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { of } from 'rxjs';
+import { signal } from '@angular/core';
+import { RackCatalogueService } from '../core/racks/rack-catalogue.service';
 import { AppShellComponent } from './app-shell.component';
 
 describe('AppShellComponent accessibility', () => {
@@ -17,7 +20,20 @@ describe('AppShellComponent accessibility', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppShellComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        {
+          provide: RackCatalogueService,
+          useValue: {
+            racks: signal([]),
+            loading: signal(false),
+            result: signal({ kind: 'ok', value: [] }),
+            load: () => of({ kind: 'ok', value: [] }),
+          },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppShellComponent);

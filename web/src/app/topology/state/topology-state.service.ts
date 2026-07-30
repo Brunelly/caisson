@@ -4,7 +4,7 @@
 // SignalR service (story #10 step 6) drives, and (story #67) the rack's drift items + the derived
 // port-node overlay the graph/details-panel render.
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { type Subscription, forkJoin } from 'rxjs';
 import type { DriftItemDto } from '../../drift/model/drift-contracts';
 import type { DriftOverlayEntry } from '../../drift/model/drift-topology-overlay';
 import { buildDriftTopologyOverlay } from '../../drift/model/drift-topology-overlay';
@@ -38,6 +38,7 @@ export class TopologyStateService {
   private readonly snapshots = inject(TopologySnapshotService);
   private readonly discovery = inject(DiscoveryStatusService);
   private readonly driftReports = inject(DriftReportService);
+  private activeLoad: Subscription | null = null;
 
   private readonly _rackId = signal<string | null>(null);
   private readonly _snapshot = signal<SnapshotMetadataDto | null>(null);
@@ -85,6 +86,7 @@ export class TopologyStateService {
    * (AC1). A drift-load failure never fails the (read-only, drift-independent) topology page itself —
    * it just leaves the overlay empty, same as a rack with no drift. */
   loadRackTopology(rackId: string): void {
+    this.activeLoad?.unsubscribe();
     const isRackChange = this._rackId() !== null && this._rackId() !== rackId;
     this._rackId.set(rackId);
     this._loading.set(true);
@@ -93,7 +95,7 @@ export class TopologyStateService {
       this.clearSelection();
     }
 
-    forkJoin({
+    this.activeLoad = forkJoin({
       detail: this.snapshots.getLatest(rackId),
       status: this.discovery.getStatus(rackId),
       drift: this.driftReports.getLatest(rackId),
