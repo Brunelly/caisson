@@ -112,7 +112,15 @@
                   "replace": "src/app/app.routes.ts",
                   "with": "src/app/app.routes.prod.ts"
                 }
-              ]
+              ],
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             }
           },
           "defaultConfiguration": "production"

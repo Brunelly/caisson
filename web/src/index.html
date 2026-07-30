@@ -6,40 +6,9 @@
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
-    <script>
-      // FOUC guard (Story #119 NFR1): no Angular hook runs before first paint, so this tiny, deliberate
-      // duplication of ONLY the read-and-apply half of ThemeService's resolution algorithm
-      // (theme.service.ts's `resolveInitial()`/`resolveSystemPreference()`) sets `data-theme` on <html>
-      // before Angular bootstraps. ThemeService re-derives the same theme on init and re-applies it —
-      // idempotent with what this script already set. Wrapped in try/catch so a locked-down/unsupported
-      // browser (storage disabled, no matchMedia) never blocks rendering; falls through to the static
-      // `data-theme="dark"` already on the <html> tag.
-      (function () {
-        try {
-          var STORAGE_KEY = 'caisson.theme';
-          var THEMES = ['dark', 'light', 'hc-dark'];
-          var theme = null;
-          try {
-            var stored = localStorage.getItem(STORAGE_KEY);
-            if (THEMES.indexOf(stored) !== -1) {
-              theme = stored;
-            }
-          } catch (e) {
-            // Storage unavailable — fall through to system preference.
-          }
-          if (!theme) {
-            theme =
-              typeof matchMedia === 'function' &&
-              matchMedia('(prefers-color-scheme: light)').matches
-                ? 'light'
-                : 'dark';
-          }
-          document.documentElement.setAttribute('data-theme', theme);
-        } catch (e) {
-          // Never block first paint — the dark default below still applies.
-        }
-      })();
-    </script>
+    <!-- FOUC theme guard, external + render-blocking so it runs before first paint yet satisfies a strict
+         `script-src 'self'` CSP (no inline script). See public/theme-init.js. -->
+    <script src="theme-init.js"></script>
   </head>
   <body>
     <app-root></app-root>
