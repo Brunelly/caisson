@@ -129,6 +129,19 @@ export function harnessGraphDto(): TopologyGraphDto {
       },
     ],
     unmappedPorts: [{ switchStableKey: 'SW-1', switchSerial: 'sw1', portName: 'ether4' }],
+    switches: [
+      {
+        stableKey: 'SW-1',
+        serial: 'sw1',
+        name: 'SW-1',
+        ports: [
+          { stableKey: 'SW-1|ether1', portName: 'ether1' },
+          { stableKey: 'SW-1|ether2', portName: 'ether2' },
+          { stableKey: 'SW-1|ether3', portName: 'ether3' },
+          { stableKey: 'SW-1|ether4', portName: 'ether4' },
+        ],
+      },
+    ],
   };
 }
 
