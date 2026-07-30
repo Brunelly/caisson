@@ -24,3 +24,12 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+// Task #131: a DS-tokened scrim for CDK Dialog/Overlay backdrops (e.g. the apply-confirmation dialog),
+// passed via `backdropClass`/`cdkConnectedOverlayBackdropClass` instead of falling back to CDK's
+// un-themed `.cdk-overlay-dark-backdrop` (a fixed rgba(0,0,0,.32) with no hc-dark awareness). Global,
+// not component-scoped: CDK Overlay/Dialog append the backdrop element directly to the overlay
+// container, outside any component's view, so a scoped selector would never match.
+.cds-overlay-backdrop {
+  background: var(--cds-surface-overlay);
+}
