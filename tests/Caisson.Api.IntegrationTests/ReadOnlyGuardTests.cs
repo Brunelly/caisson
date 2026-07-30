@@ -32,6 +32,8 @@ public sealed class ReadOnlyGuardTests
         nameof(DriftApplyController),
         // Story #168/#176: network-intent authoring (PUT save, POST validate) — GET stays read-only.
         nameof(NetworkIntentController),
+        // Story #169: desired-state YAML round-trip (POST parse, POST render) — both NetworkConfigAuthor-gated.
+        nameof(DesiredStateRoundTripController),
     };
 
     // The policies a non-GET action must be gated by (fail-closed).
