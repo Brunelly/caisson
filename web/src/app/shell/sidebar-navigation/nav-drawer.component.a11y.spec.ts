@@ -44,6 +44,6 @@ describe('NavDrawerComponent accessibility', () => {
     expect(close.getAttribute('aria-label')).toBe('Close navigation');
 
     const links = fixture.nativeElement.querySelectorAll('a.sidebar__nav-item');
-    expect(links.length).toBe(2);
+    expect(links.length).toBe(3);
   });
 });

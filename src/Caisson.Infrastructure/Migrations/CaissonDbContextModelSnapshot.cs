@@ -1007,6 +1007,59 @@ namespace Caisson.Infrastructure.Migrations
                     b.ToTable("drift_report", (string)null);
                 });
 
+            modelBuilder.Entity("Caisson.Domain.NetworkConfig.RackNetworkIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("IntentJson")
+                        .IsRequired()
+                        .HasMaxLength(2097152)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("intent_json");
+
+                    b.Property<Guid>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rack_network_intent");
+
+                    b.HasIndex("RackId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rack_network_intent_rack_id");
+
+                    b.ToTable("rack_network_intent", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.Topology.LldpNeighbour", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1896,6 +1949,16 @@ namespace Caisson.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_drift_report_racks_rack_id");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.NetworkConfig.RackNetworkIntent", b =>
+                {
+                    b.HasOne("Caisson.Domain.Topology.Rack", null)
+                        .WithMany()
+                        .HasForeignKey("RackId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rack_network_intent_rack_rack_id");
                 });
 
             modelBuilder.Entity("Caisson.Domain.Topology.LldpNeighbour", b =>

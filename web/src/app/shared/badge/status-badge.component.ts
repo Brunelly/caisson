@@ -18,7 +18,12 @@ import type { ConfidenceBand, MappingState } from '../../topology/model/topology
 
 export type SeverityBadgeKind = 'severity-high' | 'severity-medium' | 'severity-low';
 export type JobStatusBadgeKind = 'job-pending' | 'job-success' | 'job-error';
-export type BadgeKind = MappingState | ConfidenceBand | SeverityBadgeKind | JobStatusBadgeKind;
+// Story #168: the Port Intent screen's per-port state — namespaced apart from mapping-state/confidence/
+// severity/job-status for the same reason those are namespaced apart from each other (a different axis
+// entirely: "what access-VLAN intent is authored for this port", not a confidence/severity/job outcome).
+export type PortIntentBadgeKind = 'intent-inherit' | 'intent-access';
+export type BadgeKind =
+  MappingState | ConfidenceBand | SeverityBadgeKind | JobStatusBadgeKind | PortIntentBadgeKind;
 
 const LABELS: Record<BadgeKind, string> = {
   confirmed: 'Confirmed',
@@ -35,6 +40,10 @@ const LABELS: Record<BadgeKind, string> = {
   'job-pending': 'Pending',
   'job-success': 'Completed',
   'job-error': 'Failed',
+  // Story #168: overridden via `labelText` at the port-intent call site to append the resolved VLAN
+  // id/name (e.g. "Access VLAN 120 — storage") — these exist only so LABELS stays a total map.
+  'intent-inherit': 'Unchanged / Inherit',
+  'intent-access': 'Access VLAN',
 };
 
 // NFR5: status is never colour-only — every kind also carries a glyph. Reuses the exact glyphs
@@ -54,6 +63,9 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
   'job-pending': '…',
   'job-success': '✓',
   'job-error': '✕',
+  'intent-access': '✓',
+  // 'intent-inherit' deliberately has no icon — it is the neutral "nothing authored" state, not a
+  // positive/negative outcome.
 };
 
 @Component({
@@ -117,9 +129,15 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
       }
 
       .status-badge--severity-low,
-      .status-badge--job-pending {
+      .status-badge--job-pending,
+      .status-badge--intent-inherit {
         background: var(--cds-surface-elevated);
         color: var(--cds-text-secondary);
+      }
+
+      .status-badge--intent-access {
+        background: var(--cds-secondary-subtle);
+        color: var(--cds-secondary);
       }
     `,
   ],

@@ -70,6 +70,24 @@ export class TelemetryService {
     this.record('drift.apply.error', correlationId, { context, message, jobId });
   }
 
+  // Story #168 — network-intent authoring events. Carries only rackId/counts/status/context strings —
+  // never VLAN names/descriptions or port stable keys (NFR4: no device/config detail in telemetry).
+  networkIntentSaveRequested(rackId: string, vlanCount: number, portIntentCount: number): void {
+    this.record('network-intent.save.requested', null, { rackId, vlanCount, portIntentCount });
+  }
+
+  networkIntentSaveOutcome(
+    rackId: string,
+    status: string,
+    correlationId: string | null = null,
+  ): void {
+    this.record('network-intent.save.outcome', correlationId, { rackId, status });
+  }
+
+  networkIntentValidationError(rackId: string, fieldCount: number): void {
+    this.record('network-intent.validation-error', null, { rackId, fieldCount });
+  }
+
   record(type: string, correlationId: string | null, detail?: TelemetryEvent['detail']): void {
     const event: TelemetryEvent = {
       type,

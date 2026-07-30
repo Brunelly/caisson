@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
@@ -192,7 +193,11 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin))
     // Story #65: the drift-apply endpoint requires the DriftApply role/permission alone — deliberately NOT
     // CaissonRoles.Operators, so an Operator without this elevated grant is rejected (AC1).
-    .AddPolicy(AuthorizationPolicies.DriftApply, policy => policy.RequireRole(CaissonRoles.DriftApply));
+    .AddPolicy(AuthorizationPolicies.DriftApply, policy => policy.RequireRole(CaissonRoles.DriftApply))
+    // Story #168 (formalised per #174): authoring network intent (PUT/validate) requires the dedicated
+    // NetworkConfigAuthor grant alone — deliberately NOT CaissonRoles.Operators, so an Operator/Admin
+    // without this elevated grant is rejected. Viewing (GET) stays behind TopologyRead.
+    .AddPolicy(AuthorizationPolicies.NetworkConfigAuthor, policy => policy.RequireRole(CaissonRoles.NetworkConfigAuthor));
 
 // Story #65 (AC1): a thin decorator over the framework's default authorization-middleware result handler
 // that logs a structured warning (subject, path, correlation id) on every Forbidden result, then delegates
@@ -210,11 +215,14 @@ builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationM
 // than AllowAnyMethod(), so the preflight contract mirrors what the SPA actually calls cross-origin.
 const string AngularClientCorsPolicy = "AngularClient";
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+// Story #168: PUT is required for the network-intent save endpoint, and ETag must be exposed so the
+// client can read the xmin-derived concurrency token off a cross-origin GET/PUT response (browsers hide
+// response headers from JS on cross-origin requests unless explicitly exposed here).
 builder.Services.AddCors(options => options.AddPolicy(AngularClientCorsPolicy, policy => policy
     .WithOrigins(allowedOrigins)
     .AllowAnyHeader()
-    .WithMethods("GET", "POST")
-    .WithExposedHeaders(CorrelationIdMiddleware.HeaderName)));
+    .WithMethods("GET", "POST", "PUT")
+    .WithExposedHeaders(CorrelationIdMiddleware.HeaderName, HeaderNames.ETag)));
 
 // Rate limiting (finding #5): partitioned per authenticated subject (the "oid" claim) so one caller
 // cannot exhaust the budget for another. Windows are deliberately generous — the virtual-rack e2e

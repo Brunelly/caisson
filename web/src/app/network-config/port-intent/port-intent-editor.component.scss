@@ -1,0 +1,100 @@
+@use '../../shared/styles/cds-mixins';
+
+.port-intent-editor {
+  @include cds-mixins.cds-elevated-card;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  color: var(--cds-text-primary);
+  width: 22rem;
+  max-width: 90vw;
+  padding: var(--cds-sp-6);
+  box-shadow: var(--cds-shadow-overlay);
+  box-sizing: border-box;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+  }
+}
+
+.port-intent-editor__heading {
+  margin: 0;
+  font-size: var(--cds-fs-xl);
+  font-weight: 700;
+  @include cds-mixins.cds-identifier-text;
+}
+
+.port-intent-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-1);
+  font-size: var(--cds-fs-base);
+
+  label {
+    color: var(--cds-text-secondary);
+    font-weight: 500;
+  }
+
+  // Native <select>: the full interactive baseline (close on select/outside-click/Escape, keyboard
+  // nav, native listbox ARIA) for free — token-styled so it stays theme-safe in all 3 themes.
+  select {
+    @include cds-mixins.cds-form-input;
+  }
+}
+
+.port-intent-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cds-sp-3);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    flex-direction: column-reverse;
+  }
+}
+
+.port-intent-editor__cancel,
+.port-intent-editor__apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  cursor: pointer;
+
+  @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+.port-intent-editor__cancel {
+  background: transparent;
+  color: var(--cds-text-secondary);
+  border: 1px solid var(--cds-border-default);
+
+  &:hover {
+    color: var(--cds-text-primary);
+    background: var(--cds-surface-elevated);
+  }
+}
+
+.port-intent-editor__apply {
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
+
+  &:hover {
+    background: var(--cds-primary-hover);
+    border-color: var(--cds-primary-hover);
+  }
+
+  &:active {
+    background: var(--cds-primary-active);
+    border-color: var(--cds-primary-active);
+  }
+}

@@ -27,6 +27,15 @@ public static class CaissonRoles
     /// </summary>
     public const string DriftApply = "DriftApply";
 
+    /// <summary>
+    /// An elevated, independently-revocable permission (story #168, formalised per #174) that authorizes
+    /// authoring rack network intent (VLAN catalogue + per-port access-VLAN intent). Deliberately NOT
+    /// included in <see cref="All"/> or <see cref="Operators"/>, mirroring the <see cref="DriftApply"/>
+    /// precedent: viewing the authored intent (GET) is gated by the ordinary <see cref="All"/> read roles,
+    /// but authoring it (PUT/validate) requires this grant even for an Operator or Admin.
+    /// </summary>
+    public const string NetworkConfigAuthor = "NetworkConfigAuthor";
+
     /// <summary>Every role permitted to read topology/audit data.</summary>
     public static readonly IReadOnlyList<string> All = new[] { Admin, Operator, ReadOnly, ServiceAccount };
 
@@ -35,9 +44,11 @@ public static class CaissonRoles
 
     /// <summary>
     /// Every value a <c>Authentication:RoleMappings</c> entry may legally target (story #65): the viewing
-    /// roles in <see cref="All"/> plus the elevated <see cref="DriftApply"/> permission. Used only by
+    /// roles in <see cref="All"/> plus the elevated <see cref="DriftApply"/> and
+    /// <see cref="NetworkConfigAuthor"/> permissions. Used only by
     /// <see cref="RoleClaimsTransformation.ValidateMappings"/>'s fail-closed canonical-target check —
-    /// <see cref="DriftApply"/> is intentionally absent from <see cref="All"/> itself.
+    /// both elevated permissions are intentionally absent from <see cref="All"/> itself.
     /// </summary>
-    public static readonly IReadOnlyList<string> AllMappableTargets = new[] { Admin, Operator, ReadOnly, ServiceAccount, DriftApply };
+    public static readonly IReadOnlyList<string> AllMappableTargets =
+        new[] { Admin, Operator, ReadOnly, ServiceAccount, DriftApply, NetworkConfigAuthor };
 }

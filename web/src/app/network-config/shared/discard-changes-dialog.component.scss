@@ -1,0 +1,81 @@
+@use '../../shared/styles/cds-mixins';
+
+// Opaque `--cds-surface-elevated` panel (ADR 0041 precedent, mirrors apply-confirmation-dialog) — the
+// CDK backdrop scrim (`.cds-overlay-backdrop`, applied by the caller) is the only translucent surface.
+.discard-dialog {
+  @include cds-mixins.cds-elevated-card;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  color: var(--cds-text-primary);
+  max-width: 26rem;
+  padding: var(--cds-sp-6);
+  box-shadow: var(--cds-shadow-overlay);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    max-width: none;
+  }
+}
+
+.discard-dialog__heading {
+  margin: 0;
+  font-size: var(--cds-fs-xl);
+  font-weight: 700;
+}
+
+.discard-dialog__body {
+  margin: 0;
+  color: var(--cds-text-secondary);
+}
+
+.discard-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cds-sp-3);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    flex-direction: column-reverse;
+  }
+}
+
+.discard-dialog__cancel,
+.discard-dialog__discard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  cursor: pointer;
+
+  @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+.discard-dialog__cancel {
+  background: transparent;
+  color: var(--cds-text-secondary);
+  border: 1px solid var(--cds-border-default);
+
+  &:hover {
+    color: var(--cds-text-primary);
+    background: var(--cds-surface-elevated);
+  }
+}
+
+.discard-dialog__discard {
+  background: var(--cds-error-bg);
+  color: var(--cds-error-fg);
+  border: 1px solid var(--cds-error-fg);
+
+  &:hover {
+    background: var(--cds-error-fg);
+    color: var(--cds-primary-contrast);
+  }
+}

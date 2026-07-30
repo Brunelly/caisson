@@ -16,6 +16,12 @@ import type {
   DriftReportDetailDto,
   DriftReportSummaryDto,
 } from '../drift/model/drift-contracts';
+import type {
+  NetworkIntentDto,
+  NetworkIntentSaveRequest,
+  PortAccessIntentDto,
+  VlanCatalogueEntryDto,
+} from '../network-config/model/network-intent-contracts';
 
 let version = 4;
 
@@ -61,7 +67,7 @@ export function harnessGraphDto(): TopologyGraphDto {
             name: 'eth0',
             mac: 'aa:bb:cc:dd:ee:01',
             bestAttachment: {
-              switchStableKey: 'SW-1',
+              switchStableKey: 'SW-1|sw1',
               switchSerial: 'sw1',
               portName: 'ether1',
               confidence: 0.95,
@@ -71,7 +77,7 @@ export function harnessGraphDto(): TopologyGraphDto {
             },
             candidates: [
               {
-                switchStableKey: 'SW-1',
+                switchStableKey: 'SW-1|sw1',
                 switchSerial: 'sw1',
                 portName: 'ether1',
                 confidence: 0.95,
@@ -87,7 +93,7 @@ export function harnessGraphDto(): TopologyGraphDto {
             name: 'eth1',
             mac: 'aa:bb:cc:dd:ee:02',
             bestAttachment: {
-              switchStableKey: 'SW-1',
+              switchStableKey: 'SW-1|sw1',
               switchSerial: 'sw1',
               portName: 'ether2',
               confidence: 0.6,
@@ -97,7 +103,7 @@ export function harnessGraphDto(): TopologyGraphDto {
             },
             candidates: [
               {
-                switchStableKey: 'SW-1',
+                switchStableKey: 'SW-1|sw1',
                 switchSerial: 'sw1',
                 portName: 'ether2',
                 confidence: 0.6,
@@ -106,7 +112,7 @@ export function harnessGraphDto(): TopologyGraphDto {
                 vlans: [20],
               },
               {
-                switchStableKey: 'SW-1',
+                switchStableKey: 'SW-1|sw1',
                 switchSerial: 'sw1',
                 portName: 'ether3',
                 confidence: 0.55,
@@ -128,7 +134,24 @@ export function harnessGraphDto(): TopologyGraphDto {
         ],
       },
     ],
-    unmappedPorts: [{ switchStableKey: 'SW-1', switchSerial: 'sw1', portName: 'ether4' }],
+    unmappedPorts: [{ switchStableKey: 'SW-1|sw1', switchSerial: 'sw1', portName: 'ether4' }],
+    // Story #168 AC3 regression coverage: the switch's own stable key is realistically composite
+    // (StableKeys.ForSwitch's `{deviceKey}|{serial}`, see StableKeys.cs), so each port's stable key below
+    // is genuinely THREE '|'-separated segments — a flatter single-segment switch key here would mask a
+    // truncation bug in topology-details-panel.component.ts's switchStableKeyFor (it did, in production).
+    switches: [
+      {
+        stableKey: 'SW-1|sw1',
+        serial: 'sw1',
+        name: 'SW-1',
+        ports: [
+          { stableKey: 'SW-1|sw1|ether1', portName: 'ether1' },
+          { stableKey: 'SW-1|sw1|ether2', portName: 'ether2' },
+          { stableKey: 'SW-1|sw1|ether3', portName: 'ether3' },
+          { stableKey: 'SW-1|sw1|ether4', portName: 'ether4' },
+        ],
+      },
+    ],
   };
 }
 
@@ -365,4 +388,50 @@ export function harnessDriftApplyJobDetail(
     steps: [],
     ...overrides,
   };
+}
+
+// --- Story #168 network-intent (VLAN catalogue / port intent) fixtures -----------------------
+
+let networkIntentEtag = 1;
+let networkIntentVlanCatalogue: VlanCatalogueEntryDto[] = [
+  { id: 10, name: 'default', description: null },
+  { id: 20, name: 'storage', description: 'iSCSI' },
+];
+let networkIntentPortIntents: PortAccessIntentDto[] = [
+  { switchStableKey: 'SW-1|sw1', portName: 'ether2', accessVlanId: 20 },
+];
+
+/** Resets the mutable harness network-intent state — Playwright drives catalogue/port-intent scenarios
+ * against this same mutable module state the fake NetworkIntentService reads/writes, mirroring the
+ * driftJobStatus mutable-state pattern above. */
+export function resetHarnessNetworkIntent(): void {
+  networkIntentEtag = 1;
+  networkIntentVlanCatalogue = [
+    { id: 10, name: 'default', description: null },
+    { id: 20, name: 'storage', description: 'iSCSI' },
+  ];
+  networkIntentPortIntents = [
+    { switchStableKey: 'SW-1|sw1', portName: 'ether2', accessVlanId: 20 },
+  ];
+}
+
+export function harnessNetworkIntentDto(): NetworkIntentDto {
+  return {
+    rackId: 'rack-1',
+    vlanCatalogue: networkIntentVlanCatalogue,
+    portIntents: networkIntentPortIntents,
+    updatedAtUtc: harnessSnapshotMeta().createdAt,
+    updatedBy: 'harness-user',
+  };
+}
+
+export function harnessNetworkIntentEtag(): string {
+  return String(networkIntentEtag);
+}
+
+export function harnessSaveNetworkIntent(request: NetworkIntentSaveRequest): NetworkIntentDto {
+  networkIntentEtag += 1;
+  networkIntentVlanCatalogue = request.vlanCatalogue;
+  networkIntentPortIntents = request.portIntents;
+  return harnessNetworkIntentDto();
 }

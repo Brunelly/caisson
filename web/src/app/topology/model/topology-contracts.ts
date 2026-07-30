@@ -33,6 +33,11 @@ export interface TopologyGraphDto {
   correlationId: string;
   servers: ServerNodeDto[];
   unmappedPorts: UnmappedPortDto[];
+  /** Story #168: a flat switch → ports inventory, additive alongside the NIC-rooted graph above — the
+   * Network Config Port Intent screen's source for "every discovered port on every switch". Optional so
+   * every pre-existing graph fixture/test literal (written before this field existed) keeps compiling;
+   * a real API response always includes it, so consumers should treat a missing value as `[]`. */
+  switches?: SwitchInventoryDto[];
 }
 
 export interface ServerNodeDto {
@@ -65,6 +70,20 @@ export interface PortAttachmentDto {
 export interface UnmappedPortDto {
   switchStableKey: string;
   switchSerial: string | null;
+  portName: string;
+}
+
+/** A discovered switch and its full flat port inventory (story #168) — drives Network Config's Port
+ * Intent screen. Existing NIC-rooted graph consumers ignore this field. */
+export interface SwitchInventoryDto {
+  stableKey: string;
+  serial: string | null;
+  name: string;
+  ports: SwitchPortInventoryDto[];
+}
+
+export interface SwitchPortInventoryDto {
+  stableKey: string;
   portName: string;
 }
 

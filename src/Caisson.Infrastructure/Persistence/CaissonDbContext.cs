@@ -2,6 +2,7 @@ using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Drift.Apply;
+using Caisson.Domain.NetworkConfig;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
 
@@ -96,6 +97,9 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Per-step status rows for drift-apply jobs.</summary>
     public DbSet<DriftApplyJobStep> DriftApplyJobSteps => Set<DriftApplyJobStep>();
+
+    /// <summary>Single saved rack-scoped authored network-intent draft (story #168/#176).</summary>
+    public DbSet<RackNetworkIntent> RackNetworkIntents => Set<RackNetworkIntent>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

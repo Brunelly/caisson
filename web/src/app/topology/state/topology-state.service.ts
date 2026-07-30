@@ -9,7 +9,11 @@ import type { DriftItemDto } from '../../drift/model/drift-contracts';
 import type { DriftOverlayEntry } from '../../drift/model/drift-topology-overlay';
 import { buildDriftTopologyOverlay } from '../../drift/model/drift-topology-overlay';
 import { DriftReportService } from '../../drift/services/drift-report.service';
-import type { DiscoveryStatusDto, SnapshotMetadataDto } from '../model/topology-contracts';
+import type {
+  DiscoveryStatusDto,
+  SnapshotMetadataDto,
+  SwitchInventoryDto,
+} from '../model/topology-contracts';
 import {
   type TopologyGraphModel,
   type TopologyGraphNode,
@@ -38,6 +42,12 @@ export class TopologyStateService {
   private readonly _rackId = signal<string | null>(null);
   private readonly _snapshot = signal<SnapshotMetadataDto | null>(null);
   private readonly _graph = signal<TopologyGraphModel | null>(null);
+  // Story #168: the flat switch->ports discovered inventory, additive alongside the NIC-rooted `_graph`
+  // above — the Network Config Port Intent screen's source for "every discovered port on every switch"
+  // (the NIC-rooted graph only ever contains a port that is SOME NIC's best attachment, or that no NIC
+  // maps to at all — a port that is only ever a lower-ranked candidate is present in neither). Loaded
+  // once alongside the rest of loadRackTopology/applyRefreshedSnapshot — no second fetch path.
+  private readonly _switches = signal<SwitchInventoryDto[]>([]);
   private readonly _discoveryStatus = signal<DiscoveryStatusDto | null>(null);
   private readonly _driftItems = signal<DriftItemDto[]>([]);
   private readonly _selection = signal<TopologyGraphNode | null>(null);
@@ -50,6 +60,7 @@ export class TopologyStateService {
   readonly rackId = this._rackId.asReadonly();
   readonly snapshot = this._snapshot.asReadonly();
   readonly graph = this._graph.asReadonly();
+  readonly switches = this._switches.asReadonly();
   readonly discoveryStatus = this._discoveryStatus.asReadonly();
   readonly driftItems = this._driftItems.asReadonly();
   readonly selection = this._selection.asReadonly();
@@ -96,6 +107,7 @@ export class TopologyStateService {
 
       this._snapshot.set(detail.value.snapshot);
       this._graph.set(deriveTopologyGraph(detail.value.graph));
+      this._switches.set(detail.value.graph.switches ?? []);
       this._discoveryStatus.set(status.kind === 'ok' ? status.value : null);
       this._driftItems.set(drift.kind === 'ok' ? drift.value.items.items : []);
     });
@@ -105,9 +117,14 @@ export class TopologyStateService {
    * the current selection alive if the entity still exists in the new graph; otherwise raises the
    * inline stale notice rather than closing the details panel. driftOverlay recomputes automatically
    * (see above) since this replaces the `_graph` signal it's derived from. */
-  applyRefreshedSnapshot(snapshot: SnapshotMetadataDto, graph: TopologyGraphModel): void {
+  applyRefreshedSnapshot(
+    snapshot: SnapshotMetadataDto,
+    graph: TopologyGraphModel,
+    switches: SwitchInventoryDto[] = [],
+  ): void {
     this._snapshot.set(snapshot);
     this._graph.set(graph);
+    this._switches.set(switches);
 
     const current = this._selection();
     if (!current) {

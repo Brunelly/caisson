@@ -178,6 +178,50 @@ test.describe('Topology page — dev harness (real browser)', () => {
     await expect(panel.locator('.details-panel__candidates')).toHaveCount(0);
   });
 
+  // Story #168 AC3: the drill-down's "Network intent" section shows the authored access-VLAN intent
+  // (or Unchanged/Inherit) alongside a deep link into the pre-filtered Port Intent editor. The link
+  // itself is asserted by href rather than clicked — same convention as web/e2e/drift-harness.spec.ts's
+  // subject link: it points at the real production route (`/racks/:rackId/network-config/ports`), which
+  // needs the real (not harness-scoped) OidcSecurityService this environment doesn't have. Asserting the
+  // href still proves the real RouterLink directive computed it correctly in a real browser. The
+  // harness's switch stable key ('SW-1|sw1', see fixtures.ts) is genuinely two segments, so a truncated
+  // switchStableKeyFor bug (dropping everything after the first '|') would show up here as a wrong
+  // `switch` query param or a missed intent match.
+  test('drill-down panel: Network intent section shows the authored VLAN (or Unchanged/Inherit) and links to the pre-filtered Port Intent editor (AC3)', async ({
+    page,
+  }) => {
+    await gotoHarness(page);
+
+    // ether2 carries the fixture's authored access-VLAN 20 ("storage") intent.
+    await page.locator('g.node--port[aria-label*="ether2"]').click();
+    let panel = page.locator('aside.details-panel');
+    await expect(panel).toBeVisible();
+    let intentSection = panel.locator('.details-panel__section', { hasText: 'Network intent' });
+    await expect(intentSection).toContainText('Access VLAN = 20 (storage)');
+
+    let link = intentSection.getByRole('link', { name: 'Edit port intent' });
+    await expect(link).toHaveAttribute(
+      'href',
+      '/racks/rack-1/network-config/ports?switch=SW-1%7Csw1&port=ether2',
+    );
+
+    // ether1 has no authored intent (fixture default) — Unchanged/Inherit, with a correctly-keyed link.
+    // Closes the still-open panel first: it visually overlaps part of the graph, and a still-open panel
+    // from the previous selection can intercept the click meant for the next node underneath it.
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await page.locator('g.node--port[aria-label*="ether1"]').click();
+    panel = page.locator('aside.details-panel');
+    intentSection = panel.locator('.details-panel__section', { hasText: 'Network intent' });
+    await expect(intentSection).toContainText('Unchanged / Inherit');
+
+    link = intentSection.getByRole('link', { name: 'Edit port intent' });
+    await expect(link).toHaveAttribute(
+      'href',
+      '/racks/rack-1/network-config/ports?switch=SW-1%7Csw1&port=ether1',
+    );
+  });
+
   test('drill-down panel: closing returns focus to the trigger element', async ({ page }) => {
     await gotoHarness(page);
 

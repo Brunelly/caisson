@@ -42,6 +42,13 @@ public sealed class DomainGuardTests
     // rationale stays explicit and scoped to exactly the new write-path entities.
     private const string DriftApplyNamespace = "Caisson.Domain.Drift.Apply";
 
+    // Story #168: Caisson.Domain.NetworkConfig IS the network-intent authoring model itself (a VLAN
+    // catalogue plus per-port access-VLAN intent) — like DesiredState/DriftApply above, it legitimately
+    // carries "Intent"-named fields (e.g. RackNetworkIntent.IntentJson) because authoring intent is
+    // exactly what it exists to do. The M0 "no desired-state/intent fields" guardrail only ever applied to
+    // OBSERVED state (see CLAUDE.md's Guardrails section).
+    private const string NetworkConfigNamespace = "Caisson.Domain.NetworkConfig";
+
     // Substrings that would signal write/remediation/desired-state intent leaking into observed state.
     private static readonly string[] RemediationMarkers =
     {
@@ -144,6 +151,12 @@ public sealed class DomainGuardTests
         "DriftApplyJobDetailDto.SwitchDeviceKey",
         // Story #65: same *.SubjectKey rationale as DriftItem.SubjectKey above, not a secret.
         "DriftApplyJob.SubjectKey",
+        // Story #168: same *.StableKey/*.SwitchStableKey rationale as the topology DTOs above — a
+        // discovered switch's stable identifier, not an authentication secret.
+        "PortAccessIntent.SwitchStableKey",
+        "PortAccessIntentDto.SwitchStableKey",
+        "SwitchInventoryDto.StableKey",
+        "SwitchPortInventoryDto.StableKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()
@@ -168,7 +181,7 @@ public sealed class DomainGuardTests
         foreach (var type in DomainAssembly.GetTypes()
                      .Where(t => t is { IsClass: true, IsEnum: false }
                          && t.Namespace != DesiredStateNamespace && t.Namespace != DriftNamespace
-                         && t.Namespace != DriftApplyNamespace))
+                         && t.Namespace != DriftApplyNamespace && t.Namespace != NetworkConfigNamespace))
         {
             foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {

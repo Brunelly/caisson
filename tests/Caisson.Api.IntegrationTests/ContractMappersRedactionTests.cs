@@ -65,7 +65,8 @@ public sealed class ContractMappersRedactionTests
                     "dev-1|srv-1", "server-1", "uuid-1",
                     new List<NicNode> { new("aabbccddeeff", "eth0", "aa:bb:cc:dd:ee:ff", null, new List<PortAttachment>(), null) }),
             },
-            new List<UnmappedPortNode>());
+            new List<UnmappedPortNode>(),
+            new List<SwitchInventoryNode>());
 
         var redacted = ContractMappers.ToGraph(view, isPrivileged: false);
         var privileged = ContractMappers.ToGraph(view, isPrivileged: true);

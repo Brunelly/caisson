@@ -29,4 +29,13 @@ public static class AuthorizationPolicies
     /// permission is rejected with 403.
     /// </summary>
     public const string DriftApply = "DriftApply";
+
+    /// <summary>
+    /// Requires the elevated <see cref="CaissonRoles.NetworkConfigAuthor"/> permission (story #168,
+    /// formalised per #174). Gates the network-intent PUT save and validate-stub endpoints — deliberately
+    /// NOT satisfied by <see cref="CaissonRoles.Operator"/> or <see cref="CaissonRoles.Admin"/> alone, so a
+    /// caller without this specific grant is rejected with 403. Viewing the authored intent (GET) is
+    /// gated by <see cref="TopologyRead"/> instead, so a ReadOnly user can still see it.
+    /// </summary>
+    public const string NetworkConfigAuthor = "NetworkConfigAuthor";
 }

@@ -40,7 +40,8 @@ public static class ContractMappers
             view.Version,
             view.CorrelationId,
             view.Servers.Select(s => ToServer(s, isPrivileged)).ToList(),
-            view.UnmappedPorts.Select(p => new UnmappedPortDto(p.SwitchStableKey, p.SwitchSerial, p.PortName)).ToList());
+            view.UnmappedPorts.Select(p => new UnmappedPortDto(p.SwitchStableKey, p.SwitchSerial, p.PortName)).ToList(),
+            view.Switches.Select(ToSwitchInventory).ToList());
     }
 
     /// <summary>Maps a stored per-entity diff row onto the wire diff contract.</summary>
@@ -107,6 +108,13 @@ public static class ContractMappers
 
         return string.Join(':', octets[0], octets[1], octets[2], "xx", "xx", "xx");
     }
+
+    private static SwitchInventoryDto ToSwitchInventory(SwitchInventoryNode @switch)
+        => new(
+            @switch.StableKey,
+            @switch.Serial,
+            @switch.Name,
+            @switch.Ports.Select(p => new SwitchPortInventoryDto(p.StableKey, p.PortName)).ToList());
 
     private static PortAttachmentDto ToAttachment(PortAttachment attachment)
         => new(

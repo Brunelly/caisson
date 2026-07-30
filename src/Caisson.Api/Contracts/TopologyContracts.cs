@@ -29,7 +29,8 @@ public sealed record TopologyGraphDto(
     int Version,
     Guid CorrelationId,
     IReadOnlyList<ServerNodeDto> Servers,
-    IReadOnlyList<UnmappedPortDto> UnmappedPorts);
+    IReadOnlyList<UnmappedPortDto> UnmappedPorts,
+    IReadOnlyList<SwitchInventoryDto> Switches);
 
 /// <summary>A server and its NICs in the graph.</summary>
 public sealed record ServerNodeDto(
@@ -62,6 +63,16 @@ public sealed record PortAttachmentDto(
 
 /// <summary>A switch port that no NIC mapped to.</summary>
 public sealed record UnmappedPortDto(string SwitchStableKey, string? SwitchSerial, string PortName);
+
+/// <summary>
+/// A discovered switch and its full flat port inventory (story #168) — additive; drives the Network
+/// Config Port Intent screen's switch/port selection. Existing NIC-rooted graph consumers ignore it.
+/// </summary>
+public sealed record SwitchInventoryDto(
+    string StableKey, string? Serial, string Name, IReadOnlyList<SwitchPortInventoryDto> Ports);
+
+/// <summary>A discovered port within a <see cref="SwitchInventoryDto"/>'s flat inventory.</summary>
+public sealed record SwitchPortInventoryDto(string StableKey, string PortName);
 
 /// <summary>A single per-entity diff (AC2 stored history or AC3 live drift).</summary>
 public sealed record EntityDiffDto(

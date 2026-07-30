@@ -50,8 +50,34 @@ public static class TopologyGraphProjector
             .ThenBy(p => p.PortName, StringComparer.Ordinal)
             .ToList();
 
+        var switches = ProjectSwitches(snapshot);
+
         return new TopologyGraphView(
-            snapshot.Id, snapshot.Version, snapshot.CorrelationId, servers, unmappedPorts);
+            snapshot.Id, snapshot.Version, snapshot.CorrelationId, servers, unmappedPorts, switches);
+    }
+
+    /// <summary>
+    /// Story #168: a flat switch → ports inventory, additive alongside the NIC-rooted graph above — the
+    /// Port Intent authoring screen needs "every discovered port on every switch", which the NIC-centric
+    /// <see cref="ServerNode"/>/<see cref="UnmappedPortNode"/> shapes don't expose directly (a port with a
+    /// mapped NIC never appears in <c>UnmappedPorts</c>, and a NIC-less port lookup would mean joining
+    /// both lists). Computed from the same already-loaded <c>snapshot.Switches[].Ports[]</c> this method
+    /// already reads above, so this adds no extra query.
+    /// </summary>
+    private static List<SwitchInventoryNode> ProjectSwitches(TopologySnapshot snapshot)
+        => snapshot.Switches
+            .OrderBy(s => StableKeys.ForSwitch(s), StringComparer.Ordinal)
+            .Select(ProjectSwitchInventory)
+            .ToList();
+
+    private static SwitchInventoryNode ProjectSwitchInventory(Switch @switch)
+    {
+        var switchKey = StableKeys.ForSwitch(@switch);
+        var ports = @switch.Ports
+            .OrderBy(p => p.PortName, StringComparer.Ordinal)
+            .Select(p => new SwitchPortInventoryNode(StableKeys.ForSwitchPort(switchKey, p), p.PortName))
+            .ToList();
+        return new SwitchInventoryNode(switchKey, @switch.Serial, @switch.ExternalDeviceKey, ports);
     }
 
     private static NicNode ProjectNic(
@@ -112,7 +138,8 @@ public sealed record TopologyGraphView(
     int Version,
     Guid CorrelationId,
     IReadOnlyList<ServerNode> Servers,
-    IReadOnlyList<UnmappedPortNode> UnmappedPorts);
+    IReadOnlyList<UnmappedPortNode> UnmappedPorts,
+    IReadOnlyList<SwitchInventoryNode> Switches);
 
 /// <summary>A server and its NICs in the projected graph.</summary>
 public sealed record ServerNode(
@@ -148,3 +175,16 @@ public sealed record UnmappedPortNode(
     string SwitchStableKey,
     string? SwitchSerial,
     string PortName);
+
+/// <summary>
+/// A discovered switch and its full flat port inventory (story #168) — additive alongside the NIC-rooted
+/// graph, driving the Port Intent authoring screen's switch/port selection.
+/// </summary>
+public sealed record SwitchInventoryNode(
+    string StableKey,
+    string? Serial,
+    string Name,
+    IReadOnlyList<SwitchPortInventoryNode> Ports);
+
+/// <summary>A discovered port within a <see cref="SwitchInventoryNode"/>'s flat inventory.</summary>
+public sealed record SwitchPortInventoryNode(string StableKey, string PortName);
