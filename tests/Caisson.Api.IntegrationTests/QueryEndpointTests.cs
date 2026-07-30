@@ -18,6 +18,20 @@ public sealed class QueryEndpointTests
     public QueryEndpointTests(CaissonApiFactory factory) => _factory = factory;
 
     [SkippableFact]
+    public async Task Rack_catalogue_returns_observed_racks_in_deterministic_order()
+    {
+        Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
+
+        await _factory.CreateRackAsync("AAA Rack");
+        using var doc = await GetJson("/api/racks");
+        var racks = doc.RootElement.EnumerateArray().ToList();
+
+        racks.Should().NotBeEmpty();
+        racks[0].GetProperty("name").GetString().Should().Be("AAA Rack");
+        racks.Should().Contain(rack => rack.GetProperty("id").GetGuid() == _factory.Seed.RackId);
+    }
+
+    [SkippableFact]
     public async Task Latest_returns_the_newest_snapshot_with_graph()
     {
         Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");

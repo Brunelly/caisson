@@ -19,6 +19,13 @@ const lazyUnsavedNetworkIntentChangesGuard = () =>
 // assumptions); this app's only route is the topology page for an already-known rackId.
 export const routes: Routes = [
   {
+    path: '',
+    pathMatch: 'full',
+    canActivate: [roleGuard],
+    loadComponent: () =>
+      import('./shell/rack-landing/rack-landing.component').then((m) => m.RackLandingComponent),
+  },
+  {
     path: 'racks/:rackId/topology',
     canActivate: [roleGuard],
     loadComponent: () =>

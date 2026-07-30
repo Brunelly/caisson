@@ -27,7 +27,20 @@ test.describe('Topology page smoke test', () => {
   test('loads the rack topology, renders the graph, searches, and drills down', async ({
     page,
   }) => {
-    await page.goto(`/racks/${rackId}/topology`);
+    const browserErrors: string[] = [];
+    page.on('pageerror', (error) => browserErrors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') browserErrors.push(message.text());
+    });
+    const rackResponse = page.waitForResponse((response) => response.url().endsWith('/api/racks'));
+    const topologyResponse = page.waitForResponse((response) =>
+      response.url().includes('/topology/snapshots/latest'),
+    );
+
+    await page.goto('/');
+    expect((await rackResponse).ok()).toBe(true);
+    expect((await topologyResponse).ok()).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`/racks/${rackId}/topology$`));
 
     // AC1: the page loads and shows the snapshot's "latest" indicator.
     await expect(page.getByText('Latest', { exact: true })).toBeVisible();
@@ -66,5 +79,6 @@ test.describe('Topology page smoke test', () => {
       // A live update landed during the test — confirm it patched in place rather than reloading.
       expect(page.url()).toContain(`/racks/${rackId}/topology`);
     }
+    expect(browserErrors).toEqual([]);
   });
 });

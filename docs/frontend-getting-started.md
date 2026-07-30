@@ -3,6 +3,9 @@
 This is the operator-facing companion to [ADR 0015](adr/0015-angular-frontend-architecture.md): how to
 run `Caisson.Api` locally, get a topology snapshot into it, and point the Angular app (`web/`) at it.
 
+The normal application entry point is `/`. After authorization, the shell discovers observed racks
+and replaces that URL with the first accessible rack's topology route. Direct rack URLs remain valid.
+
 ## 1. Run PostgreSQL and Caisson.Api
 
 ```bash

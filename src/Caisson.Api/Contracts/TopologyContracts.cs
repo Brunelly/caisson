@@ -5,6 +5,9 @@ namespace Caisson.Api.Contracts;
 /// <summary>A single page of results with an opaque continuation cursor (null when exhausted).</summary>
 public sealed record PagedResult<T>(IReadOnlyList<T> Items, string? NextCursor);
 
+/// <summary>An observed rack available to the current principal.</summary>
+public sealed record RackSummaryDto(Guid Id, string ExternalKey, string Name);
+
 /// <summary>Snapshot metadata (AC1/AC3). <see cref="DiffSummary"/> is the change-count rollup, if any.</summary>
 public sealed record SnapshotMetadataDto(
     Guid SnapshotId,

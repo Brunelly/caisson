@@ -5,6 +5,9 @@ how to stand up a fully simulated rack — MikroTik RouterOS switch + Redfish/IP
 real drivers through the real orchestration pipeline — and reach a rendered topology view, with no
 physical hardware, in under 15 minutes.
 
+Use `/` as the live application's entry point. The `/__dev-harness__/topology/{rackId}` route is
+fixture-backed and does not validate rack discovery, live topology REST, or SignalR integration.
+
 ## 1. Start Postgres + Redis
 
 ```bash
