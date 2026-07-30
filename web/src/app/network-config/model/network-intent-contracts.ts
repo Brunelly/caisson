@@ -39,3 +39,56 @@ export interface NetworkIntentValidationResponse {
   isValid: boolean;
   errors: NetworkIntentValidationErrorDto[];
 }
+
+// --- Story #169: desired-state YAML round-trip. TypeScript mirror of
+// Caisson.Api/Contracts/DesiredStateRoundTripContracts.cs; keep in lock-step.
+
+/** One unknown/unsupported YAML block preserved byte-for-byte for lossless round-trip (AC2). */
+export interface PreservedYamlBlockDto {
+  anchorPath: string;
+  rawYamlText: string;
+  checksum: string;
+}
+
+/** The v1 UI-supported subset extracted from a document: rack slug + VLAN catalogue + port intents. */
+export interface SupportedDesiredStateModelDto {
+  rackSlug: string;
+  vlanCatalogue: VlanCatalogueEntryDto[];
+  portIntents: PortAccessIntentDto[];
+}
+
+/** The POST `parse` success response — the full round-trip envelope. */
+export interface DesiredStateRoundTripEnvelopeDto {
+  supportedModel: SupportedDesiredStateModelDto;
+  unknownBlocks: PreservedYamlBlockDto[];
+  warnings: string[];
+  schemaVersion: number;
+}
+
+/** One parse issue on the wire: a dotted document path plus a message and optional line/column (AC4). */
+export interface DesiredStateImportIssueDto {
+  path: string;
+  message: string;
+  line: number | null;
+  column: number | null;
+}
+
+/** The POST `parse` request body. */
+export interface DesiredStateParseRequest {
+  yaml: string;
+}
+
+/** The POST `render` request body — the rack slug is resolved server-side, never sent by the client. */
+export interface DesiredStateRenderRequest {
+  vlanCatalogue: VlanCatalogueEntryDto[];
+  portIntents: PortAccessIntentDto[];
+  unknownBlocks: PreservedYamlBlockDto[];
+  warnings: string[];
+  schemaVersion: number | null;
+}
+
+/** The POST `render` response — canonical UTF-8, LF-only YAML plus any non-fatal warnings. */
+export interface DesiredStateRenderResponse {
+  yaml: string;
+  warnings: string[];
+}

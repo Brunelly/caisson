@@ -21,4 +21,10 @@ public static class RateLimitPolicies
     /// device-mutating write in the API — mirroring <see cref="DiscoveryTrigger"/>'s shape.
     /// </summary>
     public const string DriftApply = "DriftApply";
+
+    /// <summary>
+    /// A fixed window for the desired-state YAML round-trip parse/render endpoints (story #169) — the
+    /// network-config authoring surface — mirroring <see cref="DiscoveryTrigger"/>'s shape.
+    /// </summary>
+    public const string NetworkConfigRoundTrip = "NetworkConfigRoundTrip";
 }

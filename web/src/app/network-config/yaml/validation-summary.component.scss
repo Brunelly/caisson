@@ -1,0 +1,35 @@
+@use '../../shared/styles/cds-mixins';
+
+.validation-summary__errors {
+  @include cds-mixins.cds-banner(error);
+  margin-top: var(--cds-sp-3);
+}
+
+.validation-summary__warnings {
+  @include cds-mixins.cds-banner(warning);
+  margin-top: var(--cds-sp-3);
+}
+
+.validation-summary__heading {
+  margin: 0 0 var(--cds-sp-2);
+  font-size: var(--cds-fs-base);
+  font-weight: 700;
+
+  &:focus-visible {
+    @include cds-mixins.cds-focus-visible-ring;
+  }
+}
+
+.validation-summary__list {
+  margin: 0;
+  padding-left: var(--cds-sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-1);
+  font-size: var(--cds-fs-sm);
+}
+
+.validation-summary__path {
+  @include cds-mixins.cds-identifier-text;
+  font-size: var(--cds-fs-xs);
+}

@@ -111,10 +111,18 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
 
     /// <summary>Creates a fresh rack in the isolated database and returns its id.</summary>
     public async Task<Guid> CreateRackAsync(string? name = null)
+        => await CreateRackWithExternalKeyAsync("rack-" + Guid.NewGuid().ToString("N"), name);
+
+    /// <summary>
+    /// Creates a rack with a caller-supplied <c>ExternalKey</c> and returns its id. Used to exercise the
+    /// desired-state render path with a non-slug-shaped external key (ExternalKey is only length-bounded,
+    /// unlike the DNS-label rackSlug the schema requires).
+    /// </summary>
+    public async Task<Guid> CreateRackWithExternalKeyAsync(string externalKey, string? name = null)
     {
         var rackId = Guid.NewGuid();
         await using var context = _harness.CreateContext();
-        context.Racks.Add(new Rack(rackId, "rack-" + rackId.ToString("N"), name ?? "Test Rack", DateTime.UtcNow));
+        context.Racks.Add(new Rack(rackId, externalKey, name ?? "Test Rack", DateTime.UtcNow));
         await context.SaveChangesAsync();
         return rackId;
     }

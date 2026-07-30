@@ -1,0 +1,25 @@
+apiVersion: caisson.dev/v1alpha1
+kind: RackDesiredState
+metadata:
+  rackSlug: rack-1
+spec:
+  vlans:
+    - vlanId: 10
+      name: storage
+      description: iSCSI
+    - vlanId: 20
+      name: mgmt
+    - vlanId: 30
+      name: public
+      description: DMZ zone
+  switches:
+    - name: sw1
+      ports:
+        - name: eth1
+          accessVlan: 20
+        - name: eth2
+          accessVlan: 10
+    - name: sw2
+      ports:
+        - name: eth3
+          accessVlan: 20

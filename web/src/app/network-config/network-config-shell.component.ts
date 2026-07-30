@@ -5,18 +5,26 @@
 // the backend has one saved state per rack, story Q3). Save/reload orchestration (and all
 // toast/telemetry feedback) lives here, not in the state service, matching apply-action.component.ts's
 // separation: state services own signals/HTTP-fetch, components own user-facing feedback.
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, Injector, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { TelemetryService } from '../core/telemetry/telemetry.service';
 import { ToastService } from '../shared/toast/toast.service';
 import { NetworkConfigPermissionService } from './services/network-config-permission.service';
 import { NetworkIntentStateService } from './state/network-intent-state.service';
+import {
+  YamlImportDialogComponent,
+  type YamlImportDialogData,
+  type YamlImportDialogResult,
+} from './yaml/yaml-import-dialog.component';
+import { YamlPreviewComponent } from './yaml/yaml-preview.component';
+import { ValidationSummaryComponent } from './yaml/validation-summary.component';
 
 @Component({
   selector: 'app-network-config-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, ValidationSummaryComponent],
   styleUrl: './network-config-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -41,6 +49,12 @@ import { NetworkIntentStateService } from './state/network-intent-state.service'
             Reload
           </button>
           @if (permission.canAuthorNetworkConfig()) {
+            <button type="button" class="network-config-shell__import" (click)="onImportClick()">
+              Import YAML
+            </button>
+            <button type="button" class="network-config-shell__preview" (click)="onExportClick()">
+              Preview / Export
+            </button>
             <button
               type="button"
               class="network-config-shell__save"
@@ -52,6 +66,10 @@ import { NetworkIntentStateService } from './state/network-intent-state.service'
           }
         </div>
       </header>
+
+      <!-- Persistent, polite live-region banner for round-trip warnings (e.g. comments-not-preserved),
+           which stay visible after the import dialog closes until the next load/reload. -->
+      <app-validation-summary [warnings]="state.warnings()" />
 
       <nav class="network-config-shell__tabs" aria-label="Network Config sections">
         <a
@@ -96,6 +114,11 @@ export class NetworkConfigShellComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly toast = inject(ToastService);
   private readonly telemetry = inject(TelemetryService);
+  private readonly dialog = inject(Dialog);
+  // The dialogs inject NetworkIntentStateService/DesiredStateRoundTripService; passing THIS component's
+  // injector makes the CDK overlay resolve them from the network-config route's injector (in the dev
+  // harness, that is where the fakes live) rather than the root injector.
+  private readonly injector = inject(Injector);
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -111,6 +134,57 @@ export class NetworkConfigShellComponent {
     if (rackId) {
       this.state.load(rackId);
     }
+  }
+
+  /** Opens the YAML import dialog; on a successful parse the dialog has already applied the draft, so this
+   * only surfaces the success toast + the comments-not-preserved notice (also shown as a persistent banner). */
+  protected onImportClick(): void {
+    const rackId = this.state.rackId();
+    if (!rackId) {
+      return;
+    }
+
+    const ref = this.dialog.open<YamlImportDialogResult, YamlImportDialogData>(
+      YamlImportDialogComponent,
+      {
+        data: { rackId },
+        injector: this.injector,
+        ariaLabelledBy: 'yaml-import-dialog-heading',
+        hasBackdrop: true,
+        backdropClass: 'cds-overlay-backdrop',
+        ariaModal: true,
+      },
+    );
+
+    ref.closed.subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      const suffix = result.warnings.includes('commentsNotPreserved')
+        ? ' Comments were not preserved.'
+        : '';
+      this.toast.success(
+        `Imported ${result.vlanCount} VLAN${result.vlanCount === 1 ? '' : 's'} and ` +
+          `${result.portIntentCount} port intent${result.portIntentCount === 1 ? '' : 's'}.${suffix}`,
+      );
+    });
+  }
+
+  /** Opens the read-only preview/export dialog, which renders the current draft server-side and offers
+   * Copy/Download of the returned UTF-8 YAML. */
+  protected onExportClick(): void {
+    const rackId = this.state.rackId();
+    if (!rackId) {
+      return;
+    }
+
+    this.dialog.open<void>(YamlPreviewComponent, {
+      injector: this.injector,
+      ariaLabelledBy: 'yaml-preview-heading',
+      hasBackdrop: true,
+      backdropClass: 'cds-overlay-backdrop',
+      ariaModal: true,
+    });
   }
 
   protected onSaveClick(): void {

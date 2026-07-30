@@ -18,6 +18,7 @@ import type { DriftReportItemFilters } from '../drift/services/drift-report.serv
 import { DriftReportService } from '../drift/services/drift-report.service';
 import { DriftReportStateService } from '../drift/state/drift-report-state.service';
 import { validateNetworkIntent } from '../network-config/model/network-intent-validation';
+import { DesiredStateRoundTripService } from '../network-config/services/desired-state-roundtrip.service';
 import { NetworkConfigPermissionService } from '../network-config/services/network-config-permission.service';
 import { NetworkIntentService } from '../network-config/services/network-intent.service';
 import { NetworkIntentStateService } from '../network-config/state/network-intent-state.service';
@@ -191,6 +192,51 @@ const fakeNetworkIntentService: Pick<
   },
 };
 
+// Story #169: a wire-only fake of the server-side YAML round-trip. parse() extracts a small fixed
+// supported model, captures any `extensions:`-to-EOF block byte-for-byte, and raises the comments warning
+// when the pasted text contains a comment; render() deterministically re-emits the CURRENT draft (so an
+// edit made between import and export is reflected) followed by the preserved extensions bytes verbatim and
+// with no comments — enough for Playwright to prove the real import→edit→export UI flow end-to-end.
+const fakeDesiredStateRoundTripService: Pick<DesiredStateRoundTripService, 'parse' | 'render'> = {
+  parse: (_rackId, yaml) => {
+    const hasComment = /(^|\s)#/m.test(yaml);
+    const extIndex = yaml.indexOf('extensions:');
+    const unknownBlocks =
+      extIndex >= 0
+        ? [
+            {
+              anchorPath: 'extensions',
+              rawYamlText: yaml.slice(extIndex),
+              checksum: 'harness-checksum',
+            },
+          ]
+        : [];
+    return of({
+      kind: 'ok' as const,
+      value: {
+        supportedModel: {
+          rackSlug: 'rack-1',
+          vlanCatalogue: [{ id: 10, name: 'imported-storage', description: 'iSCSI' }],
+          portIntents: [{ switchStableKey: 'sw-imported', portName: 'eth1', accessVlanId: 10 }],
+        },
+        unknownBlocks,
+        warnings: hasComment ? ['commentsNotPreserved'] : [],
+        schemaVersion: 1,
+      },
+    });
+  },
+  render: (_rackId, request) => {
+    const vlans = request.vlanCatalogue
+      .map((v) => `    - vlanId: ${v.id}\n      name: ${v.name}`)
+      .join('\n');
+    const extensions = request.unknownBlocks.map((b) => b.rawYamlText).join('');
+    const yaml =
+      `apiVersion: caisson.dev/v1alpha1\nkind: RackDesiredState\n` +
+      `metadata:\n  rackSlug: rack-1\nspec:\n  vlans:\n${vlans}\n${extensions}`;
+    return of({ kind: 'ok' as const, value: { yaml, warnings: request.warnings } });
+  },
+};
+
 const fakeAuditService: Pick<AuditService, 'getAudit'> = {
   getAudit: () =>
     of({
@@ -248,6 +294,7 @@ export const DEV_HARNESS_PROVIDERS: Provider[] = [
   { provide: DriftApplyService, useValue: fakeDriftApplyService },
   { provide: AuditService, useValue: fakeAuditService },
   { provide: NetworkIntentService, useValue: fakeNetworkIntentService },
+  { provide: DesiredStateRoundTripService, useValue: fakeDesiredStateRoundTripService },
   // Re-provided with useClass (not left to resolve from root) so their own inject() calls above pick up
   // the fakes registered in this same route-scoped environment injector.
   { provide: TopologyStateService, useClass: TopologyStateService },

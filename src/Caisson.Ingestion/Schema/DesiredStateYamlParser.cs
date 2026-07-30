@@ -69,6 +69,22 @@ public static class DesiredStateYamlParser
                     filePath, "/", "The document's root must be a YAML mapping.", ValidationSeverity.Error));
             }
 
+            // The desired-state schema is single-document everywhere (git-ingestion and the round-trip both).
+            // A stream with '---' separators would silently keep only the first document and drop the rest —
+            // a lossy round-trip — so reject it fail-fast rather than dropping content (AC4).
+            if (stream.Documents.Count > 1)
+            {
+                var second = stream.Documents[1].RootNode;
+                return YamlParseResult.Failed(new DesiredStateValidationIssue(
+                    filePath,
+                    "/",
+                    $"The document must contain exactly one YAML document; found {stream.Documents.Count}. "
+                    + "Remove the '---' document separator(s) and any extra documents.",
+                    ValidationSeverity.Error,
+                    Line: checked((int)second.Start.Line),
+                    Column: checked((int)second.Start.Column)));
+            }
+
             return YamlParseResult.Ok(root);
         }
         catch (YamlException ex)

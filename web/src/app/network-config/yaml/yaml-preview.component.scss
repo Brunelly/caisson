@@ -1,0 +1,120 @@
+@use '../../shared/styles/cds-mixins';
+
+.yaml-preview {
+  @include cds-mixins.cds-elevated-card;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  color: var(--cds-text-primary);
+  width: 44rem;
+  max-width: 92vw;
+  max-height: 90vh;
+  padding: var(--cds-sp-6);
+  box-shadow: var(--cds-shadow-overlay);
+  overflow-y: auto;
+  box-sizing: border-box;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+  }
+}
+
+.yaml-preview__heading {
+  margin: 0;
+  font-size: var(--cds-fs-xl);
+  font-weight: 700;
+}
+
+.yaml-preview__notice {
+  @include cds-mixins.cds-banner(info);
+  margin: 0;
+  font-size: var(--cds-fs-sm);
+}
+
+.yaml-preview__status {
+  margin: 0;
+  font-size: var(--cds-fs-sm);
+  color: var(--cds-text-secondary);
+}
+
+.yaml-preview__code {
+  margin: 0;
+  padding: var(--cds-sp-3);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  background: var(--cds-surface-sunken);
+  color: var(--cds-text-primary);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-sm);
+  line-height: 1.5;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
+
+  &:focus-visible {
+    @include cds-mixins.cds-focus-visible-ring;
+  }
+}
+
+.yaml-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cds-sp-3);
+  margin-top: var(--cds-sp-2);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    flex-direction: column-reverse;
+  }
+}
+
+.yaml-preview__secondary,
+.yaml-preview__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  cursor: pointer;
+
+  @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.yaml-preview__secondary {
+  background: transparent;
+  color: var(--cds-text-secondary);
+  border: 1px solid var(--cds-border-default);
+
+  &:hover:not(:disabled) {
+    color: var(--cds-text-primary);
+    background: var(--cds-surface-elevated);
+  }
+}
+
+.yaml-preview__primary {
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--cds-primary-hover);
+    border-color: var(--cds-primary-hover);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--cds-primary-active);
+    border-color: var(--cds-primary-active);
+  }
+}
