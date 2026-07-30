@@ -25,6 +25,35 @@ const TOPOLOGY_TOUCH_TARGETS = [
 ] as const;
 
 test.describe('Topology page — dev harness (real browser)', () => {
+  test('rack selector loads its deferred overlay and supports keyboard dismissal', async ({
+    page,
+  }) => {
+    await page.route('**/api/racks', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { id: 'rack-1', externalKey: 'RACK-001', name: 'Rack One' },
+          { id: 'rack-2', externalKey: 'RACK-002', name: 'Rack Two' },
+        ]),
+      }),
+    );
+    await gotoHarness(page);
+
+    const trigger = page.getByRole('combobox', { name: 'Select rack' });
+    await expect(trigger).toBeEnabled();
+    await expect(trigger).toContainText('Rack One');
+    await trigger.press('ArrowDown');
+
+    const listbox = page.getByRole('listbox', { name: 'Available racks' });
+    await expect(listbox).toBeVisible();
+    await expect(listbox.getByRole('option')).toHaveCount(2);
+    await expect(listbox.getByRole('option').first()).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(listbox).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test('renders the graph with confirmed/ambiguous/unmapped states and a legend (AC1/AC4)', async ({
     page,
   }) => {

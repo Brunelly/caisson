@@ -9,7 +9,9 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RackCatalogueService } from '../../core/racks/rack-catalogue.service';
 import { TopologyStateService } from '../../topology/state/topology-state.service';
 import { RackSelectorTopBarComponent } from './rack-selector-topbar.component';
 
@@ -28,12 +30,23 @@ class HostComponent {
 describe('RackSelectorTopBarComponent', () => {
   let fixture: ComponentFixture<HostComponent>;
   let router: Router;
+  const racks = [
+    { id: 'rack-1', externalKey: 'RACK-001', name: 'Rack One' },
+    { id: 'rack-2', externalKey: 'RACK-002', name: 'Rack Two' },
+  ];
+  const catalogue = {
+    racks: signal(racks),
+    loading: signal(false),
+    result: signal({ kind: 'ok' as const, value: racks }),
+    load: vi.fn(() => of({ kind: 'ok' as const, value: racks })),
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [HostComponent],
       providers: [
         provideRouter([{ path: '**', component: BlankRouteComponent }]),
+        { provide: RackCatalogueService, useValue: catalogue },
         { provide: TopologyStateService, useValue: { connectionStatus: () => 'live' } },
       ],
     });
@@ -41,6 +54,23 @@ describe('RackSelectorTopBarComponent', () => {
     fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     router = TestBed.inject(Router);
+  });
+
+  it('opens the rack list and navigates to the selected rack', async () => {
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const trigger = fixture.nativeElement.querySelector('.topbar__rack') as HTMLButtonElement;
+    expect(trigger.textContent).toContain('Rack One');
+    trigger.click();
+    fixture.detectChanges();
+
+    const options = document.querySelectorAll<HTMLElement>('.rack-option');
+    expect(options).toHaveLength(2);
+    options[1].click();
+    await fixture.whenStable();
+
+    expect(router.url).toBe('/racks/rack-2/topology');
   });
 
   afterEach(() => {

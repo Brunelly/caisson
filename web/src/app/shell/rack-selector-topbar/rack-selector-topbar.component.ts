@@ -1,4 +1,4 @@
-import { CdkConnectedOverlay, CdkOverlayOrigin, Overlay } from '@angular/cdk/overlay';
+import { CdkConnectedOverlay, CdkOverlayOrigin } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -48,68 +48,73 @@ import { ThemeToggleComponent } from '../theme-toggle/theme-toggle.component';
         <path d="M4 6h16M4 12h16M4 18h16" />
       </svg>
     </button>
-    <button
-      #trigger
-      cdkOverlayOrigin
-      #origin="cdkOverlayOrigin"
-      type="button"
-      class="topbar__rack"
-      role="combobox"
-      aria-label="Select rack"
-      aria-haspopup="listbox"
-      [attr.aria-expanded]="open()"
-      [attr.aria-controls]="open() ? listboxId : null"
-      [attr.aria-activedescendant]="activeOptionId()"
-      [disabled]="catalogue.loading() || catalogue.racks().length === 0"
-      (click)="toggle()"
-      (keydown)="onTriggerKeydown($event)"
-    >
-      @if (selected(); as rack) {
-        <span class="topbar__rack-name">{{ rack.name }}</span
-        ><span class="topbar__rack-id">{{ rack.externalKey }}</span>
-      } @else {
-        <span class="topbar__rack-label">{{ selectorLabel() }}</span>
-      }
-      <span aria-hidden="true">▾</span>
-    </button>
-    <ng-template
-      cdkConnectedOverlay
-      [cdkConnectedOverlayOrigin]="origin"
-      [cdkConnectedOverlayOpen]="open()"
-      [cdkConnectedOverlayHasBackdrop]="true"
-      cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
-      [cdkConnectedOverlayScrollStrategy]="scrollStrategy"
-      (backdropClick)="close(true)"
-      (detach)="close(false)"
-    >
-      <ul
-        [id]="listboxId"
-        class="rack-options"
-        role="listbox"
-        tabindex="-1"
-        aria-label="Available racks"
-        (keydown)="onListKeydown($event)"
+    @defer (on immediate) {
+      <button
+        #trigger
+        cdkOverlayOrigin
+        #origin="cdkOverlayOrigin"
+        type="button"
+        class="topbar__rack"
+        role="combobox"
+        aria-label="Select rack"
+        aria-haspopup="listbox"
+        [attr.aria-expanded]="open()"
+        [attr.aria-controls]="open() ? listboxId : null"
+        [attr.aria-activedescendant]="activeOptionId()"
+        [disabled]="catalogue.loading() || catalogue.racks().length === 0"
+        (click)="toggle()"
+        (keydown)="onTriggerKeydown($event)"
       >
-        @for (rack of catalogue.racks(); track rack.id; let index = $index) {
-          <li
-            #option
-            [id]="optionId(index)"
-            role="option"
-            tabindex="-1"
-            class="rack-option"
-            [class.rack-option--active]="index === activeIndex()"
-            [attr.aria-selected]="rack.id === rackId()"
-            (click)="select(rack)"
-            (keydown.enter)="select(rack)"
-            (keydown.space)="select(rack); $event.preventDefault()"
-            (mouseenter)="activeIndex.set(index)"
-          >
-            <span>{{ rack.name }}</span
-            ><span class="rack-option__id">{{ rack.externalKey }}</span>
-          </li>
+        @if (selected(); as rack) {
+          <span class="topbar__rack-name">{{ rack.name }}</span
+          ><span class="topbar__rack-id">{{ rack.externalKey }}</span>
+        } @else {
+          <span class="topbar__rack-label">{{ selectorLabel() }}</span>
         }
-      </ul>
-    </ng-template>
+        <span aria-hidden="true">▾</span>
+      </button>
+      <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="origin"
+        [cdkConnectedOverlayOpen]="open()"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+        (backdropClick)="close(true)"
+        (detach)="close(false)"
+      >
+        <ul
+          [id]="listboxId"
+          class="rack-options"
+          role="listbox"
+          tabindex="-1"
+          aria-label="Available racks"
+          (keydown)="onListKeydown($event)"
+        >
+          @for (rack of catalogue.racks(); track rack.id; let index = $index) {
+            <li
+              #option
+              [id]="optionId(index)"
+              role="option"
+              tabindex="-1"
+              class="rack-option"
+              [class.rack-option--active]="index === activeIndex()"
+              [attr.aria-selected]="rack.id === rackId()"
+              (click)="select(rack)"
+              (keydown.enter)="select(rack)"
+              (keydown.space)="select(rack); $event.preventDefault()"
+              (mouseenter)="activeIndex.set(index)"
+            >
+              <span>{{ rack.name }}</span
+              ><span class="rack-option__id">{{ rack.externalKey }}</span>
+            </li>
+          }
+        </ul>
+      </ng-template>
+    } @placeholder {
+      <button type="button" class="topbar__rack" aria-label="Select rack" disabled>
+        <span class="topbar__rack-label">Loading racks…</span>
+      </button>
+    }
     <div class="topbar__right">
       @if (rackId()) {
         <app-live-connection-status-bar
@@ -126,13 +131,11 @@ export class RackSelectorTopBarComponent {
   protected readonly catalogue = inject(RackCatalogueService);
   protected readonly topologyState = inject(TopologyStateService);
   private readonly router = inject(Router);
-  private readonly overlay = inject(Overlay);
   private readonly injector = inject(EnvironmentInjector);
-  private readonly trigger = viewChild.required<ElementRef<HTMLButtonElement>>('trigger');
+  private readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
   protected readonly open = signal(false);
   protected readonly activeIndex = signal(0);
   protected readonly listboxId = 'rack-selector-listbox';
-  protected readonly scrollStrategy = this.overlay.scrollStrategies.close();
   protected readonly selected = computed(
     () => this.catalogue.racks().find((rack) => rack.id === this.rackId()) ?? null,
   );
@@ -162,7 +165,7 @@ export class RackSelectorTopBarComponent {
   }
   protected close(restore: boolean): void {
     this.open.set(false);
-    if (restore) setTimeout(() => this.trigger().nativeElement.focus());
+    if (restore) setTimeout(() => this.trigger()?.nativeElement.focus());
   }
   protected onTriggerKeydown(event: KeyboardEvent): void {
     if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
