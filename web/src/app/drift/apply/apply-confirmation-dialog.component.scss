@@ -1,57 +1,148 @@
 @use '../../shared/styles/cds-mixins';
 
+// Story #122 (ADR 0041): opaque `--cds-surface-elevated` panel, matching the mock — never glass. The
+// CDK backdrop scrim (`.cds-overlay-backdrop`, applied by the caller) is the only translucent surface
+// in this flow.
 .apply-dialog {
-  background: var(--cds-bg-page);
+  @include cds-mixins.cds-elevated-card;
+  display: flex;
+  flex-direction: column;
   color: var(--cds-text-primary);
-  border-radius: 8px;
-  padding: 1.5rem;
   max-width: 28rem;
   box-shadow: var(--cds-shadow-overlay);
+  overflow: hidden;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    max-width: none;
+  }
+}
+
+.apply-dialog__header {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-sp-3);
+  padding: var(--cds-sp-5) var(--cds-sp-6);
+  border-bottom: 1px solid var(--cds-border-default);
+}
+
+.apply-dialog__header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  color: var(--cds-warning-fg);
+  background: var(--cds-warning-bg);
+  border-radius: var(--cds-radius-md);
 }
 
 .apply-dialog__heading {
-  margin: 0 0 1rem;
-  font-size: 1.125rem;
+  margin: 0;
+  font-size: var(--cds-fs-2xl);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.apply-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-sp-4);
+  padding: var(--cds-sp-5) var(--cds-sp-6);
 }
 
 .apply-dialog__summary {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.375rem 0.75rem;
-  margin: 0 0 1rem;
-  font-size: 0.875rem;
+  gap: var(--cds-sp-1) var(--cds-sp-4);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--cds-sp-3-5) var(--cds-sp-4);
+  background: var(--cds-surface-sunken);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  font-size: var(--cds-fs-base);
 
   dt {
+    font-size: var(--cds-fs-sm);
+    font-weight: 600;
     color: var(--cds-text-secondary);
   }
 
   dd {
     margin: 0;
+    font-weight: 500;
     word-break: break-word;
+  }
+
+  @include cds-mixins.cds-respond-below(md) {
+    grid-template-columns: 1fr;
+    gap: var(--cds-sp-0-5);
   }
 }
 
+.apply-dialog__identifier {
+  @include cds-mixins.cds-identifier-text;
+}
+
+.apply-dialog__value {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--cds-sp-0-5) var(--cds-sp-2);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-sm);
+  font-weight: 600;
+  border-radius: var(--cds-radius-sm);
+  border: 1px solid var(--cds-border-default);
+}
+
+.apply-dialog__value--current {
+  color: var(--cds-error-fg);
+  background: var(--cds-error-bg);
+  border-color: var(--cds-error-fg);
+  text-decoration: line-through;
+}
+
+.apply-dialog__value--desired {
+  color: var(--cds-secondary);
+  background: var(--cds-secondary-subtle);
+  border-color: var(--cds-secondary);
+}
+
+.apply-dialog__value-arrow {
+  display: inline-flex;
+  margin: 0 var(--cds-sp-1);
+  color: var(--cds-primary);
+}
+
 .apply-dialog__rollback {
-  font-size: 0.8125rem;
-  color: var(--cds-text-secondary);
-  margin: 0 0 0.75rem;
+  @include cds-mixins.cds-banner(info);
+  margin: 0;
 }
 
 .apply-dialog__write-warning {
   @include cds-mixins.cds-status-notice;
-  margin: 0 0 1rem;
+  margin: 0;
+  font-weight: 500;
 }
 
 .apply-dialog__ack {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  margin: 0 0 1.5rem;
+  gap: var(--cds-sp-3);
+  padding: var(--cds-sp-3-5) var(--cds-sp-4);
+  background: var(--cds-primary-subtle);
+  border: 1px solid var(--cds-primary);
+  border-radius: var(--cds-radius-md);
+  font-size: var(--cds-fs-base);
   cursor: pointer;
 
   input {
-    margin-top: 0.1875rem;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0.0625rem 0 0;
+    accent-color: var(--cds-primary);
     @include cds-mixins.cds-focus-visible-ring;
   }
 }
@@ -59,25 +150,43 @@
 .apply-dialog__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: var(--cds-sp-3);
+  padding: var(--cds-sp-4) var(--cds-sp-6);
+  background: var(--cds-surface-sunken);
+  border-top: 1px solid var(--cds-border-default);
+
+  @include cds-mixins.cds-respond-below(sm) {
+    flex-direction: column-reverse;
+  }
 }
 
 .apply-dialog__cancel,
 .apply-dialog__submit {
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: var(--cds-radius-md);
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
   cursor: pointer;
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    width: 100%;
+    min-height: 44px;
+  }
 }
 
 .apply-dialog__cancel {
-  background: var(--cds-bg-page);
-  color: var(--cds-text-primary);
+  background: transparent;
+  color: var(--cds-text-secondary);
   border: 1px solid var(--cds-border-default);
 
   &:hover {
+    color: var(--cds-text-primary);
     background: var(--cds-surface-elevated);
   }
 }
@@ -86,6 +195,16 @@
   background: var(--cds-primary);
   color: var(--cds-primary-contrast);
   border: 1px solid var(--cds-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--cds-primary-hover);
+    border-color: var(--cds-primary-hover);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--cds-primary-active);
+    border-color: var(--cds-primary-active);
+  }
 
   &:disabled {
     background: var(--cds-surface-elevated);

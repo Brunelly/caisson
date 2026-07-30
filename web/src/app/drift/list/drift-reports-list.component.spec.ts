@@ -137,6 +137,17 @@ describe('DriftReportsListComponent', () => {
     expect(identifier.textContent).toBe('v1|rack|sw-01|ether5');
   });
 
+  it('Story #122 re-skin: wraps the table in the opaque elevated-card panel hook', () => {
+    fixture.detectChanges();
+    paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));
+    queryParamMap$.next(convertToParamMap({}));
+    fixture.detectChanges();
+
+    const wrapper = fixture.nativeElement.querySelector('.drift-list__table-wrapper');
+    expect(wrapper).toBeTruthy();
+    expect(wrapper.querySelector('.drift-list__table')).toBeTruthy();
+  });
+
   it('renders "—" for a drift item with no matching apply job', () => {
     fixture.detectChanges();
     paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));

@@ -22,29 +22,63 @@ export type ApplyConfirmationDialogResult = 'submit' | undefined;
   styleUrl: './apply-confirmation-dialog.component.scss',
   template: `
     <div class="apply-dialog">
-      <h2 id="apply-dialog-heading" class="apply-dialog__heading">Apply drift correction</h2>
+      <header class="apply-dialog__header">
+        <span class="apply-dialog__header-icon" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </svg>
+        </span>
+        <h2 id="apply-dialog-heading" class="apply-dialog__heading">Apply drift correction</h2>
+      </header>
 
-      <dl class="apply-dialog__summary">
-        <dt>Target</dt>
-        <dd>{{ data.item.subjectType }}: {{ data.item.subjectKey }}</dd>
-        <dt>Current → desired</dt>
-        <dd>{{ data.item.actualValue ?? '—' }} → {{ data.item.expectedValue ?? '—' }}</dd>
-        <dt>Drift type</dt>
-        <dd>{{ data.item.driftType }}</dd>
-        <dt>Severity</dt>
-        <dd><app-drift-severity-badge [severity]="data.item.severity" /></dd>
-      </dl>
+      <div class="apply-dialog__body">
+        <dl class="apply-dialog__summary">
+          <dt>Target</dt>
+          <dd class="apply-dialog__identifier">
+            {{ data.item.subjectType }}: {{ data.item.subjectKey }}
+          </dd>
+          <dt>Current → desired</dt>
+          <dd>
+            <span class="apply-dialog__value apply-dialog__value--current">{{
+              data.item.actualValue ?? '—'
+            }}</span>
+            <span class="apply-dialog__value-arrow" aria-hidden="true">→</span>
+            <span class="apply-dialog__value apply-dialog__value--desired">{{
+              data.item.expectedValue ?? '—'
+            }}</span>
+          </dd>
+          <dt>Drift type</dt>
+          <dd>{{ data.item.driftType }}</dd>
+          <dt>Severity</dt>
+          <dd><app-drift-severity-badge [severity]="data.item.severity" /></dd>
+        </dl>
 
-      <p class="apply-dialog__rollback">{{ rollbackWindowText }}</p>
+        <p class="apply-dialog__rollback">{{ rollbackWindowText }}</p>
 
-      <p class="apply-dialog__write-warning">
-        This is a write operation and may trigger automatic rollback behaviour on the switch.
-      </p>
+        <p class="apply-dialog__write-warning">
+          This is a write operation and may trigger automatic rollback behaviour on the switch.
+        </p>
 
-      <label class="apply-dialog__ack">
-        <input type="checkbox" [checked]="acknowledged()" (change)="onAcknowledgeChange($event)" />
-        I acknowledge this action changes device configuration.
-      </label>
+        <label class="apply-dialog__ack">
+          <input
+            type="checkbox"
+            [checked]="acknowledged()"
+            (change)="onAcknowledgeChange($event)"
+          />
+          I acknowledge this action changes device configuration.
+        </label>
+      </div>
 
       <div class="apply-dialog__actions">
         <button type="button" class="apply-dialog__cancel" (click)="cancel()">Cancel</button>

@@ -1,13 +1,15 @@
 @use '../../shared/styles/cds-mixins';
 
 .drift-detail {
-  padding: 1rem;
+  @include cds-mixins.cds-elevated-card;
+  box-shadow: var(--cds-shadow-sm);
+  padding: var(--cds-sp-6);
   max-width: 40rem;
-  // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of what the
-  // app-shell (Story #119) paints behind it. Reads --cds-* (ADR 0038) so this now resolves correctly
-  // under the shell's hc-dark chrome instead of silently falling back to dark-theme colours.
-  background: var(--cds-bg-page);
   color: var(--cds-text-primary);
+
+  @include cds-mixins.cds-respond-below(md) {
+    padding: var(--cds-sp-4);
+  }
 }
 
 .drift-detail__header {
@@ -15,10 +17,11 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--cds-sp-3);
 
   h1 {
-    font-size: 1.125rem;
+    font-size: var(--cds-fs-2xl);
+    font-weight: 700;
     margin: 0;
   }
 }
@@ -26,62 +29,72 @@
 .drift-detail__badges {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--cds-sp-2);
 }
 
 .drift-detail__type {
   color: var(--cds-text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--cds-fs-base);
 }
 
 .drift-detail__why {
-  margin: 0.75rem 0 0.25rem;
+  margin: var(--cds-sp-3) 0 var(--cds-sp-1);
 }
 
 .drift-detail__detected {
   color: var(--cds-text-secondary);
-  font-size: 0.8125rem;
-  margin: 0 0 1rem;
+  font-size: var(--cds-fs-base);
+  margin: 0 0 var(--cds-sp-4);
 }
 
 .drift-detail__before-after {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.375rem 0.75rem;
-  margin: 0 0 1rem;
-  font-size: 0.875rem;
+  gap: var(--cds-sp-1) var(--cds-sp-4);
+  margin: 0 0 var(--cds-sp-4);
+  padding: var(--cds-sp-3-5) var(--cds-sp-4);
+  background: var(--cds-surface-sunken);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  font-size: var(--cds-fs-md);
 
   dt {
     color: var(--cds-text-secondary);
+    font-weight: 600;
   }
 
   dd {
     margin: 0;
     word-break: break-word;
   }
+
+  @include cds-mixins.cds-respond-below(md) {
+    grid-template-columns: 1fr;
+    gap: var(--cds-sp-0-5);
+  }
 }
 
 .drift-detail__actionable {
-  font-size: 0.875rem;
+  font-size: var(--cds-fs-md);
 }
 
 .drift-detail__section {
-  margin-top: 1rem;
+  margin-top: var(--cds-sp-4);
 
   h2 {
-    font-size: 0.8125rem;
+    font-size: var(--cds-fs-base);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     color: var(--cds-text-secondary);
-    margin: 0 0 0.5rem;
+    margin: 0 0 var(--cds-sp-2);
   }
 }
 
 .drift-detail__details {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.375rem 0.75rem;
-  font-size: 0.8125rem;
+  gap: var(--cds-sp-1) var(--cds-sp-4);
+  font-size: var(--cds-fs-base);
 
   dt {
     color: var(--cds-text-secondary);
@@ -94,7 +107,7 @@
 }
 
 .drift-detail__apply-slot {
-  margin-top: 1.5rem;
+  margin-top: var(--cds-sp-6);
 }
 
 // Task #129: subject key, before/after values, and identifier-bearing detail-bag entries (switch/port

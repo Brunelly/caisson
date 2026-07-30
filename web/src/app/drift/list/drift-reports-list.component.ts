@@ -119,49 +119,51 @@ export function driftFiltersToQueryParams(
       } @else if (state.items().length === 0) {
         <p role="status">No drift items match the current filters.</p>
       } @else {
-        <table class="drift-list__table">
-          <thead>
-            <tr>
-              <th scope="col">Subject</th>
-              <th scope="col">Drift type</th>
-              <th scope="col">Severity</th>
-              <th scope="col">Detected</th>
-              <th scope="col">Actionable</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (item of state.items(); track item.driftItemId) {
+        <div class="drift-list__table-wrapper">
+          <table class="drift-list__table">
+            <thead>
               <tr>
-                <td>
-                  <a
-                    class="drift-list__subject-link"
-                    [routerLink]="['/racks', state.rackId(), 'drift', 'items', item.driftItemId]"
-                  >
-                    {{ item.subjectType }}:
-                    <span class="drift-list__identifier">{{ item.subjectKey }}</span>
-                  </a>
-                </td>
-                <td>{{ item.driftType }}</td>
-                <td><app-drift-severity-badge [severity]="item.severity" /></td>
-                <td>{{ item.createdAt | date: 'medium' }}</td>
-                <td>{{ item.actionable ? 'Yes' : 'No' }}</td>
-                <td>
-                  @if (jobFor(item); as job) {
-                    <a
-                      class="drift-list__status-link"
-                      [routerLink]="['/racks', state.rackId(), 'drift', 'jobs', job.jobId]"
-                    >
-                      <app-job-status-badge [status]="job.status" />
-                    </a>
-                  } @else {
-                    —
-                  }
-                </td>
+                <th scope="col">Subject</th>
+                <th scope="col">Drift type</th>
+                <th scope="col">Severity</th>
+                <th scope="col">Detected</th>
+                <th scope="col">Actionable</th>
+                <th scope="col">Status</th>
               </tr>
-            }
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @for (item of state.items(); track item.driftItemId) {
+                <tr>
+                  <td>
+                    <a
+                      class="drift-list__subject-link"
+                      [routerLink]="['/racks', state.rackId(), 'drift', 'items', item.driftItemId]"
+                    >
+                      {{ item.subjectType }}:
+                      <span class="drift-list__identifier">{{ item.subjectKey }}</span>
+                    </a>
+                  </td>
+                  <td>{{ item.driftType }}</td>
+                  <td><app-drift-severity-badge [severity]="item.severity" /></td>
+                  <td>{{ item.createdAt | date: 'medium' }}</td>
+                  <td>{{ item.actionable ? 'Yes' : 'No' }}</td>
+                  <td>
+                    @if (jobFor(item); as job) {
+                      <a
+                        class="drift-list__status-link"
+                        [routerLink]="['/racks', state.rackId(), 'drift', 'jobs', job.jobId]"
+                      >
+                        <app-job-status-badge [status]="job.status" />
+                      </a>
+                    } @else {
+                      —
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
 
         @if (state.nextCursor()) {
           <button

@@ -69,13 +69,16 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
   `,
   styles: [
     `
+      // Story #122 (Task #137): DS pill treatment — full-round radius, --cds-fs-xs, token spacing.
+      // Purely a token/shape refresh; the kind -> colour/glyph/label maps below are untouched, so
+      // every badge (mapping-state, confidence, drift severity, job status) keeps its exact meaning.
       .status-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.25rem;
-        border-radius: 999px;
-        padding: 0.125rem 0.625rem;
-        font-size: 0.75rem;
+        gap: var(--cds-sp-1);
+        border-radius: var(--cds-radius-full);
+        padding: var(--cds-sp-0-5) var(--cds-sp-2-5);
+        font-size: var(--cds-fs-xs);
         font-weight: 600;
         line-height: 1.4;
         white-space: nowrap;
