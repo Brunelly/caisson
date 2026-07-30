@@ -441,6 +441,38 @@ jobs:
           E2E_BASE_URL: "http://127.0.0.1:4200"
         run: npx playwright test topology-visual.spec.ts
 
+      # Story #123 Task #143: theme-shell.spec.ts, drift-harness.spec.ts and drift-visual.spec.ts existed
+      # before this story but were never wired into CI (only the topology smoke/harness/visual specs
+      # above were) — meaning regression validation of the RBAC apply gate, the double-submit guard,
+      # SignalR job status, and theme switching was unverifiable in CI. All three reuse the same
+      # already-served harness build (fixture-backed, no live backend), same as the topology specs above.
+      - name: Run theme/shell e2e test
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test theme-shell.spec.ts
+
+      - name: Run drift dev-harness e2e test
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test drift-harness.spec.ts
+
+      - name: Run drift visual regression baselines
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test drift-visual.spec.ts
+
+      # Story #123 Task #142: mobile/tablet sm/md viewport coverage for both visual specs (ADR 0044) —
+      # a separate step (not folded into the two steps above) so a viewport-specific regression produces
+      # its own clearly-named failure rather than being buried inside the desktop-viewport run.
+      - name: Run responsive (mobile/tablet) visual regression baselines
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test topology-visual.spec.ts drift-visual.spec.ts --project=mobile --project=tablet
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

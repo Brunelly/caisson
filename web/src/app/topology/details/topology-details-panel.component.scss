@@ -86,6 +86,13 @@
   }
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  // Story #123 Task #140/#143 (NFR3): 44px touch-target floor at `sm`, where this is the panel's only
+  // dismiss affordance besides Escape/the scrim tap (topology-details-panel.component.scss's bottom-
+  // sheet block) — desktop/tablet density is otherwise unaffected.
+  @include cds-mixins.cds-respond-below(sm) {
+    @include cds-mixins.cds-touch-target;
+  }
 }
 
 .details-panel__notice {
