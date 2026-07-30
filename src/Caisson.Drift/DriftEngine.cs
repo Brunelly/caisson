@@ -310,7 +310,7 @@ public static class DriftEngine
     private static string JoinBounded(IEnumerable<string> items, string separator)
     {
         const int maxJoinedLength = 900; // Margin under MaxActualValueLength (1024) for the "+N more" suffix,
-                                          // and — combined with the surrounding fixed why-text — under MaxWhyLength (2048).
+                                         // and — combined with the surrounding fixed why-text — under MaxWhyLength (2048).
         var all = items.ToList();
         var builder = new StringBuilder();
         var includedCount = 0;
