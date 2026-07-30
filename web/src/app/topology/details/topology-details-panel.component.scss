@@ -1,13 +1,20 @@
 @use '../../shared/styles/cds-mixins';
 
+// Task #134: frosted-glass/elevated aside (matches the legend/search overlay chrome), with rounded
+// LEADING corners only (top-left/bottom-left — this panel is right-anchored, flush against the shell's
+// trailing edge, so only the edge facing the canvas gets a radius) per the design's `.tdsp` treatment.
+// role="region"/Escape-close/focus-to-heading behaviour lives entirely in the component .ts and is
+// untouched here.
 .details-panel {
+  @include cds-mixins.cds-glass-surface;
   width: 22rem;
   max-width: 100%;
   height: 100%;
   overflow-y: auto;
-  border-left: 1px solid var(--cds-border-default);
-  background: var(--cds-surface-elevated);
-  padding: 1rem;
+  border-right: none;
+  border-radius: var(--cds-radius-lg) 0 0 var(--cds-radius-lg);
+  box-shadow: var(--cds-shadow-lg);
+  padding: var(--cds-sp-4);
   box-sizing: border-box;
 }
 
@@ -15,10 +22,10 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--cds-sp-2);
 
   h2 {
-    font-size: 1rem;
+    font-size: var(--cds-fs-md);
     margin: 0;
     outline: none;
   }
@@ -28,13 +35,13 @@
   background: none;
   border: none;
   color: var(--cds-text-secondary);
-  font-size: 1rem;
+  font-size: var(--cds-fs-md);
   line-height: 1;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
+  padding: var(--cds-sp-1);
+  border-radius: var(--cds-radius-sm);
 
-  // The panel itself already sits at the `--cds-surface-elevated` tier, so hover uses
+  // The panel itself already sits at the `--cds-surface-elevated`-tier glass fill, so hover uses
   // `--cds-surface-sunken` (recessed) to stay visibly distinct — see topology-graph.component.scss.
   &:hover {
     background: var(--cds-surface-sunken);
@@ -46,21 +53,21 @@
 
 .details-panel__notice {
   @include cds-mixins.cds-status-notice;
-  margin: 0.75rem 0;
+  margin: var(--cds-sp-3) 0;
 }
 
 .details-panel__snapshot-meta {
   color: var(--cds-text-secondary);
-  font-size: 0.75rem;
-  margin: 0.5rem 0 1rem;
+  font-size: var(--cds-fs-xs);
+  margin: var(--cds-sp-2) 0 var(--cds-sp-4);
 }
 
 .details-panel__fields {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.375rem 0.75rem;
-  margin: 0 0 1rem;
-  font-size: 0.875rem;
+  gap: var(--cds-sp-1-5) var(--cds-sp-3);
+  margin: 0 0 var(--cds-sp-4);
+  font-size: var(--cds-fs-md);
 
   dt {
     color: var(--cds-text-secondary);
@@ -81,14 +88,14 @@
 }
 
 .details-panel__section {
-  margin-top: 1rem;
+  margin-top: var(--cds-sp-4);
 
   h3 {
-    font-size: 0.8125rem;
+    font-size: var(--cds-fs-base);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--cds-text-secondary);
-    margin: 0 0 0.5rem;
+    margin: 0 0 var(--cds-sp-2);
   }
 }
 
@@ -98,8 +105,8 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
+  gap: var(--cds-sp-2);
+  font-size: var(--cds-fs-base);
 }
 
 .details-panel__history {
@@ -108,13 +115,13 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
+  gap: var(--cds-sp-1-5);
+  font-size: var(--cds-fs-base);
 
   li {
     display: flex;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: var(--cds-sp-2);
   }
 }
 
@@ -129,20 +136,20 @@
 .details-panel__drift-badges {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0 0 0.375rem;
-  font-size: 0.8125rem;
+  gap: var(--cds-sp-2);
+  margin: 0 0 var(--cds-sp-1-5);
+  font-size: var(--cds-fs-base);
 }
 
 .details-panel__drift-detected {
   color: var(--cds-text-secondary);
-  font-size: 0.75rem;
-  margin: 0 0 0.5rem;
+  font-size: var(--cds-fs-xs);
+  margin: 0 0 var(--cds-sp-2);
 }
 
 .details-panel__drift-link {
   color: var(--cds-primary);
-  font-size: 0.8125rem;
+  font-size: var(--cds-fs-base);
 
   &:hover {
     text-decoration: underline;

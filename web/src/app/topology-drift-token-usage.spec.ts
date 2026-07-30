@@ -2,9 +2,12 @@
 // (ADR 0038, Task #132) never regain a hardcoded colour literal. Mirrors shell/token-usage.spec.ts's
 // exact regex + comment-stripping helper (same reasoning: SCSS comments legitimately reference things
 // like "Task #129", which would otherwise false-positive against the hex-colour pattern), extended to
-// the closed set of files that story #120 retargeted from --color-* to --cds-*. `_cds-tokens.scss`
-// itself is intentionally NOT in this list — it's the one file allowed (in fact required) to declare
-// the literal colour values.
+// the closed set of files that story #120 retargeted from --color-* to --cds-*, and (Story #121, Task
+// #135) to the files the Caisson-DS re-skin touched or added. `_cds-tokens.scss` itself is intentionally
+// NOT in this list — it's the one file allowed (in fact required) to declare the literal colour values.
+// `_cds-topology-tokens.scss` (ADR 0039) IS in this list even though it's also a token-declaration file:
+// unlike `_cds-tokens.scss`, every one of its values is itself a `var(--cds-*)`/`color-mix(...)` alias
+// with zero literals of its own, so the guard is meaningful there too.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +31,11 @@ const TOPOLOGY_DRIFT_TOKEN_FILES = [
   'drift/apply/job-status-badge.component.ts',
   'drift/audit/audit-record-view.component.scss',
   'shared/badge/status-badge.component.ts',
+  // Story #121 (Task #135) additions — the topology token-alias layer plus every file the Caisson-DS
+  // re-skin touched or added.
+  'shared/styles/_cds-topology-tokens.scss',
+  'shared/connection-status/live-connection-status-bar.component.scss',
+  'topology/discovery-status/discovery-job-status-widget.component.scss',
 ];
 
 const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/;

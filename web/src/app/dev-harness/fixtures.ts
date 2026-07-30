@@ -132,7 +132,70 @@ export function harnessGraphDto(): TopologyGraphDto {
   };
 }
 
-export function harnessDiscoveryStatus(): DiscoveryStatusDto {
+/** Task #135: discovery-status variants for the DiscoveryJobStatusWidgetComponent visual/interaction
+ * coverage (topology-visual.spec.ts, topology-harness.spec.ts) — selected via the harness URL's
+ * `?discoveryStatus=` query param (read at call time, same pattern as `fakeOidc`'s `?roles=` param, see
+ * dev-harness.providers.ts), so a fresh page.goto() per Playwright test picks whichever variant it
+ * navigated to. 'succeeded' (the default) is unparameterised so every existing test keeps working. */
+export type HarnessDiscoveryStatusVariant = 'succeeded' | 'inProgress' | 'failed' | 'none';
+
+export function harnessDiscoveryStatus(
+  variant: HarnessDiscoveryStatusVariant = 'succeeded',
+): DiscoveryStatusDto {
+  if (variant === 'none') {
+    return {
+      rackId: 'rack-1',
+      latestJob: null,
+      lastSuccessAt: null,
+      scheduleEnabled: false,
+      nextRunAt: null,
+    };
+  }
+
+  if (variant === 'inProgress') {
+    return {
+      rackId: 'rack-1',
+      latestJob: {
+        jobId: 'job-harness-inprogress',
+        rackId: 'rack-1',
+        mode: 'Manual',
+        status: 'InProgress',
+        createdAt: harnessSnapshotMeta().createdAt,
+        startedAt: harnessSnapshotMeta().createdAt,
+        finishedAt: null,
+        triggeredBy: 'harness-user',
+        dryRun: false,
+        errorCode: null,
+        lastSuccessAt: null,
+      },
+      lastSuccessAt: null,
+      scheduleEnabled: true,
+      nextRunAt: null,
+    };
+  }
+
+  if (variant === 'failed') {
+    return {
+      rackId: 'rack-1',
+      latestJob: {
+        jobId: 'job-harness-failed',
+        rackId: 'rack-1',
+        mode: 'Scheduled',
+        status: 'Failed',
+        createdAt: harnessSnapshotMeta().createdAt,
+        startedAt: harnessSnapshotMeta().createdAt,
+        finishedAt: harnessSnapshotMeta().createdAt,
+        triggeredBy: 'scheduler',
+        dryRun: false,
+        errorCode: 'SnmpTimeout',
+        lastSuccessAt: null,
+      },
+      lastSuccessAt: null,
+      scheduleEnabled: true,
+      nextRunAt: null,
+    };
+  }
+
   return {
     rackId: 'rack-1',
     latestJob: {

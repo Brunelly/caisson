@@ -68,6 +68,10 @@ const DRIFT_SEVERITY_GLYPH: Record<DriftOverlayEntry['severity'], string> = {
          hiding those descendants (axe: nested-interactive, WCAG 4.1.2). -->
     <svg #svg class="topology-graph" role="group" aria-label="Rack topology graph">
       <g class="topology-graph__viewport">
+        <!-- Task #133: additive, decorative VLAN-grouping layer, painted first (behind every
+             structural/interactive layer below) so it never intercepts pointer/keyboard interaction
+             with the real graph content. -->
+        <g class="topology-graph__lanes" aria-hidden="true" pointer-events="none"></g>
         <g class="topology-graph__structural-edges"></g>
         <g class="topology-graph__edges"></g>
         <g class="topology-graph__edge-badges"></g>
@@ -83,6 +87,9 @@ const DRIFT_SEVERITY_GLYPH: Record<DriftOverlayEntry['severity'], string> = {
 export class TopologyGraphComponent {
   readonly graph = input<TopologyGraphModel | null>(null);
   readonly driftOverlay = input<ReadonlyMap<string, DriftOverlayEntry> | null>(null);
+  /** Task #133 (AC5): the currently selected entity, purely for the visual `node--selected` cue — never
+   * read by layout/positioning, so this can never affect the enter/update/exit join or pan/zoom. */
+  readonly selection = input<TopologyGraphNode | null>(null);
   readonly nodeSelected = output<TopologyGraphNode>();
   readonly edgeSelected = output<TopologyGraphEdge>();
 
@@ -118,6 +125,7 @@ export class TopologyGraphComponent {
       const svg = this.svgRef();
       const graph = this.graph();
       const driftOverlay = this.driftOverlay();
+      const selection = this.selection();
       if (!svg) {
         return;
       }
@@ -127,7 +135,7 @@ export class TopologyGraphComponent {
         this.zoomAttached = true;
       }
 
-      this.render(graph, driftOverlay ?? EMPTY_DRIFT_OVERLAY);
+      this.render(graph, driftOverlay ?? EMPTY_DRIFT_OVERLAY, selection);
     });
   }
 
@@ -154,6 +162,7 @@ export class TopologyGraphComponent {
   private render(
     graph: TopologyGraphModel | null,
     driftOverlay: ReadonlyMap<string, DriftOverlayEntry>,
+    selection: TopologyGraphNode | null,
   ): void {
     const svg = this.svgRef();
     if (!svg) {
@@ -163,6 +172,7 @@ export class TopologyGraphComponent {
     this.positions.clear();
 
     const root = d3.select(svg.nativeElement);
+    const lanesLayer = root.select<SVGGElement>('.topology-graph__lanes');
     const nodesLayer = root.select<SVGGElement>('.topology-graph__nodes');
     const edgesLayer = root.select<SVGGElement>('.topology-graph__edges');
     const badgesLayer = root.select<SVGGElement>('.topology-graph__edge-badges');
@@ -170,6 +180,7 @@ export class TopologyGraphComponent {
     const driftBadgesLayer = root.select<SVGGElement>('.topology-graph__drift-badges');
 
     if (!graph) {
+      lanesLayer.selectAll('*').remove();
       nodesLayer.selectAll('*').remove();
       edgesLayer.selectAll('*').remove();
       badgesLayer.selectAll('*').remove();
@@ -180,6 +191,21 @@ export class TopologyGraphComponent {
 
     const allNodes = flattenGraphNodes(graph);
     computePositions(allNodes).forEach((point, id) => this.positions.set(id, point));
+
+    // Task #133: additive, decorative VLAN-grouping backdrop — one rounded rect per node-type column,
+    // keyed by type, derived purely from the positions computed above (never affects them). A complete
+    // no-op when a column has no nodes (do-not-regress #10: byte-for-byte unchanged when nothing to
+    // group).
+    lanesLayer
+      .selectAll<SVGRectElement, LaneRect>('rect.lane')
+      .data(computeLaneRects(allNodes, this.positions), (d) => d.type)
+      .join('rect')
+      .attr('class', 'lane')
+      .attr('rx', 10)
+      .attr('x', (d) => d.x)
+      .attr('y', (d) => d.y)
+      .attr('width', (d) => d.width)
+      .attr('height', (d) => d.height);
 
     const structuralLinks = graph.nodes.ports.map((port) => ({
       id: `${port.switchId}->${port.id}`,
@@ -272,7 +298,7 @@ export class TopologyGraphComponent {
 
     nodeSelection
       .attr('class', (d) =>
-        `node node--${d.type} ${nodeStateClass(d)} ${driftNodeClass(d, driftOverlay)}`.trim(),
+        `node node--${d.type} ${nodeStateClass(d)} ${driftNodeClass(d, driftOverlay)} ${selectedNodeClass(d, selection)}`.trim(),
       )
       .attr('aria-label', (d) => nodeAriaLabel(d, driftOverlay))
       .attr('aria-describedby', (d) => (driftOverlay.has(d.id) ? driftTooltipId(d.id) : null))
@@ -315,6 +341,57 @@ function computePositions(nodes: TopologyGraphNode[]): Map<string, Point> {
   }
 
   return positions;
+}
+
+interface LaneRect {
+  type: TopologyNodeType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const LANE_PADDING_X = 24;
+const LANE_PADDING_Y = 20;
+
+/** Task #133: derives one bounding rect per node-type column from the SAME positions
+ * `computePositions()` already produced — never a second, independently-maintained layout — so the lane
+ * layer can never drift out of sync with where nodes actually render. A type with no nodes in the
+ * current graph simply produces no rect. */
+function computeLaneRects(
+  nodes: TopologyGraphNode[],
+  positions: ReadonlyMap<string, Point>,
+): LaneRect[] {
+  const yExtentByType = new Map<TopologyNodeType, { min: number; max: number }>();
+
+  for (const node of nodes) {
+    const point = positions.get(node.id);
+    if (!point) {
+      continue;
+    }
+    const extent = yExtentByType.get(node.type);
+    if (!extent) {
+      yExtentByType.set(node.type, { min: point.y, max: point.y });
+    } else {
+      extent.min = Math.min(extent.min, point.y);
+      extent.max = Math.max(extent.max, point.y);
+    }
+  }
+
+  return Array.from(yExtentByType.entries()).map(([type, { min, max }]) => ({
+    type,
+    x: COLUMN_X[type] - NODE_WIDTH / 2 - LANE_PADDING_X,
+    y: min - NODE_HEIGHT / 2 - LANE_PADDING_Y,
+    width: NODE_WIDTH + LANE_PADDING_X * 2,
+    height: max - min + NODE_HEIGHT + LANE_PADDING_Y * 2,
+  }));
+}
+
+/** Task #133 (AC5): the graph's only new interactive-state class — purely visual, driven by the new
+ * `selection` input, never affecting the keyed join (this runs in the same update-only `.attr()` pass
+ * as the existing state classes above). */
+function selectedNodeClass(node: TopologyGraphNode, selection: TopologyGraphNode | null): string {
+  return selection && node.id === selection.id ? 'node--selected' : '';
 }
 
 function midpoint(a?: Point, b?: Point): Point {

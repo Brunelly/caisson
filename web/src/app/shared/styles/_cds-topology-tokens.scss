@@ -1,0 +1,55 @@
+// Topology-specific token ALIAS layer (Story #121 Task #133, ADR 0039, resolved Q&A: "introduce a
+// minimal topology-specific token alias layer within DS, no hard-coded values"). Every custom property
+// here is a `var(--cds-*)` read or a guard-safe `color-mix(in srgb, var(--cds-*) N%, transparent)` of
+// one — never a hex/rgba/hsl literal — so the existing topology-drift-token-usage.spec.ts guard passes
+// unchanged. `@use`d exactly once, globally, from `styles.scss`, the same way `_cds-tokens.scss` is —
+// NEVER from a component stylesheet (see `_cds-mixins.scss`'s header comment: `@use` emits a module's
+// top-level CSS into every consumer, which would blow the `anyComponentStyle` budget instantly).
+//
+// This is additive only: existing `var(--cds-*)` reads across the topology/drift components are left
+// untouched. Only the NEW re-skin styling added by this story (Task #133/#134) reads these aliases.
+:root {
+  // Mapping state (confirmed/ambiguous/unmapped) — deliberately KEEPS the existing, already-AA-verified
+  // green/amber/red semantics (ADR 0033/0038) rather than adopting the design mock's cyan-for-confirmed.
+  // See ADR 0039 for the full rationale.
+  --cds-topo-mapping-confirmed: var(--cds-success-fg);
+  --cds-topo-mapping-ambiguous: var(--cds-warning-fg);
+  --cds-topo-mapping-unmapped: var(--cds-error-fg);
+
+  // Confidence bands (High/Medium/Low) — mirrors StatusBadgeComponent's existing kind->colour map
+  // (shared/badge/status-badge.component.ts) so the graph/legend/details-panel never grow a second,
+  // competing confidence palette.
+  --cds-topo-confidence-high: var(--cds-success-fg);
+  --cds-topo-confidence-medium: var(--cds-warning-fg);
+  --cds-topo-confidence-low: var(--cds-error-fg);
+
+  // VLAN lane grouping (Task #133) — a faint, non-interactive backdrop rect per node-type column.
+  // Derived from the existing elevated-surface/border tokens at low opacity so lanes read as a subtle
+  // structural cue that never competes with node/edge contrast, and stay in lockstep with whatever
+  // --cds-surface-elevated/--cds-border-default resolve to per theme (no separate lane palette to keep
+  // in sync by hand).
+  --cds-topo-lane-fill: color-mix(in srgb, var(--cds-surface-elevated) 55%, transparent);
+  --cds-topo-lane-stroke: color-mix(in srgb, var(--cds-border-default) 70%, transparent);
+
+  // Glow tokens — luminous `filter: drop-shadow(...)` cues for confirmed/drift/selected nodes+edges
+  // (Task #133). Full drop-shadow argument lists (offset-x offset-y blur-radius color) so a consumer
+  // writes `filter: drop-shadow(var(--cds-topo-glow-confirmed))` directly. confirmed/drift alpha values
+  // (25%/35%) are transcribed from the design mock's own `--sh-node-confirmed`/`--sh-node-drift` tokens,
+  // color-mixed over the same success/error tokens the rest of the app already uses for these semantics
+  // so the glow colour always matches the paired stroke colour and adapts automatically per theme.
+  --cds-topo-glow-confirmed: 0 0 6px color-mix(in srgb, var(--cds-success-fg) 25%, transparent);
+  --cds-topo-glow-drift: 0 0 8px color-mix(in srgb, var(--cds-error-fg) 35%, transparent);
+  // Brand cyan reserved for the NEW selection-highlight state (ADR 0039), deliberately NOT reusing
+  // glow-drift the way the design mock's `.node.sel` rule does — selection has no existing colliding
+  // semantic, so it gets the DS primary colour instead of borrowing the "something is wrong" red.
+  --cds-topo-glow-selection: 0 0 8px color-mix(in srgb, var(--cds-primary) 45%, transparent);
+}
+
+// Stronger glow alpha in hc-dark (design's high-contrast preview calls for higher-contrast luminous
+// cues, consistent with that theme's already-higher-contrast shadow tokens in _cds-tokens.scss) — same
+// colours, just more opaque so the cue stays legible without relying on blur/glass.
+[data-theme='hc-dark'] {
+  --cds-topo-glow-confirmed: 0 0 6px color-mix(in srgb, var(--cds-success-fg) 55%, transparent);
+  --cds-topo-glow-drift: 0 0 8px color-mix(in srgb, var(--cds-error-fg) 65%, transparent);
+  --cds-topo-glow-selection: 0 0 8px color-mix(in srgb, var(--cds-primary) 75%, transparent);
+}

@@ -8,6 +8,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LiveConnectionStatusBarComponent } from '../shared/connection-status/live-connection-status-bar.component';
 import { TopologyDetailsPanelComponent } from './details/topology-details-panel.component';
+import { DiscoveryJobStatusWidgetComponent } from './discovery-status/discovery-job-status-widget.component';
 import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyLegendComponent } from './legend/topology-legend.component';
 import { TopologySignalRService } from './live/topology-signalr.service';
@@ -36,14 +37,7 @@ import { TopologyStateService } from './state/topology-state.service';
           <span class="snapshot-meta">
             Snapshot v{{ snapshot.version }} · {{ snapshot.createdAt | date: 'medium' }}
           </span>
-          @if (state.discoveryStatus(); as status) {
-            <span class="discovery-status">
-              Discovery: {{ status.latestJob?.status ?? 'unknown' }}
-              @if (status.lastSuccessAt) {
-                (last success {{ status.lastSuccessAt | date: 'short' }})
-              }
-            </span>
-          }
+          <app-discovery-job-status-widget [status]="state.discoveryStatus()" />
           <app-topology-search (resultSelected)="onSearchResultSelected($event)" />
         </header>
 
@@ -58,6 +52,7 @@ import { TopologyStateService } from './state/topology-state.service';
             #graph
             [graph]="state.graph()"
             [driftOverlay]="state.driftOverlay()"
+            [selection]="state.selection()"
             (nodeSelected)="onNodeSelected($event)"
             (edgeSelected)="onEdgeSelected($event)"
           />
@@ -105,8 +100,7 @@ import { TopologyStateService } from './state/topology-state.service';
         font-weight: 600;
       }
 
-      .snapshot-meta,
-      .discovery-status {
+      .snapshot-meta {
         color: var(--cds-text-secondary);
         font-size: 0.875rem;
       }
@@ -123,11 +117,27 @@ import { TopologyStateService } from './state/topology-state.service';
         min-width: 0;
       }
 
+      // Task #133/#134: floats the legend as a card over the canvas (see
+      // topology-legend.component.ts's cds-glass-surface treatment) instead of the old flush bottom
+      // strip. Margin on all three anchored sides + a max-width keeps it clear of the canvas edges and
+      // (at typical viewport widths) clear of the details panel's 22rem column to its right; narrower
+      // viewports shrink the margin/drop the cap instead of hiding content (CSS-only, no new behaviour).
       .topology-shell app-topology-legend {
         position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
+        left: var(--cds-sp-4);
+        right: var(--cds-sp-4);
+        bottom: var(--cds-sp-4);
+        max-width: 42rem;
+        z-index: 1;
+      }
+
+      @media (max-width: 768px) {
+        .topology-shell app-topology-legend {
+          left: var(--cds-sp-2);
+          right: var(--cds-sp-2);
+          bottom: var(--cds-sp-2);
+          max-width: none;
+        }
       }
     `,
   ],
@@ -138,6 +148,7 @@ import { TopologyStateService } from './state/topology-state.service';
     TopologyLegendComponent,
     TopologySearchComponent,
     TopologyDetailsPanelComponent,
+    DiscoveryJobStatusWidgetComponent,
   ],
 })
 export class TopologyPageComponent {

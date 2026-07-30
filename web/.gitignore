@@ -45,6 +45,11 @@ __screenshots__/
 /blob-report
 /playwright/.cache
 
+# Task #135 (ADR 0040): the topology visual-regression suite's small, curated, INTENTIONALLY-committed
+# baseline PNGs — an explicit carve-out of the broader `__screenshots__/` ignore above.
+!e2e/__screenshots__/
+!e2e/__screenshots__/**
+
 # System files
 .DS_Store
 Thumbs.db

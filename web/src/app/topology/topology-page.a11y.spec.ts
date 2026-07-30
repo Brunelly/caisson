@@ -82,9 +82,14 @@ describe('TopologyPageComponent accessibility', () => {
         version: 4,
         createdAt: '2026-01-01T00:00:00Z',
       } as never),
+      // Task #135: DiscoveryJobStatusWidgetComponent renders as part of the page header (replacing the
+      // old inline discovery-status span) — a realistic shape here (jobId/errorCode/nextRunAt included)
+      // exercises the widget's real DTO-field rendering as part of this axe pass.
       discoveryStatus: signal({
-        latestJob: { status: 'Succeeded' },
+        latestJob: { jobId: 'job-1', status: 'Succeeded', errorCode: null },
         lastSuccessAt: '2026-01-01T00:00:00Z',
+        scheduleEnabled: true,
+        nextRunAt: '2026-01-01T01:00:00Z',
       } as never),
       graph: signal(deriveTopologyGraph(fixtureGraph())),
       driftOverlay: signal(new Map()),

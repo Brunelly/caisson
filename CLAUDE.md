@@ -133,6 +133,10 @@ snapshot-refetch-on-event, patched into the existing DOM rather than a full relo
 [ADR 0015](docs/adr/0015-angular-frontend-architecture.md) for the full rationale, including the
 config-driven CORS policy and the `NicNodeDto.UnmappedReasonCode` addition this story required.
 
+Story #121 re-skinned the topology map onto the Caisson Design System; topology-specific colour/glow/
+lane semantics are aliased from `--cds-*` in `web/src/app/shared/styles/_cds-topology-tokens.scss`, `@use`d
+once globally from `styles.scss` — see [ADR 0039](docs/adr/0039-topology-token-alias-layer-and-reskin-scope.md).
+
 ### Single-change drift-apply: the first write path (M1)
 Story #65 is the **first intentional crossing of the read-only guardrail** below, for exactly one
 bounded, safety-gated operation: applying a single, already-computed `AccessVlanMismatch` drift item by

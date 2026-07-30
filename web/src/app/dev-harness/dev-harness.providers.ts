@@ -58,8 +58,19 @@ const fakeSnapshotService: Pick<
   getDiff: () => of({ kind: 'notFound' }),
 };
 
+// Task #135: `?discoveryStatus=` selects the DiscoveryJobStatusWidgetComponent fixture variant, read at
+// call time the same way `fakeOidc`'s `?roles=` param is below — 'succeeded' is the unparameterised
+// default, matching every existing test's expectations.
 const fakeDiscoveryStatusService: Pick<DiscoveryStatusService, 'getStatus'> = {
-  getStatus: () => of({ kind: 'ok', value: harnessDiscoveryStatus() }),
+  getStatus: () => {
+    const variant = new URLSearchParams(window.location.search).get('discoveryStatus');
+    return of({
+      kind: 'ok',
+      value: harnessDiscoveryStatus(
+        (variant as Parameters<typeof harnessDiscoveryStatus>[0]) ?? undefined,
+      ),
+    });
+  },
 };
 
 const fakeEntityService: Pick<TopologyEntityService, 'getEntity' | 'getEntityHistory'> = {
