@@ -100,6 +100,16 @@ public static class ContractMappers
     /// </summary>
     private static string RedactMac(string macDisplay)
     {
+        // A NIC can be discovered with no MAC; NicNode.Mac is annotated non-null but is null at runtime
+        // for such a NIC. There is nothing to redact, so return it unchanged (exactly as the privileged
+        // path returns nic.Mac as-is) instead of throwing an NRE on macDisplay.Split(':') — that NRE was
+        // the ReadOnly-principal-only 500 on GET /api/racks/{id}/topology/snapshots/latest
+        // (regression: TestAuthSchemeTests.Least_privilege_principal_can_read_topology_but_cannot_trigger_discovery).
+        if (string.IsNullOrEmpty(macDisplay))
+        {
+            return macDisplay;
+        }
+
         var octets = macDisplay.Split(':');
         if (octets.Length != 6)
         {
