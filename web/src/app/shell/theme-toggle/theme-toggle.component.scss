@@ -1,0 +1,55 @@
+@use '../../shared/styles/cds-mixins';
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--cds-surface-sunken);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-full);
+}
+
+.theme-toggle__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 var(--cds-sp-2-5);
+  border: 0;
+  border-radius: var(--cds-radius-full);
+  background: transparent;
+  color: var(--cds-text-secondary);
+  font-family: var(--cds-font-base);
+  font-size: var(--cds-fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--cds-duration-fast) var(--cds-easing-standard),
+    color var(--cds-duration-fast) var(--cds-easing-standard);
+
+  &:hover {
+    color: var(--cds-text-primary);
+  }
+
+  &:active {
+    background: var(--cds-surface-elevated);
+  }
+
+  &:disabled {
+    color: var(--cds-text-disabled);
+    cursor: not-allowed;
+  }
+
+  &--checked {
+    background: var(--cds-primary-subtle);
+    color: var(--cds-primary);
+
+    &:hover {
+      color: var(--cds-primary-hover);
+    }
+  }
+
+  @include cds-mixins.cds-focus-visible-ring;
+}

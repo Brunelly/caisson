@@ -1,4 +1,4 @@
-@use '../styles/tokens';
+@use '../styles/cds-mixins';
 
 .toast-outlet {
   position: fixed;
@@ -15,19 +15,20 @@
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--cds-radius-lg);
   padding: 0.75rem 1rem;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+  color: var(--cds-text-primary);
+  box-shadow: var(--cds-shadow-overlay);
+
+  @include cds-mixins.cds-glass-surface;
 }
 
 .toast--success {
-  background: var(--color-status-confirmed-bg);
-  color: var(--color-status-confirmed);
+  border-left: 2px solid var(--cds-success-fg);
 }
 
 .toast--error {
-  background: var(--color-status-unmapped-bg);
-  color: var(--color-status-unmapped);
+  border-left: 2px solid var(--cds-error-fg);
 }
 
 .toast__text {
@@ -51,11 +52,11 @@
   font-size: 0.875rem;
   line-height: 1;
   padding: 0.125rem;
-  border-radius: 4px;
+  border-radius: var(--cds-radius-sm);
 
   &:hover {
-    background: var(--color-bg-hover);
+    background: var(--cds-surface-elevated);
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }

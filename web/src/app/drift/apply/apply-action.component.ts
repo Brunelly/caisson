@@ -9,6 +9,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { RouterLink } from '@angular/router';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
+import { LiveConnectionStatusBarComponent } from '../../shared/connection-status/live-connection-status-bar.component';
 import { ToastService } from '../../shared/toast/toast.service';
 import { TopologySignalRService } from '../../topology/live/topology-signalr.service';
 import { TopologyStateService } from '../../topology/state/topology-state.service';
@@ -29,7 +30,7 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
 @Component({
   selector: 'app-apply-action',
   standalone: true,
-  imports: [RouterLink, JobStatusTimelineComponent],
+  imports: [RouterLink, LiveConnectionStatusBarComponent, JobStatusTimelineComponent],
   styleUrl: './apply-action.component.scss',
   template: `
     @if (permission.canApplyDrift()) {
@@ -64,19 +65,12 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
               {{ jobId }}
             </a>
           </p>
-          @if (
-            !isTerminal() &&
-            (topologyState.connectionStatus() === 'stale' ||
-              topologyState.connectionStatus() === 'disconnected')
-          ) {
-            <p class="apply-action__connection-banner" role="status">
-              {{
-                topologyState.connectionStatus() === 'stale'
-                  ? 'Live updates are stale'
-                  : 'Live updates disconnected'
-              }}
-              — showing the last known job status.
-            </p>
+          @if (!isTerminal()) {
+            <app-live-connection-status-bar
+              variant="banner"
+              [status]="topologyState.connectionStatus()"
+              detail="showing the last known job status."
+            />
           }
           <app-job-status-timeline [status]="liveStatus() ?? 'Pending'" />
           @if (isTerminal()) {

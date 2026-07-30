@@ -1,0 +1,31 @@
+// Mixins for `--cds-*`-token-consuming shell components. Deliberately split out of `_cds-tokens.scss`:
+// that file's `:root`/theme blocks are real CSS rules, and Sass `@use` emits a module's top-level CSS
+// into every file that uses it — `@use`-ing the token file itself from a component stylesheet would
+// duplicate its whole ~6kB of theme declarations into that component's compiled output, blowing the
+// `anyComponentStyle` budget instantly. Mixins emit no CSS unless invoked, so this file is safe for
+// every shell component to `@use`.
+
+// Visible keyboard-focus ring for shell controls — mirrors `tokens.focus-visible-ring` but reads
+// `--cds-*` so shell components never fall back to the `--color-*` layer.
+@mixin cds-focus-visible-ring {
+  outline: none;
+
+  &:focus-visible {
+    outline: var(--cds-focus-ring-width) solid var(--cds-border-focus);
+    outline-offset: var(--cds-focus-ring-offset);
+  }
+}
+
+// Frosted-glass surface treatment shared by the sidebar and top bar. `backdrop-filter` is omitted
+// entirely when `--cds-glass-blur` is `0px` (hc-dark) rather than emitting `blur(0px)`, which some
+// browsers still composite as a (wasted) filter layer — a plain opaque `--cds-glass-fill` alone gives
+// the correct flat, high-contrast surface.
+@mixin cds-glass-surface {
+  background: var(--cds-glass-fill);
+  border: 1px solid var(--cds-border-default);
+
+  @supports (backdrop-filter: blur(1px)) {
+    backdrop-filter: blur(var(--cds-glass-blur));
+    -webkit-backdrop-filter: blur(var(--cds-glass-blur));
+  }
+}
