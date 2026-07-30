@@ -1,0 +1,16 @@
+# Keep the Caisson.Api image build context small and deterministic: only src/ + the root build
+# props/global.json are needed to restore & publish the API. Everything else (the SPA, tests, docs,
+# infra, and all build outputs) is excluded so a stray local node_modules/bin/obj never bloats or
+# poisons the image.
+**/bin
+**/obj
+**/node_modules
+web
+tests
+docs
+infra
+reference-corpus
+.git
+.github
+.vs
+*.user

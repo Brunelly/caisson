@@ -1,0 +1,127 @@
+# Deploy Caisson.Api to the Azure Container Apps TEST environment.
+#
+# TEST-only, single environment. The app runs with ASPNETCORE_ENVIRONMENT=Testing so the
+# environment-gated test-auth scheme (fixed, read-only synthetic principal — ADR 0018) is active and
+# Swagger is served: the API is browsable/queryable without a real Entra tenant. This is deliberately
+# NOT how a production deployment would run (production uses real Entra OIDC — a separate story).
+#
+# Auth to Azure is OIDC workload-identity federation (no stored Azure secret). The only secret is
+# CAISSON_DB (the Postgres connection string). See docs/deploy-test.md.
+name: Deploy (Test)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  RG: by-rg-caisson-dev
+  APP_API: by-azuks-app-caisson-api
+  PG_SERVER: by-azuks-psql-caisson-dev
+  IMAGE: ghcr.io/brunelly/caisson-api
+
+jobs:
+  build-push-api:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Caisson.Api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+
+  migrate-seed:
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Open the Postgres firewall to this runner
+        run: |
+          ip=$(curl -s https://api.ipify.org)
+          echo "runner ip: $ip"
+          az postgres flexible-server firewall-rule create \
+            -g "$RG" -n "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" \
+            --start-ip-address "$ip" --end-ip-address "$ip"
+      - name: Apply EF Core migrations
+        env:
+          CAISSON_DB: ${{ secrets.CAISSON_DB }}
+        run: |
+          dotnet tool install --global dotnet-ef --version "8.*"
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef database update \
+            --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
+      - name: Seed a virtual rack (demo data)
+        env:
+          CAISSON_DB: ${{ secrets.CAISSON_DB }}
+        run: dotnet run --project tests/Caisson.VirtualRack.Seeder -c Release
+      - name: Close the Postgres firewall to this runner
+        if: always()
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            -g "$RG" -n "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" --yes || true
+
+  deploy-api:
+    needs: [build-push-api, migrate-seed]
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Point the app at ghcr (pull auth) + the DB secret
+        run: |
+          az containerapp registry set -g "$RG" -n "$APP_API" \
+            --server ghcr.io --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+          az containerapp secret set -g "$RG" -n "$APP_API" \
+            --secrets "caisson-db=${{ secrets.CAISSON_DB }}"
+      - name: Deploy image + runtime config
+        run: |
+          az containerapp update -g "$RG" -n "$APP_API" \
+            --image "${IMAGE}:${{ needs.build-push-api.outputs.tag }}" \
+            --set-env-vars \
+              ASPNETCORE_ENVIRONMENT=Testing \
+              Testing__EnableTestAuth=true \
+              ASPNETCORE_URLS=http://+:8080 \
+              CAISSON_DB=secretref:caisson-db
+          az containerapp ingress update -g "$RG" -n "$APP_API" --target-port 8080
+      - name: Health check the public endpoint
+        run: |
+          fqdn=$(az containerapp show -g "$RG" -n "$APP_API" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "API: https://$fqdn"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$fqdn/health/ready" || true)
+            echo "attempt $i: /health/ready -> $code"
+            if [ "$code" = "200" ]; then
+              echo "::notice::Caisson.Api is live and healthy at https://$fqdn (Swagger: /swagger)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::/health/ready never returned 200"; exit 1
