@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { DriftOverlayEntry } from '../../drift/model/drift-topology-overlay';
 import type { TopologyGraphDto } from '../model/topology-contracts';
 import { deriveTopologyGraph, portNodeId } from '../model/topology-graph-model';
+import type { TopologyGraphNode } from '../model/topology-graph-model';
 import { TopologyGraphComponent } from './topology-graph.component';
 
 function fixtureGraph(): TopologyGraphDto {
@@ -64,7 +65,11 @@ function fixtureGraph(): TopologyGraphDto {
 @Component({
   standalone: true,
   imports: [TopologyGraphComponent],
-  template: `<app-topology-graph [graph]="graph()" [driftOverlay]="driftOverlay()" />`,
+  template: `<app-topology-graph
+    [graph]="graph()"
+    [driftOverlay]="driftOverlay()"
+    [selection]="selection()"
+  />`,
 })
 class HostComponent {
   // A real signal, not a plain field: mirrors TopologyStateService.graph() in the production
@@ -72,6 +77,7 @@ class HostComponent {
   // the exact same signal-input reactivity a live SignalR refresh drives.
   readonly graph = signal(deriveTopologyGraph(fixtureGraph()));
   readonly driftOverlay = signal<ReadonlyMap<string, DriftOverlayEntry> | null>(null);
+  readonly selection = signal<TopologyGraphNode | null>(null);
   readonly graphComponent = viewChild.required(TopologyGraphComponent);
 }
 
@@ -272,6 +278,55 @@ describe('TopologyGraphComponent', () => {
       const nodeAfter = svgEl().querySelector('g.node--port') as SVGGElement;
       expect(nodeAfter).toBe(nodeBefore);
       expect(nodeAfter.getAttribute('class')).toContain('node--drift-low');
+    });
+  });
+
+  describe('selection highlight (Task #133, AC5)', () => {
+    it('renders no .node--selected when selection is null (do-not-regress #10)', () => {
+      expect(svgEl().querySelectorAll('.node--selected').length).toBe(0);
+    });
+
+    it('adds .node--selected to the node matching the selection input', async () => {
+      const serverModelNode = fixture.componentInstance.graph().nodes.servers[0];
+
+      fixture.componentInstance.selection.set(serverModelNode);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const selected = svgEl().querySelectorAll('.node--selected');
+      expect(selected.length).toBe(1);
+      expect(selected[0].getAttribute('aria-label')).toContain('srv-01');
+    });
+
+    it('moves the .node--selected class to the newly selected node on reselection', async () => {
+      const graph = fixture.componentInstance.graph();
+      const serverNode = graph.nodes.servers[0];
+      const nicNode = graph.nodes.nics[0];
+
+      fixture.componentInstance.selection.set(serverNode);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(svgEl().querySelectorAll('.node--selected').length).toBe(1);
+
+      fixture.componentInstance.selection.set(nicNode);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const selected = svgEl().querySelectorAll('.node--selected');
+      expect(selected.length).toBe(1);
+      expect(selected[0].getAttribute('aria-label')).toContain('eth0');
+    });
+
+    it('a selection change patches the DOM in place rather than tearing down the SVG', async () => {
+      const graph = fixture.componentInstance.graph();
+      const nodeBefore = svgEl().querySelector('g.node--server') as SVGGElement;
+
+      fixture.componentInstance.selection.set(graph.nodes.servers[0]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const nodeAfter = svgEl().querySelector('g.node--server') as SVGGElement;
+      expect(nodeAfter).toBe(nodeBefore);
     });
   });
 

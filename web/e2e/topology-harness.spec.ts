@@ -34,6 +34,51 @@ test.describe('Topology page — dev harness (real browser)', () => {
     await expect(page.getByRole('region', { name: 'Topology graph legend' })).toBeVisible();
   });
 
+  test('Task #133/#134 re-skin: legend and discovery-status widget render as floating DS cards, node selection shows a glow highlight', async ({
+    page,
+  }) => {
+    await gotoHarness(page);
+
+    // Legend + discovery widget both present as the new DS surfaces (AC2/AC3 — frosted-glass overlay
+    // chrome, no new controls/data).
+    const legend = page.getByRole('region', { name: 'Topology graph legend' });
+    await expect(legend).toBeVisible();
+    const widget = page.locator('.djs-widget');
+    await expect(widget).toBeVisible();
+    await expect(widget).toContainText('Succeeded');
+
+    // AC5: selecting a node shows a visible DS-token selected-state highlight, and reselecting a
+    // different node moves the highlight rather than leaving a stale one behind under live refresh.
+    const confirmedNode = page.locator('g.node--confirmed[aria-label*="eth0"]');
+    await expect(page.locator('g.node--selected')).toHaveCount(0);
+    await confirmedNode.click();
+    await expect(page.locator('g.node--selected')).toHaveCount(1);
+    await expect(confirmedNode).toHaveClass(/node--selected/);
+
+    const ambiguousNode = page.locator('g.node--ambiguous[aria-label*="eth1"]');
+    await ambiguousNode.click();
+    await expect(page.locator('g.node--selected')).toHaveCount(1);
+    await expect(ambiguousNode).toHaveClass(/node--selected/);
+    await expect(confirmedNode).not.toHaveClass(/node--selected/);
+
+    // A live refresh keeps the selection (and its highlight) alive rather than leaking a stale one.
+    await page.evaluate(() => {
+      const version = window.__harness__!.bumpVersion();
+      window.__harness__!.hub.simulateSnapshotUpdated({
+        eventId: 'evt-sel-1',
+        rackId: 'rack-1',
+        jobId: null,
+        snapshotId: `snap-${version}`,
+        version,
+        seq: 1,
+        correlationId: 'corr-sel-1',
+      });
+    });
+    await expect(page.locator('.snapshot-meta')).toContainText('Snapshot v5');
+    await expect(page.locator('g.node--selected')).toHaveCount(1);
+    await expect(ambiguousNode).toHaveClass(/node--selected/);
+  });
+
   test('search: keyboard-operable typeahead, grouped results, selection opens drill-down (AC2/AC3)', async ({
     page,
   }) => {
@@ -187,6 +232,16 @@ test.describe('Topology page — dev harness (real browser)', () => {
     page,
   }) => {
     await gotoHarness(page);
+    // Disable CSS transitions/animations for this scan: the axe color-contrast check must sample the
+    // settled end state of a theme switch, never a mid-transition frame. Without this, the shell's
+    // theme-toggle 120ms colour transition (theme-toggle.component.scss) races the axe scan below —
+    // the re-skin's added paint cost (glass blur, glow filters, VLAN-lane backdrop) is enough style/
+    // layout work that the scan can now land inside that transition window and see a partially-
+    // interpolated colour, producing a false contrast violation on .theme-toggle__option.
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
     // Open the search dropdown and a details panel first so both are included in the scan.
     const searchInput = page.getByRole('combobox', { name: /search topology/i });
     await searchInput.click();

@@ -40,19 +40,27 @@
   color: var(--cds-error-fg);
 }
 
+// Task #133/#134: a light elevation/border polish pass over the existing (already token-compliant)
+// stale/disconnected banner — same behaviour/messaging (LiveConnectionStatusBarComponent's template is
+// untouched), just a border-left accent + a subtle shadow so the banner reads as a distinct raised
+// notice rather than a flat background strip.
 .lcsb-banner {
   margin: 0;
   padding: var(--cds-sp-2) var(--cds-sp-4);
+  border-left: 3px solid transparent;
+  box-shadow: var(--cds-shadow-sm);
   font-family: var(--cds-font-base);
   font-size: var(--cds-fs-base);
 
   &--stale {
     background: var(--cds-warning-bg);
     color: var(--cds-warning-fg);
+    border-left-color: var(--cds-warning-fg);
   }
 
   &--disconnected {
     background: var(--cds-error-bg);
     color: var(--cds-error-fg);
+    border-left-color: var(--cds-error-fg);
   }
 }

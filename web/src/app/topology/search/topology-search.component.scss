@@ -14,14 +14,18 @@
   width: 100%;
 }
 
+// Task #134: frosted-glass dropdown (matches the legend/details-panel overlay chrome) — the
+// --cds-glass-fill opacity floor (>= 0.78 dark / >= 0.90 light, see _cds-tokens.scss) keeps the
+// translucent fill AA-legible over whatever the graph canvas paints underneath. CDK Overlay/keyboard/
+// ARIA wiring (aria-expanded/controls/activedescendant, role=listbox/option, Escape/outside-click close,
+// scrollStrategies.close()) is untouched — see topology-search.component.ts.
 .topology-search__results {
+  @include cds-mixins.cds-glass-surface;
   list-style: none;
   margin: 0;
   padding: 0.25rem 0;
   max-height: 20rem;
   overflow-y: auto;
-  background: var(--cds-surface-elevated);
-  border: 1px solid var(--cds-border-default);
   border-radius: var(--cds-radius-md);
   box-shadow: var(--cds-shadow-md);
 }

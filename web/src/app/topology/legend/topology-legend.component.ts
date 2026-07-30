@@ -52,12 +52,19 @@ const CONFIDENCE_BAND_ENTRIES: LegendEntry[] = [
   `,
   styles: [
     `
+      @use '../../shared/styles/cds-mixins';
+
+      // Task #133/#134: floated over the canvas as a frosted-glass card (matching the design mock's
+      // \`.legend\`) instead of the old flush bottom strip — margin keeps it clear of the canvas edge,
+      // and topology-page.component.scss positions it absolutely within \`.topology-shell\`.
       .topology-legend {
+        @include cds-mixins.cds-glass-surface;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
         padding: 0.75rem 1rem;
-        border-top: 1px solid var(--cds-border-default);
+        border-radius: var(--cds-radius-lg);
+        box-shadow: var(--cds-shadow-lg);
         font-size: 0.8125rem;
       }
 

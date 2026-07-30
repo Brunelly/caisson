@@ -431,6 +431,16 @@ jobs:
           E2E_BASE_URL: "http://127.0.0.1:4200"
         run: npx playwright test topology-harness.spec.ts
 
+      # Task #135 (ADR 0040): pixel-level regression gate for the Story #121 re-skin. Reuses the same
+      # harness build already served above (topology-visual.spec.ts only ever visits the dev-harness
+      # route, never E2E_BASE_URL/a live backend) — the committed baselines were generated from this
+      # pinned CI Linux Chromium build, so they must also be verified against it.
+      - name: Run topology visual regression baselines
+        working-directory: web
+        env:
+          E2E_BASE_URL: "http://127.0.0.1:4200"
+        run: npx playwright test topology-visual.spec.ts
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -28,6 +28,7 @@ import { TopologySnapshotService } from '../topology/services/topology-snapshot.
 import { TopologyStateService } from '../topology/state/topology-state.service';
 import { FakeHubConnection } from './fake-hub-connection';
 import {
+  HARNESS_DISCOVERY_STATUS_VARIANTS,
   HARNESS_DRIFT_JOB_ID,
   bumpVersion,
   currentDriftJobStatus,
@@ -58,8 +59,20 @@ const fakeSnapshotService: Pick<
   getDiff: () => of({ kind: 'notFound' }),
 };
 
+// Task #135: `?discoveryStatus=` selects the DiscoveryJobStatusWidgetComponent fixture variant, read at
+// call time the same way `fakeOidc`'s `?roles=` param is below — 'succeeded' is the unparameterised
+// default, matching every existing test's expectations.
 const fakeDiscoveryStatusService: Pick<DiscoveryStatusService, 'getStatus'> = {
-  getStatus: () => of({ kind: 'ok', value: harnessDiscoveryStatus() }),
+  getStatus: () => {
+    const raw = new URLSearchParams(window.location.search).get('discoveryStatus');
+    if (raw !== null && !(HARNESS_DISCOVERY_STATUS_VARIANTS as readonly string[]).includes(raw)) {
+      throw new Error(
+        `Unknown ?discoveryStatus= value "${raw}" — expected one of: ${HARNESS_DISCOVERY_STATUS_VARIANTS.join(', ')}`,
+      );
+    }
+    const variant = raw as (typeof HARNESS_DISCOVERY_STATUS_VARIANTS)[number] | null;
+    return of({ kind: 'ok', value: harnessDiscoveryStatus(variant ?? undefined) });
+  },
 };
 
 const fakeEntityService: Pick<TopologyEntityService, 'getEntity' | 'getEntityHistory'> = {

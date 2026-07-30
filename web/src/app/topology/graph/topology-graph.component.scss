@@ -1,19 +1,35 @@
 // ViewEncapsulation.None (see topology-graph.component.ts — D3-authored SVG elements bypass Angular's
 // emulated encapsulation attributes), so every selector here is scoped under .topology-graph to avoid
 // leaking into the rest of the app. Colours are all token-driven (shared/styles/_cds-tokens.scss,
-// ADR 0038) — never hard-coded — so the graph stays theme-safe in dark/light/hc-dark alike.
+// ADR 0038, and the topology alias layer shared/styles/_cds-topology-tokens.scss, ADR 0039) — never
+// hard-coded — so the graph stays theme-safe in dark/light/hc-dark alike.
 @use '../../shared/styles/cds-mixins';
 
 .topology-graph {
   width: 100%;
   height: 100%;
   display: block;
+  // Canvas stays opaque (no backdrop-filter on the moving graph) — glass/blur is reserved for
+  // stationary overlay chrome (legend/search/details), never the panning/zooming surface itself, so
+  // sustained pan/zoom never recomposites a blur layer (Task #133 perf constraint).
   background: var(--cds-bg-page);
   cursor: grab;
 
   &:active {
     cursor: grabbing;
   }
+}
+
+// Task #133: additive, decorative VLAN-grouping backdrop — one rounded rect per node-type column,
+// painted first (behind structural edges/edges/nodes) so it never competes with the graph's real
+// content. Non-interactive (aria-hidden + pointer-events:none on the group in the template); positions
+// are derived purely from the existing computePositions() output, so this layer can never desync from
+// where nodes actually render.
+.lane {
+  fill: var(--cds-topo-lane-fill);
+  stroke: var(--cds-topo-lane-stroke);
+  stroke-width: 1;
+  pointer-events: none;
 }
 
 .structural-edge {
@@ -27,16 +43,16 @@
   fill: none;
 
   &--confirmed {
-    stroke: var(--cds-success-fg);
+    stroke: var(--cds-topo-mapping-confirmed);
   }
 
   &--ambiguous {
-    stroke: var(--cds-warning-fg);
+    stroke: var(--cds-topo-mapping-ambiguous);
     stroke-dasharray: 6 3;
   }
 
   &--unmapped {
-    stroke: var(--cds-error-fg);
+    stroke: var(--cds-topo-mapping-unmapped);
     stroke-dasharray: 2 4;
   }
 
@@ -50,11 +66,11 @@
   pointer-events: none;
 
   &--ambiguous {
-    fill: var(--cds-warning-fg);
+    fill: var(--cds-topo-mapping-ambiguous);
   }
 
   &--unmapped {
-    fill: var(--cds-error-fg);
+    fill: var(--cds-topo-mapping-unmapped);
   }
 }
 
@@ -62,7 +78,10 @@
   cursor: pointer;
 
   rect {
-    fill: var(--cds-surface-elevated);
+    // Task #133: resting fill drops from the "raised" --cds-surface-elevated tier to the base
+    // --cds-bg-page tier (matches the design mock's `--node-inner`) — hover/press below step UP through
+    // the two higher tiers instead, since there's no longer a tier below resting to recess into.
+    fill: var(--cds-bg-page);
     stroke: var(--cds-border-default);
     stroke-width: 1;
   }
@@ -83,12 +102,8 @@
     @include cds-mixins.cds-identifier-text;
   }
 
-  // Hover/press feedback: the resting fill is already `--cds-surface-elevated` (the "raised" tier), so
-  // both interaction states use `--cds-surface-sunken` (the "recessed" tier) to stay visibly distinct
-  // from rest — there's no fourth neutral-surface tier in the DS token set to give hover/active their
-  // own separate shade.
   &:hover rect {
-    fill: var(--cds-surface-sunken);
+    fill: var(--cds-surface-elevated);
   }
 
   &:active rect {
@@ -97,36 +112,92 @@
 
   @include cds-mixins.cds-focus-visible-ring;
 
-  &--confirmed rect {
-    stroke: var(--cds-success-fg);
+  // Task #133: a small drop-shadow glow reinforces (never replaces — the stroke colour/dash pattern and
+  // aria-label already carry the state, NFR5) confirmed/drift/selected nodes. drop-shadow (not
+  // box-shadow) works on SVG shapes and is GPU-composited; blur radius is small (6-8px, set by the
+  // token) and applied to only these three states, verified smooth at 200+ nodes under sustained
+  // pan/zoom. Ambiguous/unmapped intentionally get no glow — dash pattern is their distinguishing cue.
+  &--confirmed {
+    rect {
+      stroke: var(--cds-topo-mapping-confirmed);
+    }
+
+    filter: drop-shadow(var(--cds-topo-glow-confirmed));
   }
 
   &--ambiguous rect {
-    stroke: var(--cds-warning-fg);
+    stroke: var(--cds-topo-mapping-ambiguous);
     stroke-dasharray: 4 2;
   }
 
   &--unmapped rect {
-    stroke: var(--cds-error-fg);
+    stroke: var(--cds-topo-mapping-unmapped);
     stroke-dasharray: 2 3;
   }
 
   // Story #67 drift overlay: an independent severity->token mapping, deliberately not reusing the
   // mapping-state colours above (a port can carry both at once) — see ADR 0033 (severity polarity is
   // the inverse of confidence: High severity is bad, so it reuses the same red "unmapped" token).
-  &--drift-high rect {
-    stroke: var(--cds-error-fg);
-    stroke-width: 3;
+  &--drift-high {
+    rect {
+      stroke: var(--cds-error-fg);
+      stroke-width: 3;
+    }
+
+    filter: drop-shadow(var(--cds-topo-glow-drift));
   }
 
-  &--drift-medium rect {
-    stroke: var(--cds-warning-fg);
-    stroke-width: 3;
+  &--drift-medium {
+    rect {
+      stroke: var(--cds-warning-fg);
+      stroke-width: 3;
+    }
+
+    filter: drop-shadow(var(--cds-topo-glow-drift));
   }
 
-  &--drift-low rect {
-    stroke: var(--cds-text-secondary);
-    stroke-width: 2;
+  &--drift-low {
+    rect {
+      stroke: var(--cds-text-secondary);
+      stroke-width: 2;
+    }
+
+    filter: drop-shadow(var(--cds-topo-glow-drift));
+  }
+
+  // Task #133: the graph's one new interactive-state addition (AC5 requires a visible selected-node
+  // indicator, which the graph previously had no way to render at all) — a DS-token ring + glow driven
+  // by the new `selection` input. Additive: never the only signal a node is selected (the details panel
+  // opening is the primary confirmation), and purely visual — no layout/behaviour change.
+  //
+  // The ring is drawn with `outline` (not `stroke`) specifically so it never fights the mapping-state/
+  // drift `rect` stroke above for the same property — a drifted-AND-selected node keeps its drift
+  // stroke colour, with the selection ring layered outside it. `border-radius` mirrors the rect's `rx`
+  // attribute so browsers that round `outline` to match (Firefox, current Chromium) draw a ring that
+  // follows the node's rounded corners instead of a plain rectangle.
+  &--selected rect {
+    outline: 2.5px solid var(--cds-primary);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  &--selected {
+    filter: drop-shadow(var(--cds-topo-glow-selection));
+  }
+
+  // `filter` is single-valued, so a selected node that's ALSO confirmed/drifted needs its two glows
+  // explicitly chained (CSS allows multiple space-separated drop-shadow() functions) instead of one
+  // `filter` declaration clobbering the other. Each override keeps the same relative source order as
+  // its non-selected counterpart above, so drift still wins over confirmed when a node is both (as it
+  // already did pre-selection) — selection now only ever ADDS its glow, never removes the state cue.
+  &--confirmed.node--selected {
+    filter: drop-shadow(var(--cds-topo-glow-confirmed)) drop-shadow(var(--cds-topo-glow-selection));
+  }
+
+  &--drift-high.node--selected,
+  &--drift-medium.node--selected,
+  &--drift-low.node--selected {
+    filter: drop-shadow(var(--cds-topo-glow-drift)) drop-shadow(var(--cds-topo-glow-selection));
   }
 }
 

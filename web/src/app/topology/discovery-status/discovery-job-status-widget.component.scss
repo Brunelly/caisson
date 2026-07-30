@@ -1,0 +1,57 @@
+@use '../../shared/styles/cds-mixins';
+
+.djs-widget {
+  @include cds-mixins.cds-glass-surface;
+  display: flex;
+  align-items: stretch;
+  gap: var(--cds-sp-2);
+  border-radius: var(--cds-radius-md);
+  box-shadow: var(--cds-shadow-sm);
+  overflow: hidden;
+}
+
+.djs-widget__accent {
+  flex: none;
+  width: 3px;
+  background: var(--cds-border-default);
+}
+
+.djs-widget--job-pending .djs-widget__accent {
+  background: var(--cds-warning-fg);
+}
+
+.djs-widget--job-success .djs-widget__accent {
+  background: var(--cds-success-fg);
+}
+
+.djs-widget--job-error .djs-widget__accent {
+  background: var(--cds-error-fg);
+}
+
+.djs-widget__body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cds-sp-1) var(--cds-sp-2-5);
+  padding: var(--cds-sp-1) var(--cds-sp-2-5);
+  font-size: var(--cds-fs-sm);
+}
+
+.djs-widget__job-id {
+  @include cds-mixins.cds-identifier-text;
+  color: var(--cds-text-primary);
+}
+
+.djs-widget__meta {
+  color: var(--cds-text-secondary);
+}
+
+.djs-widget__error {
+  @include cds-mixins.cds-identifier-text;
+  color: var(--cds-error-fg);
+}
+
+.djs-widget__none {
+  color: var(--cds-text-secondary);
+  font-style: italic;
+}
