@@ -433,7 +433,7 @@ describe('TopologyDetailsPanelComponent', () => {
       expect(section.textContent).toContain('High severity');
       expect(section.textContent).toContain('Access VLAN mismatch on SW-1/ether5');
 
-      const link: HTMLAnchorElement = section.querySelector('.details-panel__drift-link');
+      const link: HTMLAnchorElement = section.querySelector('.details-panel__link');
       expect(link).toBeTruthy();
       expect(link.getAttribute('href')).toBe('/racks/rack-1/drift/items/drift-item-1');
     });

@@ -15,6 +15,7 @@ import {
 import { RouterLink } from '@angular/router';
 import type { DriftItemDto } from '../../drift/model/drift-contracts';
 import { DriftSeverityBadgeComponent } from '../../drift/shared/drift-severity-badge.component';
+import { NetworkIntentStateService } from '../../network-config/state/network-intent-state.service';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { EntityDiffDto } from '../model/topology-contracts';
 import { confidenceBandOf } from '../model/topology-graph-model';
@@ -169,13 +170,36 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
                 Detected {{ driftItem.createdAt | date: 'medium' }}
               </p>
               <a
-                class="details-panel__drift-link"
+                class="details-panel__link"
                 [routerLink]="['/racks', state.rackId(), 'drift', 'items', driftItem.driftItemId]"
               >
                 View drift report item
               </a>
             </section>
           }
+
+          <!-- Story #168 (AC3): the authored access-VLAN intent alongside the observed PVID field
+               already rendered above (the fields() SwitchPort.pvid entry), plus a link into the Port
+               Intent editor pre-filtered to this exact port. Purely additive — no change to the
+               drift/candidate sections above. -->
+          <section class="details-panel__section">
+            <h3>Network intent</h3>
+            @if (portIntentVlanIdFor(port); as vlanId) {
+              <app-status-badge
+                kind="intent-access"
+                [labelText]="'Access VLAN = ' + vlanId + ' (' + portIntentVlanNameFor(vlanId) + ')'"
+              />
+            } @else {
+              <app-status-badge kind="intent-inherit" />
+            }
+            <a
+              class="details-panel__link"
+              [routerLink]="['/racks', state.rackId(), 'network-config', 'ports']"
+              [queryParams]="{ switch: switchStableKeyFor(port), port: port.name }"
+            >
+              Edit port intent
+            </a>
+          </section>
         }
 
         @if (history().length > 0) {
@@ -203,6 +227,10 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
 export class TopologyDetailsPanelComponent {
   protected readonly state = inject(TopologyStateService);
   private readonly entities = inject(TopologyEntityService);
+  // Story #168: lazily loaded (once per rack, not on every selection/render) — see the constructor
+  // effect below — so the port drill-down can show the authored access-VLAN intent alongside the
+  // observed PVID field without a per-selection fetch.
+  private readonly networkIntent = inject(NetworkIntentStateService);
 
   protected readonly headingId = 'topology-details-heading';
   private readonly headingRef = viewChild<ElementRef<HTMLElement>>('heading');
@@ -226,6 +254,9 @@ export class TopologyDetailsPanelComponent {
         this.latestFields.set(null);
         this.history.set([]);
         this.loadLatestFields(rackId, node);
+        if (this.networkIntent.rackId() !== rackId) {
+          this.networkIntent.load(rackId);
+        }
         queueMicrotask(() => this.headingRef()?.nativeElement.focus());
       }
     });
@@ -250,6 +281,25 @@ export class TopologyDetailsPanelComponent {
       return null;
     }
     return this.state.driftItems().find((item) => item.driftItemId === entry.driftItemId) ?? null;
+  }
+
+  /** Mirrors switchPortStableKey's `${switchStableKey}|${portName}` composition in reverse — a raw '|'
+   * only ever appears as that separator (escapeStableKeySegment escapes any literal '|' within a
+   * segment), so splitting on it is safe. */
+  protected switchStableKeyFor(port: PortGraphNode): string {
+    return port.stableKey.split('|')[0];
+  }
+
+  /** The authored access-VLAN intent for this port (story #168, AC3), or `null` for Unchanged/Inherit. */
+  protected portIntentVlanIdFor(port: PortGraphNode): number | null {
+    return (
+      this.networkIntent.portIntentFor(this.switchStableKeyFor(port), port.name)?.accessVlanId ??
+      null
+    );
+  }
+
+  protected portIntentVlanNameFor(vlanId: number): string {
+    return this.networkIntent.vlanCatalogue().find((v) => v.id === vlanId)?.name ?? `#${vlanId}`;
   }
 
   /** Task #130: folds the confidence percentage into the badge's own label (via `labelText`) so it's a
