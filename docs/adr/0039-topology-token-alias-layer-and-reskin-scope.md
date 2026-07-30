@@ -15,11 +15,10 @@ overrides with per-component rationale).
 The topology graph already reads `--cds-*` tokens directly (ADR 0038 migrated it off the older
 `--color-*` layer), so a further alias layer is not needed to reach AA-compliant colour — it exists to
 give the graph/legend/details-panel/discovery-widget SCSS **intent-named** tokens
-(`--cds-topo-mapping-confirmed`, `--cds-topo-confidence-high`, `--cds-topo-lane-fill`,
-`--cds-topo-glow-selection`, …) instead of reaching for the generic `--cds-success-fg` /
-`--cds-warning-fg` names inline everywhere a mapping-state or confidence colour is needed. This also
-gives a single place to retarget topology's visual language in a future rebrand without touching every
-consuming stylesheet.
+(`--cds-topo-mapping-confirmed`, `--cds-topo-lane-fill`, `--cds-topo-glow-selection`, …) instead of
+reaching for the generic `--cds-success-fg` / `--cds-warning-fg` names inline everywhere a mapping-state
+colour is needed. This also gives a single place to retarget topology's visual language in a future
+rebrand without touching every consuming stylesheet.
 
 The design mock (`dark_RackTopologyGraph_web.html` et al.) renders the **confirmed** mapping state and
 the graph's primary/edge accents in the DS's brand cyan (`--color-primary`), reserving green only for a
@@ -41,10 +40,10 @@ passes unchanged once the new/touched files are added to its file list:
 
 - **Mapping-state aliases** (`--cds-topo-mapping-confirmed/-ambiguous/-unmapped`) — alias
   `--cds-success-fg`/`--cds-warning-fg`/`--cds-error-fg` 1:1. **Deliberately KEEPS green/amber/red**,
-  diverging from the mock's cyan-for-confirmed treatment.
-- **Confidence aliases** (`--cds-topo-confidence-high/-medium/-low`) — mirror
-  `StatusBadgeComponent`'s existing kind→colour map so the graph, legend, and details panel never grow
-  a second, competing confidence palette.
+  diverging from the mock's cyan-for-confirmed treatment. (A parallel confidence-band alias group
+  — mirroring `StatusBadgeComponent`'s kind→colour map — was scoped out: nothing in this story's diff
+  renders a confidence band, so it was dropped rather than shipped unused; add it back, alongside a
+  consumer, if/when a future story surfaces confidence in the graph/legend/details panel.)
 - **Lane aliases** (`--cds-topo-lane-fill`/`-lane-stroke`) — low-opacity `color-mix` over
   `--cds-surface-elevated`/`--cds-border-default`, for the new VLAN-grouping backdrop layer.
 - **Glow tokens** (`--cds-topo-glow-confirmed/-drift/-selection`) — full `drop-shadow()` argument lists

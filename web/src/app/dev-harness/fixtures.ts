@@ -137,7 +137,13 @@ export function harnessGraphDto(): TopologyGraphDto {
  * `?discoveryStatus=` query param (read at call time, same pattern as `fakeOidc`'s `?roles=` param, see
  * dev-harness.providers.ts), so a fresh page.goto() per Playwright test picks whichever variant it
  * navigated to. 'succeeded' (the default) is unparameterised so every existing test keeps working. */
-export type HarnessDiscoveryStatusVariant = 'succeeded' | 'inProgress' | 'failed' | 'none';
+export const HARNESS_DISCOVERY_STATUS_VARIANTS = [
+  'succeeded',
+  'inProgress',
+  'failed',
+  'none',
+] as const;
+export type HarnessDiscoveryStatusVariant = (typeof HARNESS_DISCOVERY_STATUS_VARIANTS)[number];
 
 export function harnessDiscoveryStatus(
   variant: HarnessDiscoveryStatusVariant = 'succeeded',

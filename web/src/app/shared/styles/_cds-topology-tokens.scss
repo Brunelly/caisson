@@ -16,13 +16,6 @@
   --cds-topo-mapping-ambiguous: var(--cds-warning-fg);
   --cds-topo-mapping-unmapped: var(--cds-error-fg);
 
-  // Confidence bands (High/Medium/Low) — mirrors StatusBadgeComponent's existing kind->colour map
-  // (shared/badge/status-badge.component.ts) so the graph/legend/details-panel never grow a second,
-  // competing confidence palette.
-  --cds-topo-confidence-high: var(--cds-success-fg);
-  --cds-topo-confidence-medium: var(--cds-warning-fg);
-  --cds-topo-confidence-low: var(--cds-error-fg);
-
   // VLAN lane grouping (Task #133) — a faint, non-interactive backdrop rect per node-type column.
   // Derived from the existing elevated-surface/border tokens at low opacity so lanes read as a subtle
   // structural cue that never competes with node/edge contrast, and stay in lockstep with whatever

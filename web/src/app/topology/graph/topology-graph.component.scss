@@ -169,13 +169,35 @@
   // indicator, which the graph previously had no way to render at all) — a DS-token ring + glow driven
   // by the new `selection` input. Additive: never the only signal a node is selected (the details panel
   // opening is the primary confirmation), and purely visual — no layout/behaviour change.
+  //
+  // The ring is drawn with `outline` (not `stroke`) specifically so it never fights the mapping-state/
+  // drift `rect` stroke above for the same property — a drifted-AND-selected node keeps its drift
+  // stroke colour, with the selection ring layered outside it. `border-radius` mirrors the rect's `rx`
+  // attribute so browsers that round `outline` to match (Firefox, current Chromium) draw a ring that
+  // follows the node's rounded corners instead of a plain rectangle.
   &--selected rect {
-    stroke: var(--cds-primary);
-    stroke-width: 2.5;
+    outline: 2.5px solid var(--cds-primary);
+    outline-offset: 3px;
+    border-radius: 6px;
   }
 
   &--selected {
     filter: drop-shadow(var(--cds-topo-glow-selection));
+  }
+
+  // `filter` is single-valued, so a selected node that's ALSO confirmed/drifted needs its two glows
+  // explicitly chained (CSS allows multiple space-separated drop-shadow() functions) instead of one
+  // `filter` declaration clobbering the other. Each override keeps the same relative source order as
+  // its non-selected counterpart above, so drift still wins over confirmed when a node is both (as it
+  // already did pre-selection) — selection now only ever ADDS its glow, never removes the state cue.
+  &--confirmed.node--selected {
+    filter: drop-shadow(var(--cds-topo-glow-confirmed)) drop-shadow(var(--cds-topo-glow-selection));
+  }
+
+  &--drift-high.node--selected,
+  &--drift-medium.node--selected,
+  &--drift-low.node--selected {
+    filter: drop-shadow(var(--cds-topo-glow-drift)) drop-shadow(var(--cds-topo-glow-selection));
   }
 }
 

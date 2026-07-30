@@ -232,6 +232,16 @@ test.describe('Topology page — dev harness (real browser)', () => {
     page,
   }) => {
     await gotoHarness(page);
+    // Disable CSS transitions/animations for this scan: the axe color-contrast check must sample the
+    // settled end state of a theme switch, never a mid-transition frame. Without this, the shell's
+    // theme-toggle 120ms colour transition (theme-toggle.component.scss) races the axe scan below —
+    // the re-skin's added paint cost (glass blur, glow filters, VLAN-lane backdrop) is enough style/
+    // layout work that the scan can now land inside that transition window and see a partially-
+    // interpolated colour, producing a false contrast violation on .theme-toggle__option.
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
     // Open the search dropdown and a details panel first so both are included in the scan.
     const searchInput = page.getByRole('combobox', { name: /search topology/i });
     await searchInput.click();
