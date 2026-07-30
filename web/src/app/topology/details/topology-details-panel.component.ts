@@ -18,7 +18,23 @@ import { reasonCodeLabel } from './reason-code-labels';
 interface FriendlyField {
   label: string;
   value: string;
+  /** Task #129: technical identifiers (serials, management/BMC addresses, PVID/tagged-VLAN ids) render
+   * in the DS monospace + tabular-numeral treatment; human-authored fields (model, OS, hostname, link
+   * state) stay in the proportional base font. */
+  mono: boolean;
 }
+
+/** Raw TopologyEntityFields.Extract dictionary keys that hold a technical identifier value, across all
+ * entity types — never a human-authored name/prose field (see topology-details-panel.component.ts's
+ * FIELD_LABELS for the full field set per type). */
+const IDENTIFIER_FIELD_KEYS = new Set([
+  'serial',
+  'managementIp',
+  'pvid',
+  'taggedVlans',
+  'bmcUuid',
+  'bmcAddress',
+]);
 
 /** Mirrors Caisson.Domain.Topology.Diffing.TopologyEntityFields.Extract's per-type field set, in the
  * same order, with a friendly label per raw dictionary key. Never invents a field not defined there. */
@@ -90,7 +106,7 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
         <dl class="details-panel__fields">
           @for (field of fields(); track field.label) {
             <dt>{{ field.label }}</dt>
-            <dd>{{ field.value }}</dd>
+            <dd [class.details-panel__field--identifier]="field.mono">{{ field.value }}</dd>
           }
         </dl>
 
@@ -110,10 +126,16 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
                 ) {
                   <li>
                     <app-status-badge [kind]="confidenceBandOf(candidate.confidence)" />
-                    {{ candidate.portName }} on
-                    {{ candidate.switchSerial ?? candidate.switchStableKey }} —
-                    {{ (candidate.confidence * 100).toFixed(0) }}% —
-                    {{ reasonLabel(candidate.reasonCode) }}
+                    <span class="details-panel__field--identifier">{{ candidate.portName }}</span>
+                    on
+                    <span class="details-panel__field--identifier">{{
+                      candidate.switchSerial ?? candidate.switchStableKey
+                    }}</span>
+                    —
+                    <span class="details-panel__field--identifier"
+                      >{{ (candidate.confidence * 100).toFixed(0) }}%</span
+                    >
+                    — {{ reasonLabel(candidate.reasonCode) }}
                   </li>
                 }
               </ul>
@@ -246,7 +268,11 @@ export class TopologyDetailsPanelComponent {
     const labels = FIELD_LABELS[entityType] ?? {};
     const latest = this.latestFields();
 
-    return Object.entries(labels).map(([key, label]) => ({ label, value: latest?.[key] ?? '—' }));
+    return Object.entries(labels).map(([key, label]) => ({
+      label,
+      value: latest?.[key] ?? '—',
+      mono: IDENTIFIER_FIELD_KEYS.has(key),
+    }));
   }
 
   protected close(): void {

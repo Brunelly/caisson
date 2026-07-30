@@ -59,6 +59,14 @@
   &--active {
     background: var(--cds-surface-sunken);
   }
+
+  // Task #129: nic/port/vlan rows carry a technical identifier in their label (a MAC, a port name, a
+  // VLAN id) — DS monospace + tabular numerals. Server/switch rows are human-authored names and stay
+  // proportional; search-index.ts pre-concatenates the identifier into the label string, so this is an
+  // additive class on the whole row rather than a sub-span.
+  &--mono {
+    @include cds-mixins.cds-identifier-text;
+  }
 }
 
 .topology-search__empty {

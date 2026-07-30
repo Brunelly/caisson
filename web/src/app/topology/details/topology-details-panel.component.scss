@@ -73,6 +73,13 @@
   }
 }
 
+// Task #129: technical identifiers (serials, BMC/management addresses, PVID/tagged-VLAN ids, switch
+// ports/keys, confidence percentages) — DS monospace + tabular numerals. Applied via an additive
+// class, never blanket over every field.
+.details-panel__field--identifier {
+  @include cds-mixins.cds-identifier-text;
+}
+
 .details-panel__section {
   margin-top: 1rem;
 

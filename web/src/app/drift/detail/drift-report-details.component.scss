@@ -1,3 +1,5 @@
+@use '../../shared/styles/cds-mixins';
+
 .drift-detail {
   padding: 1rem;
   max-width: 40rem;
@@ -93,4 +95,10 @@
 
 .drift-detail__apply-slot {
   margin-top: 1.5rem;
+}
+
+// Task #129: subject key, before/after values, and identifier-bearing detail-bag entries (switch/port
+// names) — DS monospace + tabular numerals.
+.drift-detail__identifier {
+  @include cds-mixins.cds-identifier-text;
 }

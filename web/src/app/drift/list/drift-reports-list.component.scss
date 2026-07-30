@@ -86,6 +86,12 @@
   @include cds-mixins.cds-focus-visible-ring;
 }
 
+// Task #129: the drift subject key (a stable key / MAC / port name) is a technical identifier — DS
+// monospace + tabular numerals. `subjectType` (a human category label) stays proportional.
+.drift-list__identifier {
+  @include cds-mixins.cds-identifier-text;
+}
+
 .drift-list__load-more {
   align-self: flex-start;
   margin-top: 1rem;

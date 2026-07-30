@@ -84,6 +84,9 @@ import { TopologyStateService } from '../state/topology-state.service';
                     [attr.aria-selected]="result.id === activeId()"
                     class="topology-search__option"
                     [class.topology-search__option--active]="result.id === activeId()"
+                    [class.topology-search__option--mono]="
+                      result.type !== 'server' && result.type !== 'switch'
+                    "
                     (mousedown)="select(result); $event.preventDefault()"
                     (mouseenter)="activeId.set(result.id)"
                   >

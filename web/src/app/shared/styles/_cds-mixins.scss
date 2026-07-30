@@ -69,3 +69,12 @@
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
 }
+
+// DS monospace + tabular-numeral treatment for technical identifiers (MAC addresses, switch ports,
+// VLAN ids, stable keys, serials) — Task #129. Tabular numerals stop digits from wobbling in width as
+// values update under live refresh; never apply this to human-authored prose/hostnames.
+@mixin cds-identifier-text {
+  font-family: var(--cds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

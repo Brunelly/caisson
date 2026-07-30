@@ -39,7 +39,9 @@ const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
         <p role="alert">Something went wrong loading this apply job. Try again shortly.</p>
       } @else if (job(); as jobDetail) {
         <header class="audit-view__header">
-          <h1>Apply job {{ jobDetail.jobId }}</h1>
+          <h1>
+            Apply job <span class="audit-view__identifier">{{ jobDetail.jobId }}</span>
+          </h1>
           <app-job-status-timeline [status]="jobDetail.status" [steps]="jobDetail.steps" />
         </header>
 
@@ -61,10 +63,12 @@ const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
           }
 
           <dt>Correlation ID</dt>
-          <dd>{{ jobDetail.correlationId }}</dd>
+          <dd class="audit-view__identifier">{{ jobDetail.correlationId }}</dd>
 
           <dt>Target</dt>
-          <dd>{{ jobDetail.switchDeviceKey ?? '—' }} / {{ jobDetail.portName ?? '—' }}</dd>
+          <dd class="audit-view__identifier">
+            {{ jobDetail.switchDeviceKey ?? '—' }} / {{ jobDetail.portName ?? '—' }}
+          </dd>
 
           <dt>Before → after</dt>
           <dd>{{ jobDetail.beforeState ?? '—' }} → {{ jobDetail.afterState ?? '—' }}</dd>

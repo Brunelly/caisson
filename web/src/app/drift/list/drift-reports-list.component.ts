@@ -137,7 +137,8 @@ export function driftFiltersToQueryParams(
                     class="drift-list__subject-link"
                     [routerLink]="['/racks', state.rackId(), 'drift', 'items', item.driftItemId]"
                   >
-                    {{ item.subjectType }}: {{ item.subjectKey }}
+                    {{ item.subjectType }}:
+                    <span class="drift-list__identifier">{{ item.subjectKey }}</span>
                   </a>
                 </td>
                 <td>{{ item.driftType }}</td>

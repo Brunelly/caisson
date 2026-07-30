@@ -44,6 +44,7 @@
 }
 
 .edge-badge {
+  @include cds-mixins.cds-identifier-text;
   font-size: 11px;
   font-weight: 700;
   pointer-events: none;
@@ -70,6 +71,16 @@
     fill: var(--cds-text-primary);
     font-size: 12px;
     pointer-events: none;
+  }
+
+  // Task #129: switch/NIC/port/VLAN labels are technical identifiers (serials, port names, VLAN ids) —
+  // DS monospace + tabular numerals. Server labels are hostnames (human-authored), so `.node--server
+  // text` deliberately keeps the proportional base font.
+  &--switch text,
+  &--nic text,
+  &--port text,
+  &--vlan text {
+    @include cds-mixins.cds-identifier-text;
   }
 
   // Hover/press feedback: the resting fill is already `--cds-surface-elevated` (the "raised" tier), so
@@ -120,6 +131,7 @@
 }
 
 .drift-badge {
+  @include cds-mixins.cds-identifier-text;
   font-size: 12px;
   font-weight: 700;
   pointer-events: none;
