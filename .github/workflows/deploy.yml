@@ -64,7 +64,7 @@ jobs:
           ip=$(curl -s https://api.ipify.org)
           echo "runner ip: $ip"
           az postgres flexible-server firewall-rule create \
-            -g "$RG" -n "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" \
+            -g "$RG" -s "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" \
             --start-ip-address "$ip" --end-ip-address "$ip"
       - name: Apply EF Core migrations
         env:
@@ -82,7 +82,7 @@ jobs:
         if: always()
         run: |
           az postgres flexible-server firewall-rule delete \
-            -g "$RG" -n "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" --yes || true
+            -g "$RG" -s "$PG_SERVER" --rule-name "gha-${GITHUB_RUN_ID}" --yes || true
 
   deploy-api:
     needs: [build-push-api, migrate-seed]
