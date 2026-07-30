@@ -192,7 +192,11 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AuthorizationPolicies.ScheduleManage, policy => policy.RequireRole(CaissonRoles.Admin))
     // Story #65: the drift-apply endpoint requires the DriftApply role/permission alone — deliberately NOT
     // CaissonRoles.Operators, so an Operator without this elevated grant is rejected (AC1).
-    .AddPolicy(AuthorizationPolicies.DriftApply, policy => policy.RequireRole(CaissonRoles.DriftApply));
+    .AddPolicy(AuthorizationPolicies.DriftApply, policy => policy.RequireRole(CaissonRoles.DriftApply))
+    // Story #168 (formalised per #174): authoring network intent (PUT/validate) requires the dedicated
+    // NetworkConfigAuthor grant alone — deliberately NOT CaissonRoles.Operators, so an Operator/Admin
+    // without this elevated grant is rejected. Viewing (GET) stays behind TopologyRead.
+    .AddPolicy(AuthorizationPolicies.NetworkConfigAuthor, policy => policy.RequireRole(CaissonRoles.NetworkConfigAuthor));
 
 // Story #65 (AC1): a thin decorator over the framework's default authorization-middleware result handler
 // that logs a structured warning (subject, path, correlation id) on every Forbidden result, then delegates
