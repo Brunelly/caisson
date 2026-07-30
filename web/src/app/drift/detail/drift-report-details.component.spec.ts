@@ -90,6 +90,41 @@ describe('DriftReportDetailsComponent', () => {
     expect(text).toContain('ether5');
   });
 
+  it('applies the DS monospace/tabular-numeral identifier class to the subject key, before/after values, and identifier detail-bag entries, but not to other detail-bag entries (Task #129)', () => {
+    createWith(
+      vi.fn(() =>
+        of({
+          kind: 'ok',
+          value: item({
+            details: { switchName: 'sw-01', portName: 'ether5', note: 'manual override' },
+          }),
+        }),
+      ),
+    );
+    fixture.detectChanges();
+    paramMap$.next(convertToParamMap({ rackId: 'rack-1', driftItemId: 'item-1' }));
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('h1 .drift-detail__identifier')?.textContent).toBe(
+      'v1|rack|sw-01|ether5',
+    );
+    expect(
+      el.querySelectorAll('.drift-detail__before-after .drift-detail__identifier').length,
+    ).toBe(2);
+
+    function ddFor(key: string): Element | null {
+      const dt = Array.from(el.querySelectorAll('.drift-detail__details dt')).find(
+        (node) => node.textContent === key,
+      );
+      return dt?.nextElementSibling ?? null;
+    }
+
+    expect(ddFor('switchName')?.classList.contains('drift-detail__identifier')).toBe(true);
+    expect(ddFor('portName')?.classList.contains('drift-detail__identifier')).toBe(true);
+    expect(ddFor('note')?.classList.contains('drift-detail__identifier')).toBe(false);
+  });
+
   it('shows a status region while loading', () => {
     createWith(vi.fn(() => new Subject()));
     fixture.detectChanges();

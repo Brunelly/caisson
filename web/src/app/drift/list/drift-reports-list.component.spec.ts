@@ -113,14 +113,28 @@ describe('DriftReportsListComponent', () => {
     });
   });
 
-  it('renders the derived job status as a link to the audit view, joined by driftItemId', () => {
+  it('renders the derived job status (as a job-status badge, Task #130) linked to the audit view, joined by driftItemId', () => {
     fixture.detectChanges();
     paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));
     queryParamMap$.next(convertToParamMap({}));
     fixture.detectChanges();
 
     const link: HTMLAnchorElement = fixture.nativeElement.querySelector('.drift-list__status-link');
-    expect(link.textContent?.trim()).toBe('Executing');
+    expect(link.textContent?.trim()).toContain('Executing');
+    expect(link.querySelector('.status-badge')).toBeTruthy();
+  });
+
+  it('applies the DS monospace/tabular-numeral identifier class to the subject key (Task #129)', () => {
+    fixture.detectChanges();
+    paramMap$.next(convertToParamMap({ rackId: 'rack-1' }));
+    queryParamMap$.next(convertToParamMap({}));
+    fixture.detectChanges();
+
+    const identifier = fixture.nativeElement.querySelector(
+      '.drift-list__subject-link .drift-list__identifier',
+    );
+    expect(identifier).toBeTruthy();
+    expect(identifier.textContent).toBe('v1|rack|sw-01|ether5');
   });
 
   it('renders "—" for a drift item with no matching apply job', () => {

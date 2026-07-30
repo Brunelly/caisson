@@ -10,6 +10,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { ParamMap } from '@angular/router';
 import { combineLatest } from 'rxjs';
 import type { DriftItemDto, DriftSeverity, DriftType } from '../model/drift-contracts';
+import { JobStatusBadgeComponent } from '../apply/job-status-badge.component';
 import { DriftSeverityBadgeComponent } from '../shared/drift-severity-badge.component';
 import type { DriftItemJobStatus, DriftReportFilters } from '../state/drift-report-state.service';
 import { DriftReportStateService, EMPTY_DRIFT_FILTERS } from '../state/drift-report-state.service';
@@ -58,7 +59,7 @@ export function driftFiltersToQueryParams(
 @Component({
   selector: 'app-drift-reports-list',
   standalone: true,
-  imports: [DatePipe, RouterLink, DriftSeverityBadgeComponent],
+  imports: [DatePipe, RouterLink, DriftSeverityBadgeComponent, JobStatusBadgeComponent],
   styleUrl: './drift-reports-list.component.scss',
   template: `
     <section class="drift-list" role="main">
@@ -151,7 +152,7 @@ export function driftFiltersToQueryParams(
                       class="drift-list__status-link"
                       [routerLink]="['/racks', state.rackId(), 'drift', 'jobs', job.jobId]"
                     >
-                      {{ job.status }}
+                      <app-job-status-badge [status]="job.status" />
                     </a>
                   } @else {
                     —

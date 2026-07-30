@@ -301,6 +301,38 @@ describe('TopologyDetailsPanelComponent', () => {
     expect(items[1].textContent).toContain('swB');
   });
 
+  it('applies the DS monospace/tabular-numeral identifier class to identifier fields (PVID/tagged VLANs) but not to non-identifier fields (Up) — Task #129', async () => {
+    getEntity.mockReturnValue(
+      of({
+        kind: 'ok',
+        value: {
+          entityType: 'SwitchPort',
+          stableKey: 'SW-1|ether5',
+          latest: { switch: 'SW-1', isUp: 'true', pvid: '10', taggedVlans: '10,20' },
+          history: [],
+        } satisfies EntityDetailDto,
+      }),
+    );
+
+    selection.set(portNode());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    function ddFor(label: string): Element | null {
+      const dt = Array.from(
+        fixture.nativeElement.querySelectorAll('.details-panel__fields dt'),
+      ).find((el) => (el as Element).textContent === label) as Element | undefined;
+      return dt?.nextElementSibling ?? null;
+    }
+
+    expect(ddFor('PVID')?.classList.contains('details-panel__field--identifier')).toBe(true);
+    expect(ddFor('Tagged VLANs')?.classList.contains('details-panel__field--identifier')).toBe(
+      true,
+    );
+    expect(ddFor('Up')?.classList.contains('details-panel__field--identifier')).toBe(false);
+  });
+
   it('renders the entity change history returned alongside its latest fields (AC3)', async () => {
     getEntity.mockReturnValue(
       of({
