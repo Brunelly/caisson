@@ -57,7 +57,7 @@ const CONFIDENCE_BAND_ENTRIES: LegendEntry[] = [
         flex-direction: column;
         gap: 0.5rem;
         padding: 0.75rem 1rem;
-        border-top: 1px solid var(--color-border);
+        border-top: 1px solid var(--cds-border-default);
         font-size: 0.8125rem;
       }
 
@@ -66,7 +66,7 @@ const CONFIDENCE_BAND_ENTRIES: LegendEntry[] = [
         font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: var(--color-text-muted);
+        color: var(--cds-text-secondary);
       }
 
       .topology-legend__list {

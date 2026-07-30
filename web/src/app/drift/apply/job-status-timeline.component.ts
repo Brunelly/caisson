@@ -4,6 +4,8 @@
 // a job-summary poll carries); given `steps` (only the full DriftApplyJobDetailDto carries these), the
 // audit view gets the precise per-step timeline instead.
 import { Component, computed, input } from '@angular/core';
+import type { JobStatusBadgeKind } from '../../shared/badge/status-badge.component';
+import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { DriftApplyJobStatus, DriftApplyStepDto } from '../model/drift-contracts';
 import { isTerminalDriftApplyJobStatus } from '../model/drift-contracts';
 import { JobStatusBadgeComponent } from './job-status-badge.component';
@@ -15,10 +17,27 @@ const STAGE_ORDER: readonly DriftApplyJobStatus[] = [
   'Executing',
 ];
 
+// DriftApplyStepDto.status mirrors Caisson.Domain.Enums.DriftApplyStepStatus.ToString() on the wire
+// (Pending/InProgress/Succeeded/Failed/Skipped) — a different, step-scoped vocabulary from the
+// job-level DriftApplyJobStatus above. Task #130: colour-coded through the same job-status badge
+// buckets as the rest of the app; an unrecognised value falls back to the neutral "job-pending" bucket
+// rather than risk mislabelling it.
+const STEP_STATUS_BADGE_KIND: Record<string, JobStatusBadgeKind> = {
+  Pending: 'job-pending',
+  InProgress: 'job-pending',
+  Succeeded: 'job-success',
+  Failed: 'job-error',
+  Skipped: 'job-pending',
+};
+
+function stepStatusBadgeKind(status: string): JobStatusBadgeKind {
+  return STEP_STATUS_BADGE_KIND[status] ?? 'job-pending';
+}
+
 @Component({
   selector: 'app-job-status-timeline',
   standalone: true,
-  imports: [JobStatusBadgeComponent],
+  imports: [JobStatusBadgeComponent, StatusBadgeComponent],
   styleUrl: './job-status-timeline.component.scss',
   template: `
     @if (steps(); as detailedSteps) {
@@ -26,7 +45,7 @@ const STAGE_ORDER: readonly DriftApplyJobStatus[] = [
         @for (step of detailedSteps; track step.stepName) {
           <li class="job-timeline__step">
             <span class="job-timeline__step-name">{{ step.stepName }}</span>
-            <span class="job-timeline__step-status">{{ step.status }}</span>
+            <app-status-badge [kind]="stepBadgeKind(step.status)" [labelText]="step.status" />
           </li>
         }
       </ol>
@@ -51,6 +70,7 @@ export class JobStatusTimelineComponent {
   readonly steps = input<DriftApplyStepDto[] | null>(null);
 
   protected readonly stageOrder = STAGE_ORDER;
+  protected readonly stepBadgeKind = stepStatusBadgeKind;
   private readonly currentStageIndex = computed(() => STAGE_ORDER.indexOf(this.status()));
 
   protected isPastStage(stage: DriftApplyJobStatus): boolean {

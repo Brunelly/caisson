@@ -1,12 +1,12 @@
-@use '../../shared/styles/tokens';
+@use '../../shared/styles/cds-mixins';
 
 .details-panel {
   width: 22rem;
   max-width: 100%;
   height: 100%;
   overflow-y: auto;
-  border-left: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
+  border-left: 1px solid var(--cds-border-default);
+  background: var(--cds-surface-elevated);
   padding: 1rem;
   box-sizing: border-box;
 }
@@ -27,32 +27,30 @@
 .details-panel__close {
   background: none;
   border: none;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
   padding: 0.25rem;
   border-radius: 4px;
 
+  // The panel itself already sits at the `--cds-surface-elevated` tier, so hover uses
+  // `--cds-surface-sunken` (recessed) to stay visibly distinct — see topology-graph.component.scss.
   &:hover {
-    background: var(--color-bg-hover);
-    color: var(--color-text);
+    background: var(--cds-surface-sunken);
+    color: var(--cds-text-primary);
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }
 
 .details-panel__notice {
-  background: var(--color-status-ambiguous-bg);
-  color: var(--color-status-ambiguous);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
+  @include cds-mixins.cds-status-notice;
   margin: 0.75rem 0;
 }
 
 .details-panel__snapshot-meta {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   font-size: 0.75rem;
   margin: 0.5rem 0 1rem;
 }
@@ -65,14 +63,21 @@
   font-size: 0.875rem;
 
   dt {
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
   }
 
   dd {
     margin: 0;
-    color: var(--color-text);
+    color: var(--cds-text-primary);
     word-break: break-word;
   }
+}
+
+// Task #129: technical identifiers (serials, BMC/management addresses, PVID/tagged-VLAN ids, switch
+// ports/keys, confidence percentages) — DS monospace + tabular numerals. Applied via an additive
+// class, never blanket over every field.
+.details-panel__field--identifier {
+  @include cds-mixins.cds-identifier-text;
 }
 
 .details-panel__section {
@@ -82,7 +87,7 @@
     font-size: 0.8125rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
     margin: 0 0 0.5rem;
   }
 }
@@ -114,11 +119,11 @@
 }
 
 .details-panel__history-change {
-  color: var(--color-text);
+  color: var(--cds-text-primary);
 }
 
 .details-panel__history-date {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
 }
 
 .details-panel__drift-badges {
@@ -130,18 +135,18 @@
 }
 
 .details-panel__drift-detected {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   font-size: 0.75rem;
   margin: 0 0 0.5rem;
 }
 
 .details-panel__drift-link {
-  color: var(--color-link);
+  color: var(--cds-primary);
   font-size: 0.8125rem;
 
   &:hover {
     text-decoration: underline;
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }

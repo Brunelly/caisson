@@ -72,6 +72,10 @@ describe('DriftReportsListComponent accessibility', () => {
     fixture.detectChanges();
   });
 
+  it('renders the row job-status badge (Task #130) for items with an active/finished job', () => {
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeTruthy();
+  });
+
   it('has no automatically-detectable accessibility violations', async () => {
     const results = await axe.run(fixture.nativeElement, {
       rules: { 'color-contrast': { enabled: false } },

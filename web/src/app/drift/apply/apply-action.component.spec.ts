@@ -142,6 +142,10 @@ describe('ApplyActionComponent', () => {
     const dialogContainer = dialog!.closest('[role="dialog"]');
     expect(dialogContainer?.getAttribute('aria-modal')).toBe('true');
 
+    // Task #131: the scrim must be DS-tokened (styles.scss's --cds-surface-overlay), not CDK's
+    // un-themed default backdrop, so it resolves correctly in hc-dark.
+    expect(document.querySelector('.cds-overlay-backdrop')).toBeTruthy();
+
     const submit = dialog!.querySelector<HTMLButtonElement>('.apply-dialog__submit');
     expect(submit?.disabled).toBe(true);
     expect(applyCorrection).not.toHaveBeenCalled();

@@ -191,6 +191,9 @@ export class ApplyActionComponent {
         data: { item },
         ariaLabelledBy: 'apply-dialog-heading',
         hasBackdrop: true,
+        // Task #131: DS-tokened scrim (--cds-surface-overlay, styles.scss) instead of CDK's un-themed
+        // default backdrop, so the dimming behind the dialog resolves correctly in hc-dark too.
+        backdropClass: 'cds-overlay-backdrop',
         // CDK Dialog's `ariaModal` is OFF by default (aria-modal="false") — this is a true modal
         // (focus-trapped, blocks interaction with the rest of the page), so it must opt in explicitly
         // or assistive tech is told it is NOT modal despite behaving like one.

@@ -9,19 +9,19 @@
 }
 
 .job-timeline__stage {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: var(--color-bg-elevated);
+  background: var(--cds-surface-elevated);
 }
 
 .job-timeline__stage--done {
-  color: var(--color-text);
+  color: var(--cds-text-primary);
 }
 
 .job-timeline__stage--active {
-  color: var(--color-primary-contrast);
-  background: var(--color-primary);
+  color: var(--cds-primary-contrast);
+  background: var(--cds-primary);
   font-weight: 600;
 }
 
@@ -33,9 +33,5 @@
 }
 
 .job-timeline__step-name {
-  color: var(--color-text);
-}
-
-.job-timeline__step-status {
-  color: var(--color-text-muted);
+  color: var(--cds-text-primary);
 }

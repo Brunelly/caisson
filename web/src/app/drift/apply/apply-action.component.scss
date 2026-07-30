@@ -1,25 +1,25 @@
-@use '../../shared/styles/tokens';
+@use '../../shared/styles/cds-mixins';
 
 .apply-action__apply {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: 1px solid var(--color-primary);
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
   border-radius: 6px;
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   cursor: pointer;
 
   &:disabled {
-    background: var(--color-bg-elevated);
-    color: var(--color-text-muted);
-    border-color: var(--color-border);
+    background: var(--cds-surface-elevated);
+    color: var(--cds-text-disabled);
+    border-color: var(--cds-border-default);
     cursor: not-allowed;
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }
 
 .apply-action__write-indicator {
@@ -33,17 +33,17 @@
 .apply-action__job {
   margin-top: 0.5rem;
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
 }
 
 .apply-action__job-link {
-  color: var(--color-link);
+  color: var(--cds-primary);
 
   &:hover {
     text-decoration: underline;
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }
 
 .apply-action__stale {
@@ -55,28 +55,28 @@
 
   p {
     margin: 0;
-    color: var(--color-status-ambiguous);
+    @include cds-mixins.cds-status-notice;
   }
 
   button {
-    background: var(--color-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
+    background: var(--cds-bg-page);
+    color: var(--cds-text-primary);
+    border: 1px solid var(--cds-border-default);
     border-radius: 6px;
     padding: 0.375rem 0.75rem;
     font-size: 0.8125rem;
     cursor: pointer;
 
     &:hover {
-      background: var(--color-bg-hover);
+      background: var(--cds-surface-elevated);
     }
 
-    @include tokens.focus-visible-ring;
+    @include cds-mixins.cds-focus-visible-ring;
   }
 }
 
 .apply-action__no-permission {
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   margin: 0;
 }

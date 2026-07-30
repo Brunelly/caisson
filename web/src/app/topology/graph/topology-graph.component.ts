@@ -234,6 +234,10 @@ export class TopologyGraphComponent {
       .join('text')
       .attr('class', (d) => `edge-badge edge-badge--${d.state}`)
       .attr('text-anchor', 'middle')
+      // Task #130 (AC2/AC6): purely decorative — the underlying <line class="edge"> already carries
+      // the full state as text via its own aria-label (edgeAriaLabel), so this glyph is never the only
+      // place the state is conveyed and must not be announced a second time.
+      .attr('aria-hidden', 'true')
       .attr('x', (d) => midpoint(positions.get(d.source), positions.get(d.target)).x)
       .attr('y', (d) => midpoint(positions.get(d.source), positions.get(d.target)).y)
       .text((d) => EDGE_BADGE_GLYPH[d.state] ?? '');

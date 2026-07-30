@@ -183,7 +183,7 @@ test.describe('Topology page — dev harness (real browser)', () => {
     await expect(page.locator('.snapshot-meta')).toContainText('Snapshot v5');
   });
 
-  test('has no automatically-detectable accessibility violations, including real-browser color contrast, in light and dark themes', async ({
+  test('has no automatically-detectable accessibility violations, including real-browser color contrast, in light, dark, and high-contrast themes', async ({
     page,
   }) => {
     await gotoHarness(page);
@@ -211,5 +211,12 @@ test.describe('Topology page — dev harness (real browser)', () => {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     const darkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
     expect(darkResults.violations).toEqual([]);
+
+    // Task #131/#132: topology/drift feature screens were migrated onto --cds-* tokens (ADR 0038)
+    // specifically so hc-dark resolves a real palette instead of silently falling through to dark-theme
+    // colours on the shell's black hc-dark background — this is the real-browser gate that catches it.
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'hc-dark'));
+    const hcDarkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
+    expect(hcDarkResults.violations).toEqual([]);
   });
 });

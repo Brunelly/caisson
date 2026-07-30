@@ -1,11 +1,13 @@
+@use '../../shared/styles/cds-mixins';
+
 .drift-detail {
   padding: 1rem;
   max-width: 40rem;
   // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of what the
-  // app-shell (Story #119) paints behind it — e.g. the shell's hc-dark chrome background, which
-  // --color-* (this page's token system) has no hc-dark variant for.
-  background: var(--color-bg);
-  color: var(--color-text);
+  // app-shell (Story #119) paints behind it. Reads --cds-* (ADR 0038) so this now resolves correctly
+  // under the shell's hc-dark chrome instead of silently falling back to dark-theme colours.
+  background: var(--cds-bg-page);
+  color: var(--cds-text-primary);
 }
 
 .drift-detail__header {
@@ -28,7 +30,7 @@
 }
 
 .drift-detail__type {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   font-size: 0.8125rem;
 }
 
@@ -37,7 +39,7 @@
 }
 
 .drift-detail__detected {
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   font-size: 0.8125rem;
   margin: 0 0 1rem;
 }
@@ -50,7 +52,7 @@
   font-size: 0.875rem;
 
   dt {
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
   }
 
   dd {
@@ -70,7 +72,7 @@
     font-size: 0.8125rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
     margin: 0 0 0.5rem;
   }
 }
@@ -82,7 +84,7 @@
   font-size: 0.8125rem;
 
   dt {
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
   }
 
   dd {
@@ -93,4 +95,10 @@
 
 .drift-detail__apply-slot {
   margin-top: 1.5rem;
+}
+
+// Task #129: subject key, before/after values, and identifier-bearing detail-bag entries (switch/port
+// names) — DS monospace + tabular numerals.
+.drift-detail__identifier {
+  @include cds-mixins.cds-identifier-text;
 }

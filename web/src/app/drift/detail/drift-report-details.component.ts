@@ -20,7 +20,14 @@ export type DriftItemLoadError =
 interface DetailEntry {
   key: string;
   value: string;
+  /** Task #129: identifier-bearing detail-bag entries (switch/port names) render in the DS monospace
+   * + tabular-numeral treatment; the rest of the free-form `details` bag stays proportional. */
+  mono: boolean;
 }
+
+/** `details` bag keys that hold a technical identifier value — see drift item `details` shapes across
+ * the drift types in `DriftType`. */
+const IDENTIFIER_DETAIL_KEYS = new Set(['switchName', 'portName']);
 
 @Component({
   selector: 'app-drift-report-details',
@@ -37,7 +44,10 @@ interface DetailEntry {
         <p role="alert">Something went wrong loading this drift item. Try again shortly.</p>
       } @else if (item(); as driftItem) {
         <header class="drift-detail__header">
-          <h1>{{ driftItem.subjectType }}: {{ driftItem.subjectKey }}</h1>
+          <h1>
+            {{ driftItem.subjectType }}:
+            <span class="drift-detail__identifier">{{ driftItem.subjectKey }}</span>
+          </h1>
           <div class="drift-detail__badges">
             <span class="drift-detail__type">{{ driftItem.driftType }}</span>
             <app-drift-severity-badge [severity]="driftItem.severity" />
@@ -49,9 +59,9 @@ interface DetailEntry {
 
         <dl class="drift-detail__before-after">
           <dt>Current value</dt>
-          <dd>{{ driftItem.actualValue ?? '—' }}</dd>
+          <dd class="drift-detail__identifier">{{ driftItem.actualValue ?? '—' }}</dd>
           <dt>Expected value</dt>
-          <dd>{{ driftItem.expectedValue ?? '—' }}</dd>
+          <dd class="drift-detail__identifier">{{ driftItem.expectedValue ?? '—' }}</dd>
         </dl>
 
         <p class="drift-detail__actionable">
@@ -68,7 +78,7 @@ interface DetailEntry {
             <dl class="drift-detail__details">
               @for (entry of detailEntries(); track entry.key) {
                 <dt>{{ entry.key }}</dt>
-                <dd>{{ entry.value }}</dd>
+                <dd [class.drift-detail__identifier]="entry.mono">{{ entry.value }}</dd>
               }
             </dl>
           </section>
@@ -133,6 +143,7 @@ export class DriftReportDetailsComponent {
     return Object.entries(details as Record<string, unknown>).map(([key, value]) => ({
       key,
       value: value === null || value === undefined ? '—' : String(value),
+      mono: IDENTIFIER_DETAIL_KEYS.has(key),
     }));
   }
 

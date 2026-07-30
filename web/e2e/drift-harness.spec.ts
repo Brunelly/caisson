@@ -228,7 +228,27 @@ test.describe('Drift page — dev harness (real browser)', () => {
     });
   });
 
-  test('has no automatically-detectable accessibility violations, including real-browser colour contrast for severity/job-status badges, in light and dark themes', async ({
+  // Task #131/#132: topology/drift feature screens were migrated onto --cds-* tokens (ADR 0038)
+  // specifically so hc-dark resolves a real palette instead of silently falling through to dark-theme
+  // colours on the shell's black hc-dark background — these three scans are the real-browser gate that
+  // catches it, extended across list/detail+dialog/audit (the drift surfaces this story touched).
+  async function scanAllThemes(
+    page: Page,
+    axeOptions: { rules: Record<string, { enabled: boolean }> },
+  ) {
+    const lightResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
+    expect(lightResults.violations).toEqual([]);
+
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    const darkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
+    expect(darkResults.violations).toEqual([]);
+
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'hc-dark'));
+    const hcDarkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
+    expect(hcDarkResults.violations).toEqual([]);
+  }
+
+  test('has no automatically-detectable accessibility violations, including real-browser colour contrast for severity/job-status badges, in light, dark, and high-contrast themes', async ({
     page,
   }) => {
     await gotoDetail(page, true);
@@ -238,14 +258,15 @@ test.describe('Drift page — dev harness (real browser)', () => {
     await dialog.locator('.apply-dialog__submit').click();
     await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 2000 });
 
-    const axeOptions = { rules: { region: { enabled: false } } };
+    await scanAllThemes(page, { rules: { region: { enabled: false } } });
+  });
 
-    const lightResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
-    expect(lightResults.violations).toEqual([]);
+  test('drift list has no automatically-detectable accessibility violations, including real-browser colour contrast, in light, dark, and high-contrast themes', async ({
+    page,
+  }) => {
+    await gotoList(page);
 
-    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-    const darkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
-    expect(darkResults.violations).toEqual([]);
+    await scanAllThemes(page, { rules: { region: { enabled: false } } });
   });
 
   test('audit view is read-only and renders actor/target/before-after/outcome from the job detail', async ({
@@ -260,5 +281,14 @@ test.describe('Drift page — dev harness (real browser)', () => {
     // Scoped to the audit view's own content, not the whole page — the app-shell chrome (Story #119)
     // legitimately adds its own interactive controls (e.g. the theme toggle) outside this page.
     await expect(page.locator('.audit-view').locator('button, input, form')).toHaveCount(0);
+  });
+
+  test('audit view has no automatically-detectable accessibility violations, including real-browser colour contrast, in light, dark, and high-contrast themes', async ({
+    page,
+  }) => {
+    await page.goto(AUDIT_URL);
+    await expect(page.locator('.audit-view')).toBeVisible();
+
+    await scanAllThemes(page, { rules: { region: { enabled: false } } });
   });
 });

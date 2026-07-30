@@ -15,6 +15,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import type { AuditEventDto } from '../../topology/model/topology-contracts';
 import { AuditService } from '../../topology/services/audit.service';
+import type { JobStatusBadgeKind } from '../../shared/badge/status-badge.component';
+import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import { JobStatusTimelineComponent } from '../apply/job-status-timeline.component';
 import type { DriftApplyJobDetailDto } from '../model/drift-contracts';
 import { DriftApplyService } from '../services/drift-apply.service';
@@ -24,10 +26,46 @@ export type AuditRecordLoadError =
 
 const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
 
+// AuditEventDto.result is a free-form string written by several unrelated call sites
+// (AuditEventWriter.WriteActionAsync/WriteReadAsync across the API) — there is no shared enum on the
+// wire to bind to. Task #130: colour-code it via the job-status badge vocabulary using a conservative
+// substring classifier; anything unrecognised renders as the neutral "job-pending" bucket rather than
+// risk mislabelling an unknown result as success or error.
+const RESULT_SUCCESS_HINTS = [
+  'success',
+  'created',
+  'succeeded',
+  'completed',
+  'enabled',
+  'confirmed',
+];
+const RESULT_ERROR_HINTS = [
+  'fail',
+  'denied',
+  'forbidden',
+  'error',
+  'conflict',
+  'terminal',
+  '403',
+  '409',
+  '500',
+];
+
+function auditResultBadgeKind(result: string): JobStatusBadgeKind {
+  const normalized = result.toLowerCase();
+  if (RESULT_ERROR_HINTS.some((hint) => normalized.includes(hint))) {
+    return 'job-error';
+  }
+  if (RESULT_SUCCESS_HINTS.some((hint) => normalized.includes(hint))) {
+    return 'job-success';
+  }
+  return 'job-pending';
+}
+
 @Component({
   selector: 'app-audit-record-view',
   standalone: true,
-  imports: [DatePipe, JobStatusTimelineComponent],
+  imports: [DatePipe, JobStatusTimelineComponent, StatusBadgeComponent],
   styleUrl: './audit-record-view.component.scss',
   template: `
     <section class="audit-view" role="main">
@@ -39,7 +77,9 @@ const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
         <p role="alert">Something went wrong loading this apply job. Try again shortly.</p>
       } @else if (job(); as jobDetail) {
         <header class="audit-view__header">
-          <h1>Apply job {{ jobDetail.jobId }}</h1>
+          <h1>
+            Apply job <span class="audit-view__identifier">{{ jobDetail.jobId }}</span>
+          </h1>
           <app-job-status-timeline [status]="jobDetail.status" [steps]="jobDetail.steps" />
         </header>
 
@@ -61,10 +101,12 @@ const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
           }
 
           <dt>Correlation ID</dt>
-          <dd>{{ jobDetail.correlationId }}</dd>
+          <dd class="audit-view__identifier">{{ jobDetail.correlationId }}</dd>
 
           <dt>Target</dt>
-          <dd>{{ jobDetail.switchDeviceKey ?? '—' }} / {{ jobDetail.portName ?? '—' }}</dd>
+          <dd class="audit-view__identifier">
+            {{ jobDetail.switchDeviceKey ?? '—' }} / {{ jobDetail.portName ?? '—' }}
+          </dd>
 
           <dt>Before → after</dt>
           <dd>{{ jobDetail.beforeState ?? '—' }} → {{ jobDetail.afterState ?? '—' }}</dd>
@@ -99,7 +141,10 @@ const DRIFT_APPLY_JOB_TARGET_TYPE = 'drift-apply-job';
               @for (event of auditEvents(); track event.auditEventId) {
                 <li>
                   <span class="audit-view__trail-action">{{ event.action }}</span>
-                  <span class="audit-view__trail-result">{{ event.result }}</span>
+                  <app-status-badge
+                    [kind]="resultBadgeKind(event.result)"
+                    [labelText]="event.result"
+                  />
                   <span class="audit-view__trail-date">{{
                     event.occurredAt | date: 'medium'
                   }}</span>
@@ -122,6 +167,8 @@ export class AuditRecordViewComponent {
   protected readonly error = signal<AuditRecordLoadError | null>(null);
   protected readonly auditEvents = signal<AuditEventDto[]>([]);
   protected readonly auditLoading = signal(false);
+
+  protected readonly resultBadgeKind = auditResultBadgeKind;
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -270,5 +273,35 @@ describe('TopologyGraphComponent', () => {
       expect(nodeAfter).toBe(nodeBefore);
       expect(nodeAfter.getAttribute('class')).toContain('node--drift-low');
     });
+  });
+
+  describe('identifier typography (Task #129)', () => {
+    // jsdom has no real CSS cascade/paint engine (the same reason color-contrast is disabled in the
+    // a11y specs), so a getComputedStyle assertion on the rendered <text> wouldn't reliably reflect the
+    // stylesheet — this asserts the compiled selector directly against the component's own SCSS source,
+    // the same technique topology-drift-token-usage.spec.ts uses for token reads.
+    const scssPath = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      'topology-graph.component.scss',
+    );
+    const scss = readFileSync(scssPath, 'utf8');
+
+    it.each(['switch', 'nic', 'port', 'vlan'])(
+      'applies the DS monospace/tabular-numeral identifier treatment to .node--%s text (a technical identifier)',
+      (nodeType) => {
+        expect(scss).toMatch(new RegExp(`&--${nodeType} text[\\s\\S]*?cds-identifier-text`));
+      },
+    );
+
+    it('does NOT apply the identifier treatment to .node--server text (a human-authored hostname)', () => {
+      expect(scss).not.toContain('&--server text');
+    });
+
+    it.each(['edge-badge', 'drift-badge'])(
+      'applies the identifier treatment to .%s',
+      (className) => {
+        expect(scss).toMatch(new RegExp(`\\.${className} \\{[\\s\\S]*?cds-identifier-text`));
+      },
+    );
   });
 });

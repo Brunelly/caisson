@@ -74,10 +74,11 @@ import { TopologyStateService } from './state/topology-state.service';
         flex-direction: column;
         height: 100%;
         // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of
-        // what the app-shell (Story #119) paints behind it — e.g. the shell's hc-dark chrome
-        // background, which --color-* (this page's token system) has no hc-dark variant for.
-        background: var(--color-bg);
-        color: var(--color-text);
+        // what the app-shell (Story #119) paints behind it. Reads --cds-* (ADR 0038) so this now
+        // resolves correctly under the shell's hc-dark chrome instead of silently falling back to
+        // dark-theme colours.
+        background: var(--cds-bg-page);
+        color: var(--cds-text-primary);
       }
 
       .topology-header {
@@ -85,7 +86,7 @@ import { TopologyStateService } from './state/topology-state.service';
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid var(--color-border);
+        border-bottom: 1px solid var(--cds-border-default);
       }
 
       .topology-header h1 {
@@ -94,8 +95,10 @@ import { TopologyStateService } from './state/topology-state.service';
       }
 
       .badge-latest {
-        background: var(--color-status-confirmed-bg);
-        color: var(--color-status-confirmed);
+        // Neutral surface pairing, not the confirmed-mapping green — "Latest snapshot" is a recency
+        // indicator, unrelated to mapping-state confidence (Task #130).
+        background: var(--cds-surface-elevated);
+        color: var(--cds-text-primary);
         border-radius: 999px;
         padding: 0.125rem 0.625rem;
         font-size: 0.75rem;
@@ -104,7 +107,7 @@ import { TopologyStateService } from './state/topology-state.service';
 
       .snapshot-meta,
       .discovery-status {
-        color: var(--color-text-muted);
+        color: var(--cds-text-secondary);
         font-size: 0.875rem;
       }
 
