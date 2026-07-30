@@ -220,6 +220,9 @@ var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get
 // response headers from JS on cross-origin requests unless explicitly exposed here).
 builder.Services.AddCors(options => options.AddPolicy(AngularClientCorsPolicy, policy => policy
     .WithOrigins(allowedOrigins)
+    // SignalR's browser client sends negotiate/WebSocket requests with credentials mode "include".
+    // Origins remain an explicit allow-list above; wildcard origins are never permitted.
+    .AllowCredentials()
     .AllowAnyHeader()
     .WithMethods("GET", "POST", "PUT")
     .WithExposedHeaders(CorrelationIdMiddleware.HeaderName, HeaderNames.ETag)));

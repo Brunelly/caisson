@@ -9,7 +9,8 @@
 // custom domain exist, this file (and the auth bypass) go away in favour of `environment.prod.ts`.
 import type { Environment } from './environment.model';
 
-const apiBaseUrl = 'https://by-azuks-app-caisson-api.lemontree-7bffb5af.uksouth.azurecontainerapps.io';
+const apiBaseUrl =
+  'https://by-azuks-app-caisson-api.lemontree-7bffb5af.uksouth.azurecontainerapps.io';
 
 export const environment: Environment = {
   production: false,

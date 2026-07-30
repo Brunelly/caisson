@@ -11,6 +11,7 @@ The root SPA route had no owner, so it could neither discover observed racks nor
 ## Decision
 
 Expose an ACL-filtered, deterministically ordered observed-rack catalogue and cache each successful catalogue load in a root-provided client service. A guarded landing component chooses the first accessible rack; `TopologyPageComponent` remains the sole owner of topology REST and SignalR orchestration.
+The explicit-origin SPA CORS policy permits credentials because the SignalR browser client negotiates with credentials mode `include`.
 
 ## Consequences
 

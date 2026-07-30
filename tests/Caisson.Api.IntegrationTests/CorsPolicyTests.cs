@@ -47,6 +47,7 @@ public sealed class CorsPolicyTests
         var response = await client.SendAsync(preflight);
 
         response.Headers.GetValues("Access-Control-Allow-Methods").Should().Contain(v => v.Contains("POST"));
+        response.Headers.GetValues("Access-Control-Allow-Credentials").Should().ContainSingle("true");
     }
 
     [SkippableFact]

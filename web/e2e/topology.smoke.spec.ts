@@ -13,6 +13,7 @@
 // The spec skips (rather than failing misleadingly) when these aren't provided, since a smoke test with
 // no seeded rack cannot assert anything meaningful.
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 const rackId = process.env['E2E_RACK_ID'];
 const searchTerm = process.env['E2E_SEARCH_TERM'];
@@ -28,9 +29,28 @@ test.describe('Topology page smoke test', () => {
     page,
   }) => {
     const browserErrors: string[] = [];
+    const failedDataRequests: string[] = [];
     page.on('pageerror', (error) => browserErrors.push(error.message));
+    page.on('response', (response) => {
+      if (
+        response.status() >= 400 &&
+        (new URL(response.url()).pathname === '/api/racks' ||
+          response.url().includes('/topology/') ||
+          response.url().includes('/hubs/topology'))
+      ) {
+        failedDataRequests.push(`${response.status()} ${response.url()}`);
+      }
+    });
     page.on('console', (message) => {
-      if (message.type() === 'error') browserErrors.push(message.text());
+      // The legacy index references an optional favicon that is not shipped. Keep genuine app/API
+      // console failures fatal while excluding that browser-only missing decorative asset.
+      if (
+        message.type() === 'error' &&
+        message.text() !==
+          'Failed to load resource: the server responded with a status of 404 (Not Found)'
+      ) {
+        browserErrors.push(message.text());
+      }
     });
     const rackResponse = page.waitForResponse((response) => response.url().endsWith('/api/racks'));
     const topologyResponse = page.waitForResponse((response) =>
@@ -41,6 +61,58 @@ test.describe('Topology page smoke test', () => {
     expect((await rackResponse).ok()).toBe(true);
     expect((await topologyResponse).ok()).toBe(true);
     await expect(page).toHaveURL(new RegExp(`/racks/${rackId}/topology$`));
+
+    const rackSelector = page.getByRole('combobox', { name: 'Select rack' });
+    await expect(rackSelector).toBeEnabled();
+    await expect(rackSelector).toHaveAttribute('aria-haspopup', 'listbox');
+
+    // Keyboard and dismissal contract: open/focus selected option, wrap arrows, Escape/backdrop
+    // restore trigger focus, Tab closes while moving onward, and Enter selects/closes.
+    await rackSelector.press('Space');
+    const rackOption = page.getByRole('option', { name: /Virtual Rack \(seeded\)/ });
+    await expect(rackOption).toBeFocused();
+    await rackOption.press('ArrowDown');
+    await expect(rackOption).toBeFocused();
+    await rackOption.press('Escape');
+    await expect(rackSelector).toBeFocused();
+    await expect(rackSelector).toHaveAttribute('aria-expanded', 'false');
+
+    await rackSelector.press('Enter');
+    await page.locator('.cdk-overlay-backdrop').click({ position: { x: 1, y: 1 } });
+    await expect(rackSelector).toBeFocused();
+
+    await rackSelector.press('Enter');
+    await rackOption.press('Tab');
+    await expect(rackSelector).toHaveAttribute('aria-expanded', 'false');
+    await rackSelector.focus();
+    await rackSelector.press('Enter');
+    await rackOption.press('Enter');
+    await expect(rackSelector).toBeFocused();
+
+    for (const theme of ['Dark', 'Light']) {
+      await page.getByRole('radio', { name: theme }).click();
+      await rackSelector.press('Enter');
+      await expect(rackOption).toBeVisible();
+      const colours = await rackOption.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { foreground: style.color, background: style.backgroundColor };
+      });
+      expect(colours.foreground).not.toBe(colours.background);
+      const accessibility = await new AxeBuilder({ page })
+        .include('.topbar')
+        .include('.rack-options')
+        .withRules([
+          'color-contrast',
+          'aria-allowed-attr',
+          'aria-required-attr',
+          'aria-valid-attr-value',
+        ])
+        .analyze();
+      expect(accessibility.violations).toEqual([]);
+      await rackOption.press('Escape');
+    }
+
+    await expect(page.getByText(/^(Live|Disconnected)$/)).toBeVisible();
 
     // AC1: the page loads and shows the snapshot's "latest" indicator.
     await expect(page.getByText('Latest', { exact: true })).toBeVisible();
@@ -80,5 +152,6 @@ test.describe('Topology page smoke test', () => {
       expect(page.url()).toContain(`/racks/${rackId}/topology`);
     }
     expect(browserErrors).toEqual([]);
+    expect(failedDataRequests).toEqual([]);
   });
 });
