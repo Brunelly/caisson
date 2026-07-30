@@ -70,6 +70,10 @@ builder.Services.AddCaissonOrchestration(builder.Configuration);
 // and webhook drainer background services, and the shared idempotent RunAsync entry point.
 builder.Services.AddCaissonGitIngestion(builder.Configuration);
 
+// Desired-state YAML round-trip observability (story #169, Task #187): the parse/render metrics meter
+// the DesiredStateRoundTripController records against. A singleton, mirroring GitIngestionMetrics.
+builder.Services.AddSingleton<Caisson.Ingestion.Observability.DesiredStateRoundTripMetrics>();
+
 // Drift computation (story #64, ADR 0030): the compute service, the real event-signal, and the
 // scheduler/event-runner/retention-pruner background services.
 builder.Services.AddCaissonDrift(builder.Configuration);
@@ -264,6 +268,18 @@ builder.Services.AddRateLimiter(options =>
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    // Story #169: the desired-state YAML round-trip parse/render endpoints — the network-config authoring
+    // surface — get their own fixed window, mirroring DiscoveryTrigger, layered on top of the global limiter.
+    options.AddPolicy(RateLimitPolicies.NetworkConfigRoundTrip, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            RateLimitPartitionKey(httpContext),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
