@@ -158,6 +158,16 @@ test.describe('Network Config — dev harness (real browser)', () => {
   });
 
   async function scanAllThemes(page: Page): Promise<void> {
+    // Disable CSS transitions/animations for this scan: the axe color-contrast check must sample the
+    // settled end state of a theme switch, never a mid-transition frame. Without this, the shell's
+    // theme-toggle 120ms colour transition (theme-toggle.component.scss) races the axe scan below and
+    // can land inside that transition window, producing a false contrast violation on
+    // .theme-toggle__option (same fix as topology-harness.spec.ts).
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
+
     const lightResults = await new AxeBuilder({ page })
       .options({ rules: { 'color-contrast': { enabled: true }, region: { enabled: false } } })
       .analyze();
