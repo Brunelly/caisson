@@ -84,7 +84,11 @@ public sealed class TestAuthSchemeTests
             var client = factory.CreateClient();
 
             var read = await client.GetAsync($"/api/racks/{factory.Seed.RackId}/topology/snapshots/latest");
-            read.StatusCode.Should().Be(HttpStatusCode.OK, "the fixed principal holds ReadOnly, which satisfies TopologyRead");
+            var readBody = await read.Content.ReadAsStringAsync();
+            read.StatusCode.Should().Be(
+                HttpStatusCode.OK,
+                "the fixed principal holds ReadOnly, which satisfies TopologyRead (response body: {0})",
+                readBody);
 
             var trigger = await client.PostAsJsonAsync(
                 $"/api/racks/{factory.Seed.RackId}/discovery-jobs", new { mode = "OnDemand" });

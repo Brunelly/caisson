@@ -279,7 +279,27 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddControllers();
-builder.Services.AddProblemDetails();
+builder.Services.AddProblemDetails(options =>
+{
+    // Non-production only (never leak internals in Production — finding #18): surface the real
+    // exception (type + full stack) into the ProblemDetails so a 500 is diagnosable straight from the
+    // response, instead of an opaque status that forces a guess at the server-side cause. Gated to
+    // Development/Testing; Production returns the plain RFC 7807 body with no internal detail.
+    options.CustomizeProblemDetails = context =>
+    {
+        if (!(builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing")))
+        {
+            return;
+        }
+
+        var error = context.HttpContext.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        if (error is not null)
+        {
+            context.ProblemDetails.Detail = error.ToString();
+            context.ProblemDetails.Extensions["exceptionType"] = error.GetType().FullName;
+        }
+    };
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
