@@ -16,6 +16,43 @@
   box-shadow: var(--cds-shadow-lg);
   padding: var(--cds-sp-4);
   box-sizing: border-box;
+
+  // Story #123 Task #140 (AC1/AC2): below `md` the panel stops being a right-docked, in-flow flex
+  // child and becomes a fixed bottom-sheet overlay instead — a right-anchored 22rem column doesn't fit
+  // beside a usable graph at these widths. Deliberately still NON-modal: no CDK Dialog, no focus trap —
+  // this panel must keep patching in place under live SignalR refresh while open (AC5 of the story that
+  // introduced it), which a modal-dialog re-host would put at risk for no accessibility benefit here
+  // (role="region"/Escape-close/focus-to-heading below are unchanged). `.details-panel__scrim` supplies
+  // the dimming AC2 asks for; z-index 30 clears the shell's sticky top bar (20) and sidebar (2).
+  @include cds-mixins.cds-respond-below(md) {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 30;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: 70vh;
+    border-right: 1px solid var(--cds-border-default);
+    border-radius: var(--cds-radius-lg) var(--cds-radius-lg) 0 0;
+  }
+}
+
+// Non-interactive-per-se: closes the sheet on tap (the familiar bottom-sheet "tap outside" dismissal),
+// but — unlike a modal backdrop — never traps focus or blocks Tab from reaching content behind it, so it
+// stays consistent with the panel's own non-modal contract above.
+.details-panel__scrim {
+  display: none;
+
+  @include cds-mixins.cds-respond-below(md) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: var(--cds-surface-overlay);
+    border: 0;
+    padding: 0;
+    cursor: default;
+  }
 }
 
 .details-panel__header {

@@ -3,7 +3,15 @@
 // latest fields (Caisson.Domain.Topology.Diffing.TopologyEntityFields — never a raw dictionary dump),
 // snapshot context, ambiguous candidates with confidence/band/reason, and unmapped reason (AC3).
 import { DatePipe } from '@angular/common';
-import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { DriftItemDto } from '../../drift/model/drift-contracts';
 import { DriftSeverityBadgeComponent } from '../../drift/shared/drift-severity-badge.component';
@@ -68,10 +76,16 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
 @Component({
   selector: 'app-topology-details-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, RouterLink, StatusBadgeComponent, DriftSeverityBadgeComponent],
   styleUrl: './topology-details-panel.component.scss',
   template: `
     @if (state.selection(); as node) {
+      <!-- Story #123 Task #140: mobile-only bottom-sheet scrim (hidden above md via CSS) — tapping it
+           closes the panel like tapping outside, without making the panel a modal (see the .ts and .scss
+           header comments for why this stays non-modal). -->
+      <div class="details-panel__scrim" aria-hidden="true" (click)="close()"></div>
+
       <aside
         class="details-panel"
         role="region"

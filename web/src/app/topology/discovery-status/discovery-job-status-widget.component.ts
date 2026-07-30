@@ -6,7 +6,7 @@
 // no device-progress counter, elapsed/retry timer, or "Job log" link, none of which have backing data or
 // a route (AC1/NFR3: no new data surface, visual-only re-skin).
 import { DatePipe } from '@angular/common';
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { JobStatusBadgeKind } from '../../shared/badge/status-badge.component';
 import type { DiscoveryStatusDto } from '../model/topology-contracts';
@@ -24,6 +24,7 @@ const BADGE_KIND: Record<string, JobStatusBadgeKind> = {
 @Component({
   selector: 'app-discovery-job-status-widget',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe, StatusBadgeComponent],
   styleUrl: './discovery-job-status-widget.component.scss',
   template: `

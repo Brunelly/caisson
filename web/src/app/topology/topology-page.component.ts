@@ -3,7 +3,14 @@
 // and the discovery-job status. Graph/search/legend/details-panel child components are wired in here by
 // later story #10 steps; this page owns only rackId resolution, loading/error state and the header.
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, effect, inject, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LiveConnectionStatusBarComponent } from '../shared/connection-status/live-connection-status-bar.component';
@@ -20,6 +27,7 @@ import { TopologyStateService } from './state/topology-state.service';
 @Component({
   selector: 'app-topology-page',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="topology-page" role="main">
       @if (state.loading()) {
@@ -64,6 +72,8 @@ import { TopologyStateService } from './state/topology-state.service';
   `,
   styles: [
     `
+      @use '../shared/styles/cds-mixins';
+
       .topology-page {
         display: flex;
         flex-direction: column;
@@ -82,6 +92,13 @@ import { TopologyStateService } from './state/topology-state.service';
         gap: 0.75rem;
         padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--cds-border-default);
+
+        // Story #123 Task #140 (NFR1): the header's h1/badge/snapshot-meta/discovery-widget/search
+        // row doesn't fit in one line at sm/md — wraps onto multiple lines instead of forcing
+        // page-level horizontal scroll or truncating any of its content.
+        @include cds-mixins.cds-respond-below(md) {
+          flex-wrap: wrap;
+        }
       }
 
       .topology-header h1 {
@@ -110,6 +127,15 @@ import { TopologyStateService } from './state/topology-state.service';
         min-height: 0;
         display: flex;
         position: relative;
+
+        // Story #123 Task #140: the details panel becomes a \`position: fixed\` bottom-sheet overlay
+        // below \`md\` (topology-details-panel.component.scss) rather than an in-flow flex sibling, so it
+        // no longer competes with the graph for flex space there — this floor instead guards against the
+        // graph collapsing to an unusably short strip on short/landscape mobile viewports, where the
+        // header/search above it can otherwise eat most of the available height.
+        @include cds-mixins.cds-respond-below(md) {
+          min-height: 16rem;
+        }
       }
 
       .topology-shell app-topology-graph {
@@ -131,7 +157,11 @@ import { TopologyStateService } from './state/topology-state.service';
         z-index: 1;
       }
 
-      @media (max-width: 768px) {
+      // Story #123 Task #140: the app's one raw \`@media\` rule, migrated onto the shared
+      // \`cds-respond-below\` convention (ADR 0041) — behaviour unchanged (768px was already \`md\`'s own
+      // breakpoint value; \`cds-respond-below(md)\` emits \`max-width: 767px\`, one pixel below it, per
+      // that mixin's own "below vs at" convention).
+      @include cds-mixins.cds-respond-below(md) {
         .topology-shell app-topology-legend {
           left: var(--cds-sp-2);
           right: var(--cds-sp-2);

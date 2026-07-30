@@ -77,7 +77,11 @@
 .node {
   cursor: pointer;
 
-  rect {
+  // Story #123 Task #140 (NFR3): the visible shape is addressed by this class, not a bare `rect` tag
+  // selector, specifically so none of these rules also paint the larger, invisible `.node-hit` touch
+  // target `<rect>` the component appends alongside it (topology-graph.component.ts) — a tag selector
+  // would have matched both.
+  .node__body {
     // Task #133: resting fill drops from the "raised" --cds-surface-elevated tier to the base
     // --cds-bg-page tier (matches the design mock's `--node-inner`) — hover/press below step UP through
     // the two higher tiers instead, since there's no longer a tier below resting to recess into.
@@ -102,11 +106,11 @@
     @include cds-mixins.cds-identifier-text;
   }
 
-  &:hover rect {
+  &:hover .node__body {
     fill: var(--cds-surface-elevated);
   }
 
-  &:active rect {
+  &:active .node__body {
     fill: var(--cds-surface-sunken);
   }
 
@@ -118,19 +122,19 @@
   // token) and applied to only these three states, verified smooth at 200+ nodes under sustained
   // pan/zoom. Ambiguous/unmapped intentionally get no glow — dash pattern is their distinguishing cue.
   &--confirmed {
-    rect {
+    .node__body {
       stroke: var(--cds-topo-mapping-confirmed);
     }
 
     filter: drop-shadow(var(--cds-topo-glow-confirmed));
   }
 
-  &--ambiguous rect {
+  &--ambiguous .node__body {
     stroke: var(--cds-topo-mapping-ambiguous);
     stroke-dasharray: 4 2;
   }
 
-  &--unmapped rect {
+  &--unmapped .node__body {
     stroke: var(--cds-topo-mapping-unmapped);
     stroke-dasharray: 2 3;
   }
@@ -139,7 +143,7 @@
   // mapping-state colours above (a port can carry both at once) — see ADR 0033 (severity polarity is
   // the inverse of confidence: High severity is bad, so it reuses the same red "unmapped" token).
   &--drift-high {
-    rect {
+    .node__body {
       stroke: var(--cds-error-fg);
       stroke-width: 3;
     }
@@ -148,7 +152,7 @@
   }
 
   &--drift-medium {
-    rect {
+    .node__body {
       stroke: var(--cds-warning-fg);
       stroke-width: 3;
     }
@@ -157,7 +161,7 @@
   }
 
   &--drift-low {
-    rect {
+    .node__body {
       stroke: var(--cds-text-secondary);
       stroke-width: 2;
     }
@@ -175,7 +179,7 @@
   // stroke colour, with the selection ring layered outside it. `border-radius` mirrors the rect's `rx`
   // attribute so browsers that round `outline` to match (Firefox, current Chromium) draw a ring that
   // follows the node's rounded corners instead of a plain rectangle.
-  &--selected rect {
+  &--selected .node__body {
     outline: 2.5px solid var(--cds-primary);
     outline-offset: 3px;
     border-radius: 6px;
