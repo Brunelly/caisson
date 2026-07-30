@@ -131,6 +131,13 @@
   }
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  // Story #123 Task #140 (NFR3): 44px touch-target floor at `sm`, where this item is only ever reached
+  // via the mobile drawer (app-shell.component.scss hides the static column below `md`) — scoped to
+  // `sm` so desktop/tablet density is unaffected.
+  @include cds-mixins.cds-respond-below(sm) {
+    @include cds-mixins.cds-touch-target;
+  }
 }
 
 .sidebar__nav-icon {

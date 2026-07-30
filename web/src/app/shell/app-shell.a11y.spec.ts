@@ -37,4 +37,15 @@ describe('AppShellComponent accessibility', () => {
 
     expect(results.violations).toEqual([]);
   }, 15000);
+
+  // Story #123 Task #140: the mobile nav-drawer trigger is always in the DOM (CSS-hidden above `md` —
+  // rack-selector-topbar.component.scss) rather than conditionally rendered, so it's covered by the
+  // scan above at every viewport; this pins down its labelling specifically. The drawer's own content
+  // (NavDrawerComponent, opened via CDK Dialog) is covered separately by
+  // nav-drawer.component.a11y.spec.ts, since it never mounts inside AppShellComponent's own fixture.
+  it('the mobile nav-drawer trigger is a labelled button', () => {
+    const hamburger = fixture.nativeElement.querySelector('.topbar__hamburger');
+    expect(hamburger?.tagName).toBe('BUTTON');
+    expect(hamburger?.getAttribute('aria-label')).toBe('Open navigation');
+  });
 });

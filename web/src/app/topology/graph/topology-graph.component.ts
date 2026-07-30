@@ -6,6 +6,7 @@
 // `[graph]` to the refetched snapshot) patches existing DOM nodes (enter/update/exit) instead of tearing
 // down and rebuilding the SVG — pan/zoom and any focused/selected element survive (AC5, no full reload).
 import {
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   ViewEncapsulation,
@@ -35,6 +36,14 @@ interface Point {
 const NODE_WIDTH = 168;
 const NODE_HEIGHT = 30;
 const ROW_HEIGHT = 46;
+// Story #123 Task #140 (NFR3): an invisible hit-rect per node, centred on the same position as the
+// visible 168x30 node, so the actual tappable area meets the 44px floor without changing the mock's
+// node density/sizing. Height uses the full `ROW_HEIGHT` (46px, already >44px) — going any taller would
+// start overlapping the next row's hit-rect within the same column. Width leaves an even margin inside
+// the 210px column pitch (`COLUMN_X`'s spacing) so it never reaches into a neighbouring column's nodes
+// or the edge lines routed through the gap between columns.
+const NODE_HIT_WIDTH = 200;
+const NODE_HIT_HEIGHT = ROW_HEIGHT;
 const COLUMN_X: Record<TopologyNodeType, number> = {
   server: 90,
   nic: 300,
@@ -60,6 +69,7 @@ const DRIFT_SEVERITY_GLYPH: Record<DriftOverlayEntry['severity'], string> = {
 @Component({
   selector: 'app-topology-graph',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   styleUrl: './topology-graph.component.scss',
   template: `
@@ -285,7 +295,23 @@ export class TopologyGraphComponent {
               onNodeActivate(d);
             }
           });
-        g.append('rect').attr('width', NODE_WIDTH).attr('height', NODE_HEIGHT).attr('rx', 6);
+        // Invisible, larger hit-rect — see NODE_HIT_WIDTH/NODE_HIT_HEIGHT above. `fill="transparent"`
+        // (not `none`) + explicit `pointer-events="all"` so it reliably hit-tests across browsers; the
+        // click/keydown handlers are already on `g` above, so this needs no listeners of its own.
+        g.append('rect')
+          .attr('class', 'node-hit')
+          .attr('x', (NODE_WIDTH - NODE_HIT_WIDTH) / 2)
+          .attr('y', (NODE_HEIGHT - NODE_HIT_HEIGHT) / 2)
+          .attr('width', NODE_HIT_WIDTH)
+          .attr('height', NODE_HIT_HEIGHT)
+          .attr('fill', 'transparent')
+          .attr('pointer-events', 'all')
+          .attr('aria-hidden', 'true');
+        g.append('rect')
+          .attr('class', 'node__body')
+          .attr('width', NODE_WIDTH)
+          .attr('height', NODE_HEIGHT)
+          .attr('rx', 6);
         g.append('text')
           .attr('x', NODE_WIDTH / 2)
           .attr('y', NODE_HEIGHT / 2 + 4)

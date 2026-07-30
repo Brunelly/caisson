@@ -31,6 +31,13 @@
   }
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  // Story #123 Task #141 (NFR3): mirrors the dialog's own `__submit`/`__cancel` buttons
+  // (apply-confirmation-dialog.component.scss) — a real >=44px target at sm, desktop density
+  // unchanged. Touches nothing in apply-action.component.ts's RBAC gate or double-submit guard.
+  @include cds-mixins.cds-respond-below(sm) {
+    @include cds-mixins.cds-touch-target;
+  }
 }
 
 .apply-action__write-indicator {

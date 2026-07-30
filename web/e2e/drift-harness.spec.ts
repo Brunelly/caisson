@@ -17,6 +17,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import {
+  captureConsoleErrors,
+  expectNoHorizontalScroll,
+  expectTouchTargets,
+} from './harness-helpers';
 
 const RACK_ID = 'rack-1';
 const DRIFT_ITEM_ID = 'harness-drift-item-1';
@@ -290,5 +295,121 @@ test.describe('Drift page — dev harness (real browser)', () => {
     await expect(page.locator('.audit-view')).toBeVisible();
 
     await scanAllThemes(page, { rules: { region: { enabled: false } } });
+  });
+
+  // Story #123 Task #143: re-verifies #65-#68's RBAC gate, double-submit guard, and live SignalR status
+  // at `sm`/`md` under the re-skinned, now-collapsible shell — and NFR1/NFR3 on the drift surfaces.
+  test.describe('responsive (sm/md)', () => {
+    for (const viewport of [
+      { name: 'sm', width: 390, height: 844 },
+      { name: 'md', width: 767, height: 1024 },
+    ] as const) {
+      test.describe(`viewport: ${viewport.name}`, () => {
+        test.use({ viewport: { width: viewport.width, height: viewport.height } });
+
+        test('no page-level horizontal scroll on list/detail (NFR1)', async ({ page }) => {
+          await gotoList(page);
+          await expectNoHorizontalScroll(page);
+
+          await gotoDetail(page);
+          await expectNoHorizontalScroll(page);
+        });
+
+        // `.drift-list__subject-link`/`__status-link` are `cds-respond-below(md)` (drift-reports-list
+        // .component.scss), so this holds at both sm and md; `.apply-action__apply` is `cds-respond-
+        // below(sm)` only (mirroring the dialog's own buttons) — checked separately, at sm, below.
+        test('drift row links are >=44px (NFR3)', async ({ page }) => {
+          await gotoList(page);
+          await expectTouchTargets(page, ['.drift-list__subject-link', '.drift-list__status-link']);
+        });
+
+        // AC5's explicit concern: RBAC-hidden Apply must not be revealed via any responsive
+        // overflow/drawer affordance this story added — the hamburger drawer only ever renders
+        // SidebarNavigationComponent (nav-drawer.component.ts), never drift/apply controls, so there is
+        // no code path that could leak it; this pins that down as a regression guard.
+        test('RBAC-hidden: Apply stays hidden, and does not leak via the shell nav drawer', async ({
+          page,
+        }) => {
+          await gotoDetail(page, false);
+          await expect(page.locator('.apply-action__apply')).toHaveCount(0);
+
+          await page.getByRole('button', { name: 'Open navigation' }).click();
+          const drawer = page.locator('.nav-drawer');
+          await expect(drawer).toBeVisible();
+          await expect(drawer.locator('.apply-action__apply')).toHaveCount(0);
+          await expect(drawer.getByRole('button', { name: /apply/i })).toHaveCount(0);
+        });
+
+        test('double-submit guard still fires exactly one applyCorrection call', async ({
+          page,
+        }) => {
+          await gotoDetail(page, true);
+
+          await page.locator('.apply-action__apply').click();
+          const dialog = page.locator('.apply-dialog');
+          await dialog.locator('input[type="checkbox"]').check();
+          await dialog.locator('.apply-dialog__submit').click();
+          await expect(dialog).toBeHidden();
+
+          const applyButton = page.locator('.apply-action__apply');
+          await expect(applyButton).toBeDisabled();
+          await applyButton.click({ force: true });
+          await applyButton.click({ force: true });
+
+          await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 3000 });
+          expect(await page.evaluate(() => window.__harness__!.getApplyCorrectionCallCount())).toBe(
+            1,
+          );
+        });
+
+        // AC5/NFR5: no new console errors/warnings through the full apply workflow at this viewport.
+        test('no new console errors through the apply workflow', async ({ page }) => {
+          const errors = captureConsoleErrors(page);
+
+          await gotoDetail(page, true);
+          await page.locator('.apply-action__apply').click();
+          const dialog = page.locator('.apply-dialog');
+          await dialog.locator('input[type="checkbox"]').check();
+          await dialog.locator('.apply-dialog__submit').click();
+          await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 2000 });
+
+          expect(errors).toEqual([]);
+        });
+
+        test('live SignalR job status still patches in place, no reload', async ({ page }) => {
+          await gotoDetail(page, true);
+          const urlBefore = page.url();
+
+          await page.locator('.apply-action__apply').click();
+          const dialog = page.locator('.apply-dialog');
+          await dialog.locator('input[type="checkbox"]').check();
+          await dialog.locator('.apply-dialog__submit').click();
+          await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 2000 });
+
+          await page.evaluate(() => {
+            window.__harness__!.hub.simulateDriftApplyJobStatusChanged({
+              rackId: 'rack-1',
+              jobId: 'harness-drift-job-1',
+              status: 'Completed',
+              previousStatus: 'Pending',
+              currentStep: null,
+              reasonCode: null,
+              errorCode: null,
+              timestamp: new Date().toISOString(),
+              seq: 1,
+              correlationId: 'corr-responsive-1',
+            });
+          });
+          await expect(page.locator('app-job-status-badge')).toContainText('Completed');
+          expect(page.url()).toBe(urlBefore);
+        });
+      });
+    }
+
+    test('the apply button is >=44px at sm (NFR3)', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await gotoDetail(page, true);
+      await expectTouchTargets(page, ['.apply-action__apply']);
+    });
   });
 });

@@ -7,6 +7,7 @@
 // Escape/Tab/outside-click all close and (Escape) return focus to the input.
 import { CdkConnectedOverlay, CdkOverlayOrigin, Overlay } from '@angular/cdk/overlay';
 import {
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   computed,
@@ -28,6 +29,7 @@ import { TopologyStateService } from '../state/topology-state.service';
 @Component({
   selector: 'app-topology-search',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, CdkConnectedOverlay, CdkOverlayOrigin],
   styleUrl: './topology-search.component.scss',
   template: `

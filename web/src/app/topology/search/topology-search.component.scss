@@ -28,6 +28,14 @@
   overflow-y: auto;
   border-radius: var(--cds-radius-md);
   box-shadow: var(--cds-shadow-md);
+
+  // Story #123 Task #140: `cdkConnectedOverlayWidth` (topology-search.component.ts) sets the overlay to
+  // the input's own rendered width, which can still exceed the viewport at `sm` once the header wraps
+  // the search box onto its own, nearly-full-width row — width-only fix, the combobox/listbox
+  // behaviour and ARIA above are untouched.
+  @include cds-mixins.cds-respond-below(sm) {
+    max-width: calc(100vw - var(--cds-sp-4));
+  }
 }
 
 .topology-search__group + .topology-search__group {

@@ -115,6 +115,17 @@
   }
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  // Story #123 Task #141 (NFR3): a real >=44px tap target at sm/md, where the table's own
+  // `overflow-x: auto` (below) is already the accepted responsive adaptation (AC1: "horizontal scroll
+  // within the component") — scoped to sm/md only so dense desktop rows (`th`/`td` padding above)
+  // aren't inflated. `inline-flex` so the mixin's padding actually grows the link's own box rather than
+  // a no-op on an inline element.
+  @include cds-mixins.cds-respond-below(md) {
+    display: inline-flex;
+    align-items: center;
+    @include cds-mixins.cds-touch-target;
+  }
 }
 
 // Task #129: the drift subject key (a stable key / MAC / port name) is a technical identifier — DS

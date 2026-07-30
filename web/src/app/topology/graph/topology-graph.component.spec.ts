@@ -125,6 +125,21 @@ describe('TopologyGraphComponent', () => {
     expect(emitted).toBeDefined();
   });
 
+  it('Story #123 Task #140 (NFR3): every node carries an invisible hit-rect at least 44px in each dimension, on top of the same click/keydown-bound <g>', () => {
+    const nodes = Array.from(svgEl().querySelectorAll('g.node'));
+    expect(nodes.length).toBeGreaterThan(0);
+
+    for (const node of nodes) {
+      const hit = node.querySelector('rect.node-hit');
+      expect(hit).toBeTruthy();
+      expect(Number(hit!.getAttribute('width'))).toBeGreaterThanOrEqual(44);
+      expect(Number(hit!.getAttribute('height'))).toBeGreaterThanOrEqual(44);
+      // Never itself an extra tab stop / accessible node — the label lives on the parent <g>.
+      expect(hit!.getAttribute('tabindex')).toBeNull();
+      expect(hit!.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
   it('a live refresh (the graph input changing) patches existing nodes in place rather than re-mounting the SVG', async () => {
     const firstNodeBefore = svgEl().querySelector('g.node--server') as SVGGElement;
     expect(firstNodeBefore).toBeTruthy();

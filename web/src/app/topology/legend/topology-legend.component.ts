@@ -1,7 +1,7 @@
 // Static, data-driven legend explaining the graph's visual states (AC4): confirmed/ambiguous/unmapped
 // mapping states plus the High/Medium/Low confidence bands, keyed off the same vocabulary/badge the
 // graph and details panel use so the three never drift.
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import type { BadgeKind } from '../../shared/badge/status-badge.component';
 
@@ -28,6 +28,7 @@ const CONFIDENCE_BAND_ENTRIES: LegendEntry[] = [
 @Component({
   selector: 'app-topology-legend',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [StatusBadgeComponent],
   template: `
     <section class="topology-legend" aria-label="Topology graph legend">

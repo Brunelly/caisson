@@ -9,6 +9,13 @@
   flex-direction: column;
   color: var(--cds-text-primary);
   max-width: 28rem;
+  // Story #123 Task #141 (AC2: "overlay fits within the viewport with internal scrolling"): CDK
+  // Dialog's default GlobalPositionStrategy centers the panel but never constrains its own height, so a
+  // panel taller than a short/landscape mobile viewport would otherwise be clipped by the viewport edge
+  // with no way to reach its own Cancel/Apply footer. `overflow: hidden` on the outer element already
+  // clips the header/actions' own border-radius; the internal scroll has to live on `__body` instead
+  // (below) so the header and footer stay pinned in view while only the middle scrolls.
+  max-height: 90vh;
   box-shadow: var(--cds-shadow-overlay);
   overflow: hidden;
 
@@ -49,6 +56,13 @@
   flex-direction: column;
   gap: var(--cds-sp-4);
   padding: var(--cds-sp-5) var(--cds-sp-6);
+  // Story #123 Task #141: the part that actually scrolls within the panel's `max-height: 90vh` above —
+  // `min-height: 0` overrides the flex item's content-based default, which would otherwise stop this
+  // from ever shrinking (and thus scrolling) in the first place. Header/actions stay full-size and
+  // pinned in view either side of it.
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .apply-dialog__summary {

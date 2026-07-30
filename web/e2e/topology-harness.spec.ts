@@ -8,14 +8,21 @@
 // color-contrast since jsdom cannot render).
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import {
+  captureConsoleErrors,
+  expectNoHorizontalScroll,
+  expectTouchTargets,
+  gotoTopologyHarness as gotoHarness,
+} from './harness-helpers';
 
-const HARNESS_URL = '/__dev-harness__/topology/rack-1';
-
-async function gotoHarness(page: Page): Promise<void> {
-  await page.goto(HARNESS_URL);
-  await expect(page.locator('svg.topology-graph')).toBeVisible();
-}
+// Story #123 Task #143 (NFR3): every control the shell/topology touch-target audit (cds-touch-target,
+// Steps 1-2) applies to, checked at `sm`. `.topbar__hamburger`/`.sidebar__nav-item` only render below
+// `md`, so the mobile-viewport variant below is what actually exercises them.
+const TOPOLOGY_TOUCH_TARGETS = [
+  '.topbar__hamburger',
+  '.topbar__rack',
+  '.details-panel__close',
+] as const;
 
 test.describe('Topology page — dev harness (real browser)', () => {
   test('renders the graph with confirmed/ambiguous/unmapped states and a legend (AC1/AC4)', async ({
@@ -273,5 +280,98 @@ test.describe('Topology page — dev harness (real browser)', () => {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'hc-dark'));
     const hcDarkResults = await new AxeBuilder({ page }).options(axeOptions).analyze();
     expect(hcDarkResults.violations).toEqual([]);
+  });
+
+  // Story #123 Task #143: re-verifies #119-#122 behaviour at `sm`/`md` under the re-skinned, now-
+  // collapsible shell — NFR1 (no page-level horizontal scroll), NFR3 (>=44px touch targets on the
+  // controls this story added/touched), and that the mobile nav drawer opens/closes/routes correctly.
+  test.describe('responsive (sm/md)', () => {
+    for (const viewport of [
+      { name: 'sm', width: 390, height: 844 },
+      { name: 'md', width: 767, height: 1024 },
+    ] as const) {
+      test.describe(`viewport: ${viewport.name}`, () => {
+        test.use({ viewport: { width: viewport.width, height: viewport.height } });
+
+        test('no page-level horizontal scroll (NFR1)', async ({ page }) => {
+          await gotoHarness(page);
+          await expectNoHorizontalScroll(page);
+        });
+
+        // AC5/NFR5: no new console errors/warnings opening the drawer or selecting a node (the mobile
+        // bottom-sheet path) at this viewport.
+        test('no new console errors opening the drawer and selecting a node', async ({ page }) => {
+          const errors = captureConsoleErrors(page);
+
+          await gotoHarness(page);
+          await page.getByRole('button', { name: 'Open navigation' }).click();
+          await expect(page.locator('.nav-drawer')).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(page.locator('.nav-drawer')).toBeHidden();
+
+          await page.locator('g.node--confirmed[aria-label*="eth0"]').click();
+          await expect(page.locator('aside.details-panel')).toBeVisible();
+
+          expect(errors).toEqual([]);
+        });
+
+        test('the hamburger opens the nav drawer, which routes to Drift and closes itself', async ({
+          page,
+        }) => {
+          await gotoHarness(page);
+          await expect(page.locator('.shell__sidebar')).toBeHidden();
+
+          const hamburger = page.getByRole('button', { name: 'Open navigation' });
+          await hamburger.click();
+          const drawer = page.locator('.nav-drawer');
+          await expect(drawer).toBeVisible();
+
+          // Focus-trapped (CDK Dialog, free) — Escape closes and returns focus to the trigger.
+          await page.keyboard.press('Escape');
+          await expect(drawer).toBeHidden();
+          await expect(hamburger).toBeFocused();
+
+          await hamburger.click();
+          await expect(drawer).toBeVisible();
+          await drawer.getByRole('link', { name: 'Drift' }).click();
+          await expect(drawer).toBeHidden();
+          await expect(page).toHaveURL(/\/drift$/);
+        });
+
+        // Touch-specific: a real `hasTouch` context, tapping a node opens the details bottom-sheet
+        // (Task #143's explicit real-touch requirement, alongside pan/zoom already verified working
+        // under Playwright touch emulation before the graph's hit-rect work in topology-graph.
+        // component.ts — see that file's own comment).
+        test('tapping a node opens the details bottom-sheet (touch)', async ({ browser }) => {
+          const context = await browser.newContext({
+            viewport: { width: viewport.width, height: viewport.height },
+            hasTouch: true,
+          });
+          const page = await context.newPage();
+          await gotoHarness(page);
+
+          const node = page.locator('g.node--confirmed[aria-label*="eth0"]');
+          await node.tap();
+
+          const panel = page.locator('aside.details-panel');
+          await expect(panel).toBeVisible();
+          // Below `md` this renders as the fixed bottom-sheet (topology-details-panel.component.scss),
+          // not the desktop right-docked column.
+          await expect(panel).toHaveCSS('position', 'fixed');
+
+          await context.close();
+        });
+      });
+    }
+
+    // NFR3's floor is guaranteed at `sm` specifically — `.topbar__rack` (rack-selector-topbar.component
+    // .scss) deliberately stays at desktop/tablet density through `md` (only the hamburger, visible at
+    // both sm/md since it's gated on `md`, is checked in the loop's own viewports implicitly via the
+    // drawer test above already needing it clickable).
+    test('touch targets are >=44px at sm (NFR3)', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await gotoHarness(page);
+      await expectTouchTargets(page, TOPOLOGY_TOUCH_TARGETS);
+    });
   });
 });

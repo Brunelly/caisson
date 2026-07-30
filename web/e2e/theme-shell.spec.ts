@@ -8,17 +8,52 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import {
+  TOPOLOGY_HARNESS_URL as HARNESS_URL,
+  captureConsoleErrors,
+  gotoTopologyHarness as gotoHarness,
+  themeToggle,
+} from './harness-helpers';
 
-const HARNESS_URL = '/__dev-harness__/topology/rack-1';
 const STORAGE_KEY = 'caisson.theme';
 
-async function gotoHarness(page: Page): Promise<void> {
-  await page.goto(HARNESS_URL);
-  await expect(page.locator('svg.topology-graph')).toBeVisible();
-}
+/** Shared by the desktop-viewport test below and its `sm`/`md` re-verification (Story #123 Task #143) —
+ * switches through all three themes via the toggle (still directly in the top bar, not moved behind the
+ * mobile nav drawer, at any viewport) and asserts zero axe violations, including real-browser colour
+ * contrast, at each. */
+async function expectAllThemesAA(page: Page): Promise<void> {
+  await page.addInitScript(() => localStorage.setItem('caisson.theme', 'dark'));
+  await gotoHarness(page);
+  const toggle = themeToggle(page);
 
-function themeToggle(page: Page) {
-  return page.getByRole('radiogroup', { name: 'Theme' });
+  const darkResults = await new AxeBuilder({ page })
+    .options({ rules: { region: { enabled: false } } })
+    .analyze();
+  expect(darkResults.violations).toEqual([]);
+
+  await toggle.getByRole('radio', { name: 'Light' }).click();
+  await expect(toggle.getByRole('radio', { name: 'Light' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  // Move the pointer off the toggle so a lingering :hover state (from the click above) isn't scanned
+  // as the resting state — this is a real-browser artifact of automated clicking, not part of the theme.
+  await page.mouse.move(0, 0);
+  const lightResults = await new AxeBuilder({ page })
+    .options({ rules: { region: { enabled: false } } })
+    .analyze();
+  expect(lightResults.violations).toEqual([]);
+
+  await toggle.getByRole('radio', { name: 'High contrast' }).click();
+  await expect(toggle.getByRole('radio', { name: 'High contrast' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await page.mouse.move(0, 0);
+  const hcResults = await new AxeBuilder({ page })
+    .options({ rules: { region: { enabled: false } } })
+    .analyze();
+  expect(hcResults.violations).toEqual([]);
 }
 
 test.describe('Theming shell — dev harness (real browser)', () => {
@@ -140,39 +175,44 @@ test.describe('Theming shell — dev harness (real browser)', () => {
   test('has no automatically-detectable accessibility violations, including real-browser color contrast, across all three themes', async ({
     page,
   }) => {
-    // Deterministic starting theme, independent of the context's emulated colour scheme default.
-    await page.addInitScript(() => localStorage.setItem('caisson.theme', 'dark'));
-    await gotoHarness(page);
-    const toggle = themeToggle(page);
+    await expectAllThemesAA(page);
+  });
 
-    const darkResults = await new AxeBuilder({ page })
-      .options({ rules: { region: { enabled: false } } })
-      .analyze();
-    expect(darkResults.violations).toEqual([]);
+  // Story #123 Task #143: re-verifies theme switching stays WCAG AA at `sm`/`md` under the re-skinned,
+  // now-collapsible shell — the theme toggle is never moved behind the mobile nav drawer, so
+  // `expectAllThemesAA` needs no changes to run unmodified at these viewports.
+  test.describe('responsive (sm/md)', () => {
+    for (const viewport of [
+      { name: 'sm', width: 390, height: 844 },
+      { name: 'md', width: 767, height: 1024 },
+    ] as const) {
+      test(`stays WCAG AA across all three themes at ${viewport.name}`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await expectAllThemesAA(page);
+      });
 
-    await toggle.getByRole('radio', { name: 'Light' }).click();
-    await expect(toggle.getByRole('radio', { name: 'Light' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    // Move the pointer off the toggle so a lingering :hover state (from the click above) isn't
-    // scanned as the resting state — this is a real-browser artifact of automated clicking, not part
-    // of the theme itself.
-    await page.mouse.move(0, 0);
-    const lightResults = await new AxeBuilder({ page })
-      .options({ rules: { region: { enabled: false } } })
-      .analyze();
-    expect(lightResults.violations).toEqual([]);
+      // AC5/NFR5: no new console errors/warnings, extended to the mobile-viewport runs (mirrors the
+      // desktop-only "no new console errors" test above, plus the drawer interaction this story added).
+      test(`no new console errors opening/closing the nav drawer and switching themes at ${viewport.name}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const errors = captureConsoleErrors(page);
 
-    await toggle.getByRole('radio', { name: 'High contrast' }).click();
-    await expect(toggle.getByRole('radio', { name: 'High contrast' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await page.mouse.move(0, 0);
-    const hcResults = await new AxeBuilder({ page })
-      .options({ rules: { region: { enabled: false } } })
-      .analyze();
-    expect(hcResults.violations).toEqual([]);
+        await gotoHarness(page);
+        const hamburger = page.getByRole('button', { name: 'Open navigation' });
+        await hamburger.click();
+        await expect(page.locator('.nav-drawer')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.nav-drawer')).toBeHidden();
+
+        const toggle = themeToggle(page);
+        await toggle.getByRole('radio', { name: 'Light' }).click();
+        await toggle.getByRole('radio', { name: 'High contrast' }).click();
+        await toggle.getByRole('radio', { name: 'Dark' }).click();
+
+        expect(errors).toEqual([]);
+      });
+    }
   });
 });

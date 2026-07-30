@@ -8,6 +8,15 @@
   background: var(--cds-bg-page);
   color: var(--cds-text-primary);
   font-family: var(--cds-font-base);
+
+  // Story #123 Task #140 / ADR 0043: below `md` the static in-flow sidebar column collapses out
+  // entirely — navigation instead lives behind the top bar's hamburger, opened in a CDK Dialog drawer
+  // (see rack-selector-topbar.component.ts). `minmax(0, 1fr)` (not a bare `1fr`) so grid's automatic
+  // minimum-content-size floor can never force the column wider than the viewport and cause horizontal
+  // scroll.
+  @include cds-mixins.cds-respond-below(md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 // Background mesh (Task #127 / story AC3: "CSS-based mesh/gradient ... using tokenized opacities").
@@ -40,6 +49,13 @@
   border-bottom: none;
   border-left: none;
   box-shadow: var(--cds-shadow-lg);
+
+  // Static in-flow sidebar hidden below `md` — navigation moves into the top bar's hamburger-triggered
+  // drawer instead (nav-drawer.component.ts). Not `visibility: hidden`: this must free the grid column
+  // entirely so `.shell` truly collapses to a single column.
+  @include cds-mixins.cds-respond-below(md) {
+    display: none;
+  }
 }
 
 .shell__main {
