@@ -70,9 +70,10 @@ jobs:
         env:
           CAISSON_DB: ${{ secrets.CAISSON_DB }}
         run: |
-          dotnet tool install --global dotnet-ef --version "8.*"
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          dotnet ef database update \
+          # The repo pins dotnet-ef via a local tool manifest (.config/dotnet-tools.json), so restore it
+          # and invoke through the manifest — matches the CI migration-apply/rollback gate exactly.
+          dotnet tool restore
+          dotnet tool run dotnet-ef -- database update \
             --project src/Caisson.Infrastructure --startup-project src/Caisson.Infrastructure
       - name: Seed a virtual rack (demo data)
         env:
