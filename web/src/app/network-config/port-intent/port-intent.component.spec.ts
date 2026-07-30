@@ -225,6 +225,16 @@ describe('PortIntentComponent', () => {
     expect(document.querySelectorAll('.port-intent-editor')).toHaveLength(1);
   });
 
+  it('the ?switch=&port= deep link does NOT auto-open the editor for a user lacking NetworkConfigAuthor', async () => {
+    const { fixture } = await setup({
+      canAuthor: false,
+      queryParams: { switch: 'SW-1', port: 'ether1' },
+    });
+
+    expect(dialogEl()).toBeNull();
+    expect(fixture.nativeElement.querySelector('.port-intent__table')).toBeTruthy();
+  });
+
   it('mutating controls (Edit) are absent without the NetworkConfigAuthor permission', async () => {
     const { fixture } = await setup({ canAuthor: false });
 

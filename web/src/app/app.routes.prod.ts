@@ -44,10 +44,12 @@ export const routes: Routes = [
       import('./drift/audit/audit-record-view.component').then((m) => m.AuditRecordViewComponent),
   },
   // Story #168: Network Config authoring (VLAN Catalogue + Port Intent) — keep in lock-step with the
-  // real routes in app.routes.ts.
+  // real routes in app.routes.ts, including canDeactivate living on the shell route (see that file's
+  // comment): switching between the vlans/ports children must not trigger the discard-changes dialog.
   {
     path: 'racks/:rackId/network-config',
     canActivate: [roleGuard],
+    canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
     loadComponent: () =>
       import('./network-config/network-config-shell.component').then(
         (m) => m.NetworkConfigShellComponent,
@@ -56,7 +58,6 @@ export const routes: Routes = [
       { path: '', redirectTo: 'vlans', pathMatch: 'full' },
       {
         path: 'vlans',
-        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
         loadComponent: () =>
           import('./network-config/vlan-catalogue/vlan-catalogue.component').then(
             (m) => m.VlanCatalogueComponent,
@@ -64,7 +65,6 @@ export const routes: Routes = [
       },
       {
         path: 'ports',
-        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
         loadComponent: () =>
           import('./network-config/port-intent/port-intent.component').then(
             (m) => m.PortIntentComponent,

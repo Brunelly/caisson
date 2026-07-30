@@ -75,10 +75,12 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
     }
 
     /// <summary>
-    /// Saves the rack's network intent (AC1/AC2/AC5): validates first (400 on any field error, DB
-    /// untouched), then upserts under an xmin-based optimistic-concurrency check (409 with an actionable
-    /// "reload and reapply" detail on a stale <c>If-Match</c> token), then writes a bounded audit event
-    /// (rackId, actor, timestamp, VLAN/port-intent counts, correlationId — never the full payload, NFR3).
+    /// Saves the rack's network intent (AC1/AC2/AC5): checks per-rack access/existence first (mirroring
+    /// GET/Validate, so a caller without rack access gets 404 rather than paying for validation of a rack
+    /// it can't see), then validates (400 on any field error, DB untouched), then upserts under an
+    /// xmin-based optimistic-concurrency check (409 with an actionable "reload and reapply" detail on a
+    /// stale <c>If-Match</c> token), then writes a bounded audit event (rackId, actor, timestamp,
+    /// VLAN/port-intent counts, correlationId — never the full payload, NFR3).
     /// </summary>
     [HttpPut]
     [Authorize(Policy = AuthorizationPolicies.NetworkConfigAuthor)]
@@ -94,12 +96,6 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
             return ValidationError((nameof(request), "A request body is required."));
         }
 
-        var (vlanCatalogue, portIntents) = NetworkIntentContractMappers.FromRequest(request);
-        if (FieldErrors(vlanCatalogue, portIntents) is { } validationResult)
-        {
-            return validationResult;
-        }
-
         if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
         {
             return denied;
@@ -108,6 +104,12 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
         if (!await _context.RackExistsAsync(rackId, cancellationToken))
         {
             return RackNotFound(rackId);
+        }
+
+        var (vlanCatalogue, portIntents) = NetworkIntentContractMappers.FromRequest(request);
+        if (FieldErrors(vlanCatalogue, portIntents) is { } validationResult)
+        {
+            return validationResult;
         }
 
         var entity = await _context.RackNetworkIntents.FirstOrDefaultAsync(x => x.RackId == rackId, cancellationToken);

@@ -46,10 +46,17 @@ export const routes: Routes = [
   },
   // Story #168: Network Config authoring (VLAN Catalogue + Port Intent). The shell hosts the
   // tab bar/persistent Save action; vlans/ports are child routes so switching tabs never re-navigates
-  // away from the shell (and its in-progress, unsaved draft) itself.
+  // away from the shell (and its in-progress, unsaved draft) itself. canDeactivate is on the SHELL
+  // route, not the vlans/ports children: Angular only re-runs a route's canDeactivate guards when that
+  // route itself is deactivated, and switching between the vlans/ports children leaves the parent shell
+  // route (and its component instance) active. Guarding the children instead would fire the "discard
+  // unsaved changes?" dialog on every tab switch even though the shared draft in
+  // NetworkIntentStateService is untouched by that navigation — AC4 only wants a warning when actually
+  // leaving the authoring workspace.
   {
     path: 'racks/:rackId/network-config',
     canActivate: [roleGuard],
+    canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
     loadComponent: () =>
       import('./network-config/network-config-shell.component').then(
         (m) => m.NetworkConfigShellComponent,
@@ -58,7 +65,6 @@ export const routes: Routes = [
       { path: '', redirectTo: 'vlans', pathMatch: 'full' },
       {
         path: 'vlans',
-        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
         loadComponent: () =>
           import('./network-config/vlan-catalogue/vlan-catalogue.component').then(
             (m) => m.VlanCatalogueComponent,
@@ -66,7 +72,6 @@ export const routes: Routes = [
       },
       {
         path: 'ports',
-        canDeactivate: [lazyUnsavedNetworkIntentChangesGuard],
         loadComponent: () =>
           import('./network-config/port-intent/port-intent.component').then(
             (m) => m.PortIntentComponent,

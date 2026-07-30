@@ -139,7 +139,11 @@ export class PortIntentComponent {
     // exactly once per navigation (guarded by autoOpenedDeepLink so a later, unrelated state change —
     // e.g. the drift overlay refreshing — never reopens it).
     effect(() => {
-      if (this.autoOpenedDeepLink() || this.switches().length === 0) {
+      if (
+        this.autoOpenedDeepLink() ||
+        this.switches().length === 0 ||
+        !this.permission.canAuthorNetworkConfig()
+      ) {
         return;
       }
       const query = this.route.snapshot.queryParamMap;

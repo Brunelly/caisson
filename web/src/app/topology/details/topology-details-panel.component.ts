@@ -283,11 +283,13 @@ export class TopologyDetailsPanelComponent {
     return this.state.driftItems().find((item) => item.driftItemId === entry.driftItemId) ?? null;
   }
 
-  /** Mirrors switchPortStableKey's `${switchStableKey}|${portName}` composition in reverse — a raw '|'
-   * only ever appears as that separator (escapeStableKeySegment escapes any literal '|' within a
-   * segment), so splitting on it is safe. */
+  /** Mirrors StableKeys.ForSwitchPort's `${switchKey}|${portName}` composition in reverse. The switch
+   * key itself is two '|'-separated segments (`{deviceKey}|{serial-or-mgmtIp}` — see
+   * StableKeys.ForSwitch), so a port's stable key is three segments; only the last (the port name) is
+   * ours to drop. A raw '|' only ever appears as a segment separator (escapeStableKeySegment escapes
+   * any literal '|' within a segment), so splitting on it is safe. */
   protected switchStableKeyFor(port: PortGraphNode): string {
-    return port.stableKey.split('|')[0];
+    return port.stableKey.split('|').slice(0, -1).join('|');
   }
 
   /** The authored access-VLAN intent for this port (story #168, AC3), or `null` for Unchanged/Inherit. */

@@ -72,6 +72,8 @@ public static class NetworkIntentValidator
             }
         }
 
+        var seenPorts = new HashSet<(string SwitchStableKey, string PortName)>();
+
         for (var i = 0; i < portIntents.Count; i++)
         {
             var intent = portIntents[i];
@@ -87,6 +89,13 @@ public static class NetworkIntentValidator
             if (string.IsNullOrWhiteSpace(intent.PortName))
             {
                 errors.Add((portField, "portName is required."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(intent.SwitchStableKey) && !string.IsNullOrWhiteSpace(intent.PortName)
+                && !seenPorts.Add((intent.SwitchStableKey, intent.PortName)))
+            {
+                errors.Add((portField,
+                    $"Port '{intent.PortName}' on switch '{intent.SwitchStableKey}' already has an intent in this payload."));
             }
 
             if (intent.AccessVlanId is { } vlanId && !catalogueIds.Contains(vlanId))

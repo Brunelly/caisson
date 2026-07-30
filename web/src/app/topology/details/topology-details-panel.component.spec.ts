@@ -14,6 +14,11 @@ import type {
 import type { NicGraphNode, PortGraphNode } from '../model/topology-graph-model';
 import { TopologyEntityService } from '../services/topology-entity.service';
 import { TopologyStateService } from '../state/topology-state.service';
+import type {
+  PortAccessIntentDto,
+  VlanCatalogueEntryDto,
+} from '../../network-config/model/network-intent-contracts';
+import { NetworkIntentStateService } from '../../network-config/state/network-intent-state.service';
 import { TopologyDetailsPanelComponent } from './topology-details-panel.component';
 
 function attachment(
@@ -89,11 +94,15 @@ function unmappedNic(): NicGraphNode {
   };
 }
 
+// A realistic switch port stable key is THREE '|'-separated segments — StableKeys.ForSwitch already
+// composes `{deviceKey}|{serial-or-mgmtIp}` for the switch itself, and StableKeys.ForSwitchPort appends
+// `|{portName}` on top of that. A flatter two-segment fixture here would mask a truncation bug in
+// switchStableKeyFor (it did, in production — see the "network intent drill-down" describe block below).
 function portNode(): PortGraphNode {
   return {
     id: 'port:SW-1/ether5',
     type: 'port',
-    stableKey: 'SW-1|ether5',
+    stableKey: 'SW-1|serial-1|ether5',
     switchId: 'switch:SW-1',
     name: 'ether5',
     state: 'confirmed',
@@ -129,6 +138,8 @@ describe('TopologyDetailsPanelComponent', () => {
     selectionStaleNotice = false,
     driftOverlay: ReadonlyMap<string, DriftOverlayEntry> = new Map(),
     driftItems: DriftItemDto[] = [],
+    portIntents: PortAccessIntentDto[] = [],
+    vlanCatalogue: VlanCatalogueEntryDto[] = [],
   ) {
     TestBed.resetTestingModule();
     selection = signal<NicGraphNode | PortGraphNode | null>(null);
@@ -159,12 +170,24 @@ describe('TopologyDetailsPanelComponent', () => {
       clearSelection,
     };
 
+    // Story #168 AC3: pre-seeded so the constructor effect's `this.networkIntent.load(rackId)` call
+    // (guarded by `rackId() !== rackId`) never fires a real HTTP request in this test.
+    const networkIntentStub = {
+      rackId: signal('rack-1'),
+      portIntentFor: (switchStableKey: string, portName: string) =>
+        portIntents.find((p) => p.switchStableKey === switchStableKey && p.portName === portName) ??
+        null,
+      vlanCatalogue: signal(vlanCatalogue),
+      load: vi.fn(),
+    };
+
     TestBed.configureTestingModule({
       imports: [TopologyDetailsPanelComponent],
       providers: [
         provideRouter([]),
         { provide: TopologyStateService, useValue: stateStub },
         { provide: TopologyEntityService, useValue: { getEntity } },
+        { provide: NetworkIntentStateService, useValue: networkIntentStub },
       ],
     });
 
@@ -462,6 +485,95 @@ describe('TopologyDetailsPanelComponent', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelector('.details-panel__drift')).toBeNull();
+    });
+  });
+
+  describe('network intent drill-down (story #168, AC3)', () => {
+    // portNode()'s stableKey is 'SW-1|serial-1|ether5' — three segments, mirroring a real
+    // StableKeys.ForSwitchPort key. The switch's own stable key (StableKeys.ForSwitch) is therefore the
+    // FIRST TWO segments, 'SW-1|serial-1', not just 'SW-1' — a truncated switch key would never match an
+    // authored intent keyed by the real switch, which is exactly the bug this guards against.
+    const fullSwitchStableKey = 'SW-1|serial-1';
+
+    it('renders the authored access-VLAN intent badge, keyed by the FULL (multi-segment) switch stable key', async () => {
+      setup(
+        false,
+        new Map(),
+        [],
+        [{ switchStableKey: fullSwitchStableKey, portName: 'ether5', accessVlanId: 120 }],
+        [{ id: 120, name: 'storage', description: null }],
+      );
+
+      selection.set(portNode());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const section = Array.from(
+        fixture.nativeElement.querySelectorAll('.details-panel__section'),
+      ).find((el) => (el as Element).querySelector('h3')?.textContent === 'Network intent') as
+        Element | undefined;
+      expect(section).toBeTruthy();
+      expect(section!.textContent).toContain('Access VLAN = 120 (storage)');
+    });
+
+    it('renders the Unchanged/Inherit badge when no intent is authored for this port', async () => {
+      setup(false, new Map(), [], [], []);
+
+      selection.set(portNode());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const section = Array.from(
+        fixture.nativeElement.querySelectorAll('.details-panel__section'),
+      ).find((el) => (el as Element).querySelector('h3')?.textContent === 'Network intent') as
+        Element | undefined;
+      expect(section).toBeTruthy();
+      expect(section!.textContent).toContain('Unchanged / Inherit');
+    });
+
+    it('does NOT render the intent badge when an intent is keyed by only the truncated first segment of the switch key (regression guard)', async () => {
+      // A stale/truncated key ('SW-1', dropping the '|serial-1' segment) must never match — this is the
+      // exact failure mode the switchStableKeyFor bug produced (it always looked up the truncated key,
+      // so a real intent stored against the full key was silently never found).
+      setup(
+        false,
+        new Map(),
+        [],
+        [{ switchStableKey: 'SW-1', portName: 'ether5', accessVlanId: 120 }],
+        [{ id: 120, name: 'storage', description: null }],
+      );
+
+      selection.set(portNode());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const section = Array.from(
+        fixture.nativeElement.querySelectorAll('.details-panel__section'),
+      ).find((el) => (el as Element).querySelector('h3')?.textContent === 'Network intent') as
+        Element | undefined;
+      expect(section!.textContent).toContain('Unchanged / Inherit');
+    });
+
+    it('links "Edit port intent" to the ports route with the FULL switch stable key and port name as query params, for the AC3 deep link', async () => {
+      setup(false, new Map(), [], [], []);
+
+      selection.set(portNode());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const links: HTMLAnchorElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('.details-panel__link'),
+      );
+      const link = links.find((l) => l.getAttribute('href')?.includes('/network-config/ports'));
+      expect(link).toBeTruthy();
+      const url = new URL(link!.getAttribute('href')!, 'http://localhost');
+      expect(url.pathname).toBe('/racks/rack-1/network-config/ports');
+      expect(url.searchParams.get('switch')).toBe(fullSwitchStableKey);
+      expect(url.searchParams.get('port')).toBe('ether5');
     });
   });
 });

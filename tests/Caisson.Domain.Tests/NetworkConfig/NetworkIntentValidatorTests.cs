@@ -156,6 +156,34 @@ public sealed class NetworkIntentValidatorTests
     }
 
     [Fact]
+    public void Duplicate_port_intents_for_the_same_switch_and_port_are_rejected()
+    {
+        var catalogue = new[] { new VlanCatalogueEntry(120, "storage", null) };
+        var portIntents = new[]
+        {
+            new PortAccessIntent("SW-1", "ether1", 120),
+            new PortAccessIntent("SW-1", "ether1", null),
+        };
+
+        var errors = NetworkIntentValidator.Validate(catalogue, portIntents);
+
+        errors.Should().ContainSingle(e =>
+            e.Field == "portIntents[1].portName" && e.Message.Contains("already has an intent"));
+    }
+
+    [Fact]
+    public void Same_port_name_on_different_switches_is_not_a_duplicate()
+    {
+        var portIntents = new[]
+        {
+            new PortAccessIntent("SW-1", "ether1", null),
+            new PortAccessIntent("SW-2", "ether1", null),
+        };
+
+        NetworkIntentValidator.Validate(Array.Empty<VlanCatalogueEntry>(), portIntents).Should().BeEmpty();
+    }
+
+    [Fact]
     public void Every_problem_is_accumulated_rather_than_stopping_at_the_first()
     {
         var catalogue = new[]
