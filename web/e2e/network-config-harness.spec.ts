@@ -280,4 +280,113 @@ test.describe('Network Config — dev harness (real browser)', () => {
       '20',
     );
   });
+
+  // --- Story #169: YAML round-trip (import → edit → preview/export) ---
+
+  const IMPORT_YAML = [
+    'apiVersion: caisson.dev/v1alpha1',
+    'kind: RackDesiredState',
+    'metadata:',
+    '  rackSlug: rack-1',
+    'spec:',
+    '  vlans:',
+    '    - vlanId: 10 # storage vlan comment (not preserved)',
+    '      name: imported-storage',
+    'extensions:',
+    '  l3:',
+    '    routers:',
+    '      - 10.0.0.1',
+  ].join('\n');
+
+  async function importYaml(page: Page, yaml: string): Promise<void> {
+    await page.locator('.network-config-shell__import').click();
+    const dialog = page.locator('.yaml-import-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.locator('#yaml-import-textarea').fill(yaml);
+    await dialog.locator('.yaml-import-dialog__import').click();
+    await expect(dialog).toBeHidden();
+  }
+
+  test('Import YAML with extensions + comments, edit a VLAN, then export: the edit is reflected, the extensions bytes survive, comments are absent, and the not-preserved warning is announced', async ({
+    page,
+  }) => {
+    await gotoVlans(page, true);
+
+    await importYaml(page, IMPORT_YAML);
+
+    // Success toast + a persistent polite live-region banner announcing comments were not preserved.
+    await expect(page.locator('.toast--success')).toBeVisible();
+    const warningBanner = page.locator('.validation-summary__warnings');
+    await expect(warningBanner).toBeVisible();
+    await expect(warningBanner).toHaveAttribute('aria-live', 'polite');
+    await expect(warningBanner).toContainText('Comments are not preserved');
+
+    // The imported supported model replaced the draft catalogue.
+    await expect(vlanRow(page, 'imported-storage')).toBeVisible();
+
+    // Edit the imported VLAN — the change must show up in the exported YAML.
+    await vlanRow(page, 'imported-storage').getByRole('button', { name: 'Edit' }).click();
+    const editDialog = page.locator('.vlan-dialog');
+    await expect(editDialog).toBeVisible();
+    await editDialog.locator('#vlan-dialog-name').fill('edited-storage');
+    await editDialog.locator('.vlan-dialog__submit').click();
+    await expect(editDialog).toBeHidden();
+
+    // Preview / Export renders server-side and shows the canonical YAML.
+    await page.locator('.network-config-shell__preview').click();
+    const preview = page.locator('.yaml-preview');
+    await expect(preview).toBeVisible();
+    const code = preview.locator('.yaml-preview__code');
+    await expect(code).toContainText('name: edited-storage'); // the edit is reflected
+    await expect(code).toContainText('10.0.0.1'); // the extensions bytes survived
+    await expect(code).not.toContainText('#'); // comments are absent from the export
+    await expect(preview.locator('.yaml-preview__notice')).toContainText(
+      'Comments are not preserved',
+    );
+  });
+
+  test('Import/Export controls are hidden without the NetworkConfigAuthor claim', async ({
+    page,
+  }) => {
+    await gotoVlans(page, false);
+    await expect(page.locator('.network-config-shell__import')).toHaveCount(0);
+    await expect(page.locator('.network-config-shell__preview')).toHaveCount(0);
+  });
+
+  test('YAML import dialog: Escape closes it and focus returns to the trigger; backdrop click closes it', async ({
+    page,
+  }) => {
+    await gotoVlans(page, true);
+    const trigger = page.locator('.network-config-shell__import');
+
+    await trigger.click();
+    await expect(page.locator('.yaml-import-dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.yaml-import-dialog')).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await expect(page.locator('.yaml-import-dialog')).toBeVisible();
+    await page.locator('.cds-overlay-backdrop').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.yaml-import-dialog')).toBeHidden();
+  });
+
+  test('YAML import dialog has no automatically-detectable accessibility violations across themes', async ({
+    page,
+  }) => {
+    await gotoVlans(page, true);
+    await page.locator('.network-config-shell__import').click();
+    await expect(page.locator('.yaml-import-dialog')).toBeVisible();
+    await scanAllThemes(page);
+  });
+
+  test('YAML preview/export dialog has no automatically-detectable accessibility violations across themes', async ({
+    page,
+  }) => {
+    await gotoVlans(page, true);
+    await importYaml(page, IMPORT_YAML);
+    await page.locator('.network-config-shell__preview').click();
+    await expect(page.locator('.yaml-preview__code')).toBeVisible();
+    await scanAllThemes(page);
+  });
 });

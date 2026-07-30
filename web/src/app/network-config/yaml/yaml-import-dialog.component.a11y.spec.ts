@@ -21,7 +21,7 @@ describe('YamlImportDialogComponent accessibility', () => {
         { provide: DesiredStateRoundTripService, useValue: { parse: () => of({ kind: 'ok' }) } },
         {
           provide: NetworkIntentStateService,
-          useValue: { applyImportedEnvelope: () => {}, rackId: signal('rack-1') },
+          useValue: { applyImportedEnvelope: () => void 0, rackId: signal('rack-1') },
         },
       ],
     });
@@ -35,7 +35,9 @@ describe('YamlImportDialogComponent accessibility', () => {
 
     expect(document.querySelector('.yaml-import-dialog')).toBeTruthy();
 
-    const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
+    const results = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
     expect(results.violations).toEqual([]);
   }, 15000);
 });

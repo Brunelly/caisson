@@ -52,9 +52,13 @@ describe('YamlPreviewComponent accessibility', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(document.querySelector('.yaml-preview')).toBeTruthy();
-    expect(document.querySelector('.yaml-preview__code')?.textContent).toContain('RackDesiredState');
+    expect(document.querySelector('.yaml-preview__code')?.textContent).toContain(
+      'RackDesiredState',
+    );
 
-    const results = await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } });
+    const results = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
     expect(results.violations).toEqual([]);
   }, 15000);
 });

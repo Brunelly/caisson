@@ -25,7 +25,9 @@ describe('DesiredStateRoundTripService', () => {
       vlanCatalogue: [{ id: 10, name: 'storage', description: 'iSCSI' }],
       portIntents: [{ switchStableKey: 'sw1', portName: 'eth1', accessVlanId: 10 }],
     },
-    unknownBlocks: [{ anchorPath: 'extensions', rawYamlText: 'extensions:\n  l3: {}\n', checksum: 'abc' }],
+    unknownBlocks: [
+      { anchorPath: 'extensions', rawYamlText: 'extensions:\n  l3: {}\n', checksum: 'abc' },
+    ],
     warnings: ['commentsNotPreserved'],
     schemaVersion: 1,
   };
@@ -81,7 +83,10 @@ describe('DesiredStateRoundTripService', () => {
     const result = firstValueFrom(service.parse(rackId, 'bad'));
 
     const req = httpMock.expectOne(`${base}/parse`);
-    req.flush({ errors: { 'metadata.rackSlug': ['is required'] } }, { status: 400, statusText: 'Bad Request' });
+    req.flush(
+      { errors: { 'metadata.rackSlug': ['is required'] } },
+      { status: 400, statusText: 'Bad Request' },
+    );
 
     await expect(result).resolves.toEqual({
       kind: 'validationError',

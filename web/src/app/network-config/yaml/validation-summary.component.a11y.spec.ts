@@ -19,9 +19,13 @@ describe('ValidationSummaryComponent accessibility', () => {
     const region = fixture.nativeElement.querySelector('[role="alert"]');
     expect(region).toBeTruthy();
     expect(region.getAttribute('aria-live')).toBe('assertive');
-    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.validation-summary__heading'));
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('.validation-summary__heading'),
+    );
 
-    const results = await axe.run(fixture.nativeElement, { rules: { 'color-contrast': { enabled: false } } });
+    const results = await axe.run(fixture.nativeElement, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
     expect(results.violations).toEqual([]);
   });
 
@@ -37,7 +41,9 @@ describe('ValidationSummaryComponent accessibility', () => {
     expect(region.getAttribute('aria-live')).toBe('polite');
     expect(region.textContent).toContain('Comments are not preserved');
 
-    const results = await axe.run(fixture.nativeElement, { rules: { 'color-contrast': { enabled: false } } });
+    const results = await axe.run(fixture.nativeElement, {
+      rules: { 'color-contrast': { enabled: false } },
+    });
     expect(results.violations).toEqual([]);
   });
 });

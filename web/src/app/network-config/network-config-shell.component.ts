@@ -6,7 +6,7 @@
 // toast/telemetry feedback) lives here, not in the state service, matching apply-action.component.ts's
 // separation: state services own signals/HTTP-fetch, components own user-facing feedback.
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { TelemetryService } from '../core/telemetry/telemetry.service';
@@ -115,6 +115,10 @@ export class NetworkConfigShellComponent {
   private readonly toast = inject(ToastService);
   private readonly telemetry = inject(TelemetryService);
   private readonly dialog = inject(Dialog);
+  // The dialogs inject NetworkIntentStateService/DesiredStateRoundTripService; passing THIS component's
+  // injector makes the CDK overlay resolve them from the network-config route's injector (in the dev
+  // harness, that is where the fakes live) rather than the root injector.
+  private readonly injector = inject(Injector);
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -144,6 +148,7 @@ export class NetworkConfigShellComponent {
       YamlImportDialogComponent,
       {
         data: { rackId },
+        injector: this.injector,
         ariaLabelledBy: 'yaml-import-dialog-heading',
         hasBackdrop: true,
         backdropClass: 'cds-overlay-backdrop',
@@ -155,13 +160,13 @@ export class NetworkConfigShellComponent {
       if (!result) {
         return;
       }
+      const suffix = result.warnings.includes('commentsNotPreserved')
+        ? ' Comments were not preserved.'
+        : '';
       this.toast.success(
         `Imported ${result.vlanCount} VLAN${result.vlanCount === 1 ? '' : 's'} and ` +
-          `${result.portIntentCount} port intent${result.portIntentCount === 1 ? '' : 's'}.`,
+          `${result.portIntentCount} port intent${result.portIntentCount === 1 ? '' : 's'}.${suffix}`,
       );
-      if (result.warnings.includes('commentsNotPreserved')) {
-        this.toast.error('Comments in the imported YAML are not preserved in v1.');
-      }
     });
   }
 
@@ -174,6 +179,7 @@ export class NetworkConfigShellComponent {
     }
 
     this.dialog.open<void>(YamlPreviewComponent, {
+      injector: this.injector,
       ariaLabelledBy: 'yaml-preview-heading',
       hasBackdrop: true,
       backdropClass: 'cds-overlay-backdrop',
