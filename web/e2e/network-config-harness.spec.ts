@@ -200,4 +200,74 @@ test.describe('Network Config — dev harness (real browser)', () => {
     await expect(page.locator('.port-intent-editor')).toBeVisible();
     await scanAllThemes(page);
   });
+
+  test('VLAN form dialog: Escape closes it, backdrop click closes it, and focus returns to the trigger', async ({
+    page,
+  }) => {
+    await gotoVlans(page, true);
+    const trigger = page.locator('.vlan-catalogue__add');
+
+    // Escape closes and restores focus to the trigger (CDK Dialog, ADR 0034).
+    await trigger.click();
+    await expect(page.locator('.vlan-dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.vlan-dialog')).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    // Backdrop (outside) click also closes it, without persisting anything typed.
+    await trigger.click();
+    await expect(page.locator('.vlan-dialog')).toBeVisible();
+    await page.locator('#vlan-dialog-name').fill('should-not-be-saved');
+    await page.locator('.cds-overlay-backdrop').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.vlan-dialog')).toBeHidden();
+    await expect(page.locator('.vlan-catalogue__table tbody tr')).toHaveCount(2);
+  });
+
+  test('Port Intent editor: Escape closes it, backdrop click closes it, and focus returns to the trigger row', async ({
+    page,
+  }) => {
+    await gotoPorts(page, true);
+    const trigger = portRow(page, 'ether3').getByRole('button', { name: 'Edit' });
+
+    await trigger.click();
+    await expect(page.locator('.port-intent-editor')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.port-intent-editor')).toBeHidden();
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await expect(page.locator('.port-intent-editor')).toBeVisible();
+    await page.locator('.cds-overlay-backdrop').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('.port-intent-editor')).toBeHidden();
+    // Unchanged: no persisted intent for a port nobody applied a change to.
+    await expect(portRow(page, 'ether3').locator('.status-badge--intent-inherit')).toBeVisible();
+  });
+
+  test('Port Intent editor native select: keyboard-operable (focus, choose via keyboard, Enter/Space-activated Apply commits the choice)', async ({
+    page,
+  }) => {
+    await gotoPorts(page, true);
+    await portRow(page, 'ether3').getByRole('button', { name: 'Edit' }).click();
+    const dialog = page.locator('.port-intent-editor');
+    await expect(dialog).toBeVisible();
+
+    const select = dialog.locator('#port-intent-editor-select');
+    await select.focus();
+    await expect(select).toBeFocused();
+    // A native <select> opens/chooses via its own OS-level popup; Playwright's selectOption drives the
+    // same keyboard-accessible value-change event a real Arrow+Enter selection would dispatch.
+    await select.selectOption('20');
+    await expect(select).toHaveValue('20');
+
+    // Tab from the select reaches Cancel then Apply; activate Apply via Enter (keyboard, not a click).
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(dialog.locator('.port-intent-editor__apply')).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expect(dialog).toBeHidden();
+    await expect(portRow(page, 'ether3').locator('.status-badge--intent-access')).toContainText(
+      '20',
+    );
+  });
 });

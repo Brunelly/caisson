@@ -20,7 +20,11 @@ import { NetworkIntentStateService } from './state/network-intent-state.service'
   styleUrl: './network-config-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="network-config-shell">
+    <!-- A plain <section> (no accessible name, so it is not itself exposed as a landmark) rather than a
+         bare <div> — without SOME article/aside/main/nav/section ancestor, this component's own
+         <header> below would get the implicit "banner" role and collide with the persistent app
+         shell's RackSelectorTopBar <header role="banner"> (axe: "at most one banner landmark"). -->
+    <section class="network-config-shell">
       <header class="network-config-shell__header">
         <h1>Network Config — rack {{ state.rackId() }}</h1>
 
@@ -83,7 +87,7 @@ import { NetworkIntentStateService } from './state/network-intent-state.service'
       <div class="network-config-shell__body">
         <router-outlet />
       </div>
-    </div>
+    </section>
   `,
 })
 export class NetworkConfigShellComponent {
