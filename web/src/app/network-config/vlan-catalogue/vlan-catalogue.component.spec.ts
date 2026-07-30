@@ -8,10 +8,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NetworkIntentFieldError } from '../services/network-intent.service';
-import type {
-  PortAccessIntentDto,
-  VlanCatalogueEntryDto,
-} from '../model/network-intent-contracts';
+import type { PortAccessIntentDto, VlanCatalogueEntryDto } from '../model/network-intent-contracts';
 import { NetworkConfigPermissionService } from '../services/network-config-permission.service';
 import { NetworkIntentStateService } from '../state/network-intent-state.service';
 import { VlanCatalogueComponent } from './vlan-catalogue.component';
@@ -131,7 +128,9 @@ describe('VlanCatalogueComponent', () => {
     const state = createStateStub([vlan({ id: 10, name: 'default' })]);
     const fixture = await setup(state, true);
 
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.vlan-catalogue__add')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.vlan-catalogue__add')!
+      .click();
     fixture.detectChanges();
 
     const dialog = dialogEl();
@@ -153,7 +152,9 @@ describe('VlanCatalogueComponent', () => {
     const state = createStateStub([vlan({ id: 10, name: 'default' })]);
     const fixture = await setup(state, true);
 
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.vlan-catalogue__add')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.vlan-catalogue__add')!
+      .click();
     fixture.detectChanges();
     const dialog = dialogEl()!;
 
@@ -181,7 +182,11 @@ describe('VlanCatalogueComponent', () => {
 
     fillAndSubmit(dialog, fixture, { name: 'renamed' });
 
-    expect(state.updateVlan).toHaveBeenCalledWith(10, { id: 10, name: 'renamed', description: null });
+    expect(state.updateVlan).toHaveBeenCalledWith(10, {
+      id: 10,
+      name: 'renamed',
+      description: null,
+    });
     const row = fixture.nativeElement.querySelector('.vlan-catalogue__table tbody tr');
     expect(row.textContent).toContain('renamed');
   });
@@ -229,7 +234,9 @@ describe('VlanCatalogueComponent', () => {
     const fixture = await setup(createStateStub([vlan()]), true);
 
     expect(fixture.nativeElement.querySelector('.vlan-catalogue__add')).toBeTruthy();
-    expect(fixture.nativeElement.querySelectorAll('.vlan-catalogue__row-actions button')).toHaveLength(2);
+    expect(
+      fixture.nativeElement.querySelectorAll('.vlan-catalogue__row-actions button'),
+    ).toHaveLength(2);
     expect(
       Array.from(fixture.nativeElement.querySelectorAll('th')).some(
         (th) => (th as HTMLElement).textContent === 'Actions',

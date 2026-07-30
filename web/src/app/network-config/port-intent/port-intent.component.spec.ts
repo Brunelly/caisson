@@ -9,10 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  PortAccessIntentDto,
-  VlanCatalogueEntryDto,
-} from '../model/network-intent-contracts';
+import type { PortAccessIntentDto, VlanCatalogueEntryDto } from '../model/network-intent-contracts';
 import { NetworkConfigPermissionService } from '../services/network-config-permission.service';
 import { NetworkIntentStateService } from '../state/network-intent-state.service';
 import type { SwitchInventoryDto } from '../../topology/model/topology-contracts';

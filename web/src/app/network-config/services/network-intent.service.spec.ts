@@ -58,7 +58,10 @@ describe('NetworkIntentService', () => {
 
       httpMock.expectOne(url).flush(dto, { status: 200, statusText: 'OK' });
 
-      await expect(resultPromise).resolves.toEqual({ kind: 'ok', value: { intent: dto, etag: null } });
+      await expect(resultPromise).resolves.toEqual({
+        kind: 'ok',
+        value: { intent: dto, etag: null },
+      });
     });
 
     it('maps 401 to unauthorized', async () => {

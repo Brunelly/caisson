@@ -64,7 +64,9 @@ describe('VlanCatalogueComponent accessibility', () => {
   }, 15000);
 
   it('has no automatically-detectable accessibility violations with the Add VLAN dialog open', async () => {
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.vlan-catalogue__add')!.click();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.vlan-catalogue__add')!
+      .click();
     fixture.detectChanges();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
