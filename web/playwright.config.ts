@@ -11,7 +11,17 @@
 // generated from — and MUST be regenerated from — the pinned CI/mcp-tooling Linux Chromium build, never
 // a local machine's browser (different font rendering/subpixel AA fails the pixel-ratio threshold
 // below even with an otherwise-identical DOM).
+//
+// Story #123 Task #142: `mobile`/`tablet` projects add sm/md viewport coverage for the *-visual specs
+// only (`testMatch`, below) — every other spec (harness/smoke/a11y) still runs exactly once, under
+// `chromium`, exactly as before. Both projects still spread `devices['Desktop Chrome']` (Chromium, no
+// touch emulation) rather than a `devices['iPhone ...']`/`devices['iPad ...']` preset: those pull in
+// WebKit + touch-emulation, doubling the baseline-maintenance surface per engine for no real coverage
+// gain here (the D3 touch-interaction path is covered separately, in a dedicated real-touch test — see
+// ADR 0044) — one browser engine stays consistent with this file's pinned-CI-browser rationale above.
 import { defineConfig, devices } from '@playwright/test';
+
+const VISUAL_SPEC_PATTERN = /.*-visual\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -38,5 +48,22 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // ~390x844 — representative `sm` (<=640px) viewport.
+    {
+      name: 'mobile',
+      testMatch: VISUAL_SPEC_PATTERN,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+    },
+    // ~767x1024 — representative `md` (641-768px) viewport. 767, not 768: `cds-respond-below(md)`
+    // (_cds-mixins.scss) triggers strictly BELOW the `md` breakpoint's own 768px min-width — at exactly
+    // 768px the desktop/static-sidebar layout has already resumed, so 768 would exercise none of the
+    // md-scoped responsive rules this project exists to cover.
+    {
+      name: 'tablet',
+      testMatch: VISUAL_SPEC_PATTERN,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 767, height: 1024 } },
+    },
+  ],
 });
