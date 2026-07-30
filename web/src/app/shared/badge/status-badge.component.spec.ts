@@ -7,11 +7,16 @@ import { StatusBadgeComponent } from './status-badge.component';
 @Component({
   standalone: true,
   imports: [StatusBadgeComponent],
-  template: `<app-status-badge [kind]="kind" [labelText]="labelText" />`,
+  template: `<app-status-badge
+    [kind]="kind"
+    [labelText]="labelText"
+    [iconOverride]="iconOverride"
+  />`,
 })
 class HostComponent {
   kind: BadgeKind = 'confirmed';
   labelText: string | undefined = undefined;
+  iconOverride: string | undefined = undefined;
 }
 
 describe('StatusBadgeComponent', () => {
@@ -36,6 +41,9 @@ describe('StatusBadgeComponent', () => {
     ['severity-high', 'High severity'],
     ['severity-medium', 'Medium severity'],
     ['severity-low', 'Low severity'],
+    ['job-pending', 'Pending'],
+    ['job-success', 'Completed'],
+    ['job-error', 'Failed'],
   ];
 
   it.each(cases)('renders the default label for kind "%s"', (kind, expectedLabel) => {
@@ -54,22 +62,33 @@ describe('StatusBadgeComponent', () => {
     expect(badgeEl().className).toContain(`status-badge--${kind.toLowerCase()}`);
   });
 
-  it('overrides the default label when labelText is provided', () => {
+  it("overrides the default label when labelText is provided (the kind's icon still renders)", () => {
     fixture.componentInstance.kind = 'High';
     fixture.componentInstance.labelText = '95% match';
     fixture.detectChanges();
 
-    expect(badgeEl().textContent?.trim()).toBe('95% match');
+    expect(badgeEl().textContent?.trim()).toBe('✓ 95% match');
   });
 
-  const severityIconCases: [BadgeKind, string][] = [
+  // Task #130 (AC2): every mapping-state, confidence-band, severity, and job-status kind carries a
+  // non-colour glyph cue, not just the severity kinds — colour is never the only signal.
+  const iconCases: [BadgeKind, string][] = [
+    ['confirmed', '✓'],
+    ['ambiguous', '▲'],
+    ['unmapped', '✕'],
+    ['High', '✓'],
+    ['Medium', '▲'],
+    ['Low', '✕'],
     ['severity-high', '✕'],
     ['severity-medium', '▲'],
     ['severity-low', 'ℹ'],
+    ['job-pending', '…'],
+    ['job-success', '✓'],
+    ['job-error', '✕'],
   ];
 
-  it.each(severityIconCases)(
-    'renders an aria-hidden icon glyph for severity kind "%s" (NFR5: never colour-only)',
+  it.each(iconCases)(
+    'renders an aria-hidden icon glyph for kind "%s" (NFR5: never colour-only)',
     (kind, expectedIcon) => {
       fixture.componentInstance.kind = kind;
       fixture.detectChanges();
@@ -80,10 +99,11 @@ describe('StatusBadgeComponent', () => {
     },
   );
 
-  it('renders no icon for non-severity kinds', () => {
-    fixture.componentInstance.kind = 'confirmed';
+  it('overrides the default per-kind glyph when iconOverride is provided', () => {
+    fixture.componentInstance.kind = 'job-pending';
+    fixture.componentInstance.iconOverride = '↻';
     fixture.detectChanges();
 
-    expect(badgeEl().querySelector('.status-badge__icon')).toBeNull();
+    expect(badgeEl().querySelector('.status-badge__icon')?.textContent).toBe('↻');
   });
 });

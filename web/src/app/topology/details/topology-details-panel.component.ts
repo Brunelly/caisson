@@ -125,16 +125,15 @@ const ENTITY_TYPE_BY_NODE_TYPE: Record<TopologyGraphNode['type'], string> = {
                   track candidate.switchStableKey + '|' + candidate.portName
                 ) {
                   <li>
-                    <app-status-badge [kind]="confidenceBandOf(candidate.confidence)" />
+                    <app-status-badge
+                      [kind]="confidenceBandOf(candidate.confidence)"
+                      [labelText]="confidenceLabel(candidate.confidence)"
+                    />
                     <span class="details-panel__field--identifier">{{ candidate.portName }}</span>
                     on
                     <span class="details-panel__field--identifier">{{
                       candidate.switchSerial ?? candidate.switchStableKey
                     }}</span>
-                    —
-                    <span class="details-panel__field--identifier"
-                      >{{ (candidate.confidence * 100).toFixed(0) }}%</span
-                    >
                     — {{ reasonLabel(candidate.reasonCode) }}
                   </li>
                 }
@@ -237,6 +236,12 @@ export class TopologyDetailsPanelComponent {
       return null;
     }
     return this.state.driftItems().find((item) => item.driftItemId === entry.driftItemId) ?? null;
+  }
+
+  /** Task #130: folds the confidence percentage into the badge's own label (via `labelText`) so it's a
+   * second, non-colour affordance rather than a value floating separately next to the badge. */
+  protected confidenceLabel(confidence: number): string {
+    return `${confidenceBandOf(confidence)} confidence — ${(confidence * 100).toFixed(0)}%`;
   }
 
   protected headingFor(node: TopologyGraphNode): string {

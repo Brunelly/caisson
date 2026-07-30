@@ -21,19 +21,22 @@ describe('JobStatusBadgeComponent', () => {
     fixture = TestBed.createComponent(HostComponent);
   });
 
+  // Task #130: JobStatusBadgeComponent is now a thin wrapper over the shared StatusBadgeComponent, so
+  // the rendered root/icon classes are `status-badge`/`status-badge__icon`, namespaced per job-status
+  // bucket as `status-badge--job-{pending,success,error}` — see shared/badge/status-badge.component.ts.
   function badgeEl(): HTMLElement {
-    return fixture.nativeElement.querySelector('.job-status-badge');
+    return fixture.nativeElement.querySelector('.status-badge');
   }
 
   const cases: [DriftApplyJobStatus, string, string][] = [
-    ['Pending', 'Pending', 'job-status-badge--pending'],
-    ['Claimed', 'Claimed', 'job-status-badge--pending'],
-    ['Revalidating', 'Revalidating', 'job-status-badge--pending'],
-    ['Executing', 'Executing', 'job-status-badge--pending'],
-    ['Completed', 'Completed', 'job-status-badge--success'],
-    ['Failed', 'Failed', 'job-status-badge--error'],
-    ['StaleDrift', 'Stale drift', 'job-status-badge--error'],
-    ['Canceled', 'Canceled', 'job-status-badge--error'],
+    ['Pending', 'Pending', 'status-badge--job-pending'],
+    ['Claimed', 'Claimed', 'status-badge--job-pending'],
+    ['Revalidating', 'Revalidating', 'status-badge--job-pending'],
+    ['Executing', 'Executing', 'status-badge--job-pending'],
+    ['Completed', 'Completed', 'status-badge--job-success'],
+    ['Failed', 'Failed', 'status-badge--job-error'],
+    ['StaleDrift', 'Stale drift', 'status-badge--job-error'],
+    ['Canceled', 'Canceled', 'status-badge--job-error'],
   ];
 
   it.each(cases)(
@@ -51,8 +54,25 @@ describe('JobStatusBadgeComponent', () => {
     fixture.componentInstance.status = 'Failed';
     fixture.detectChanges();
 
-    const icon = badgeEl().querySelector('.job-status-badge__icon');
+    const icon = badgeEl().querySelector('.status-badge__icon');
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
     expect(icon?.textContent).toBeTruthy();
   });
+
+  const inProgressIconCases: [DriftApplyJobStatus, string][] = [
+    ['Pending', '…'],
+    ['Claimed', '…'],
+    ['Revalidating', '↻'],
+    ['Executing', '↻'],
+  ];
+
+  it.each(inProgressIconCases)(
+    'gives status "%s" its own glyph (%s), despite sharing the job-pending badge kind with the others',
+    (status, expectedIcon) => {
+      fixture.componentInstance.status = status;
+      fixture.detectChanges();
+
+      expect(badgeEl().querySelector('.status-badge__icon')?.textContent).toBe(expectedIcon);
+    },
+  );
 });
