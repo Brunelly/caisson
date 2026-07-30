@@ -5,6 +5,7 @@ using Caisson.Domain.NetworkConfig;
 using Caisson.Ingestion.RoundTrip;
 using FluentAssertions;
 using Xunit;
+using YamlDotNet.RepresentationModel;
 
 namespace Caisson.Ingestion.Tests.RoundTrip;
 
@@ -201,6 +202,102 @@ public sealed class DesiredStateYamlRendererTests
 
         result.Warnings.Should().ContainSingle().Which.Should().Be(DesiredStateRoundTripWarningCode.CommentsNotPreserved);
     }
+
+    [Theory]
+    [InlineData("Rack-1")]        // uppercase
+    [InlineData("rack_1")]        // underscore
+    [InlineData("rack.1")]        // dot
+    [InlineData("-rack")]         // leading hyphen
+    [InlineData("rack-")]         // trailing hyphen
+    public void Non_slug_rack_slug_is_refused_rather_than_emitting_an_unparseable_document(string badSlug)
+    {
+        // Regression for the AC1/AC2 gap: /render must never emit a metadata.rackSlug that /parse (which
+        // enforces DesiredStateSchema.IsValidRackSlug) would reject. rackSlug comes from the rack's
+        // ExternalKey, which is only length-bounded — a non-DNS-label key must be refused here.
+        var model = new SupportedDesiredStateModel(
+            badSlug, Array.Empty<VlanCatalogueEntry>(), Array.Empty<PortAccessIntent>());
+
+        var act = () => DesiredStateYamlRenderer.Render(model);
+
+        act.Should().Throw<DesiredStateRenderException>()
+            .Which.Errors.Should().ContainSingle(e => e.Field == "metadata.rackSlug");
+    }
+
+    [Fact]
+    public void Over_length_rack_slug_is_refused()
+    {
+        var tooLong = new string('a', DesiredStateSchema.MaxRackSlugLength + 1);
+        var model = new SupportedDesiredStateModel(
+            tooLong, Array.Empty<VlanCatalogueEntry>(), Array.Empty<PortAccessIntent>());
+
+        var act = () => DesiredStateYamlRenderer.Render(model);
+
+        act.Should().Throw<DesiredStateRenderException>()
+            .Which.Errors.Should().ContainSingle(e => e.Field == "metadata.rackSlug");
+    }
+
+    [Fact]
+    public void Rendered_document_for_a_slug_shaped_key_re_imports_cleanly()
+    {
+        // The export→re-import round-trip guarantee (AC2): a rendered document must be accepted by the importer.
+        var rendered = DesiredStateYamlRenderer.Render(SampleModel()).Yaml;
+
+        var reimported = DesiredStateYamlImporter.Import(rendered);
+
+        reimported.IsSuccess.Should().BeTrue();
+        reimported.Envelope!.SupportedModel.RackSlug.Should().Be("rack-1");
+    }
+
+    [Fact]
+    public void Preserved_block_with_a_non_extensions_anchor_is_refused()
+    {
+        var wrongAnchor = PreservedYamlBlock.Create("spec", "spec:\n  injected: true\n");
+
+        var act = () => DesiredStateYamlRenderer.Render(SampleModel(), new[] { wrongAnchor });
+
+        act.Should().Throw<DesiredStateRenderException>()
+            .Which.Errors.Should().ContainSingle(e => e.Field == "extensions:spec");
+    }
+
+    [Fact]
+    public void Emitted_key_order_matches_the_schema_constants()
+    {
+        // Makes the ADR-0049 "renderer can never drift" guarantee real for the hand-written emitter: the
+        // emitted key order at every level is pinned to the DesiredStateYamlSchema.*KeyOrder constants, so any
+        // reordering in the literal emitter fails here.
+        var model = new SupportedDesiredStateModel(
+            "rack-1",
+            new[] { new VlanCatalogueEntry(10, "storage", "iSCSI") },
+            new[] { new PortAccessIntent("sw1", "eth1", 10) });
+
+        var root = LoadRoot(DesiredStateYamlRenderer.Render(model).Yaml);
+
+        KeysOf(root).Should().Equal(DesiredStateYamlSchema.TopLevelKeyOrder.Where(k => k != "extensions"));
+        KeysOf(Child(root, "metadata")).Should().Equal(DesiredStateYamlSchema.MetadataKeyOrder);
+        KeysOf(Child(root, "spec")).Should().Equal(DesiredStateYamlSchema.SpecKeyOrder);
+
+        var vlan = (YamlMappingNode)((YamlSequenceNode)Child(Child(root, "spec"), "vlans")).Children[0];
+        KeysOf(vlan).Should().Equal(DesiredStateYamlSchema.VlanKeyOrder); // vlanId, name, description
+
+        var sw = (YamlMappingNode)((YamlSequenceNode)Child(Child(root, "spec"), "switches")).Children[0];
+        KeysOf(sw).Should().Equal(DesiredStateYamlSchema.SwitchKeyOrder);
+
+        var port = (YamlMappingNode)((YamlSequenceNode)Child(sw, "ports")).Children[0];
+        KeysOf(port).Should().Equal(DesiredStateYamlSchema.SupportedPortKeyOrder); // name, accessVlan
+    }
+
+    private static YamlMappingNode LoadRoot(string yaml)
+    {
+        var stream = new YamlStream();
+        stream.Load(new StringReader(yaml));
+        return (YamlMappingNode)stream.Documents[0].RootNode;
+    }
+
+    private static IEnumerable<string> KeysOf(YamlNode node)
+        => ((YamlMappingNode)node).Children.Keys.Cast<YamlScalarNode>().Select(k => k.Value!);
+
+    private static YamlNode Child(YamlNode node, string key)
+        => ((YamlMappingNode)node).Children[new YamlScalarNode(key)];
 
     private static string ReadGolden()
         => File.ReadAllText(GoldenPath, Encoding.UTF8).Replace("\r\n", "\n");

@@ -163,6 +163,60 @@ public sealed class DesiredStateRoundTripApiTests
     }
 
     [SkippableFact]
+    public async Task Render_for_a_non_slug_external_key_is_rejected_not_emitted_as_unparseable_yaml()
+    {
+        // Regression for the AC1/AC2 gap: the rack's ExternalKey is only length-bounded, but render derives
+        // metadata.rackSlug from it. A non-DNS-label key (uppercase here) must be refused with 400 carrying a
+        // metadata.rackSlug path — never rendered into a document that /parse would then reject.
+        Skip.IfNot(_factory.Available, "Requires Postgres; skipped when unavailable.");
+        var rackId = await _factory.CreateRackWithExternalKeyAsync("Rack_NotASlug.01");
+
+        var renderRequest = new
+        {
+            vlanCatalogue = Array.Empty<object>(),
+            portIntents = Array.Empty<object>(),
+            unknownBlocks = Array.Empty<object>(),
+            warnings = Array.Empty<string>(),
+            schemaVersion = DesiredStateSchema.CurrentSchemaVersion,
+        };
+
+        var render = await SendAsync(HttpMethod.Post, RenderPath(rackId), "NetworkConfigAuthor", renderRequest);
+
+        render.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await render.Content.ReadFromJsonAsync<JsonElement>(Json);
+        problem.GetProperty("errors").GetProperty("metadata.rackSlug").ValueKind.Should().Be(JsonValueKind.Array);
+    }
+
+    [SkippableFact]
+    public async Task Rendered_document_re_imports_cleanly_end_to_end()
+    {
+        // AC2 export→re-import: what /render returns must be accepted by /parse (against the same rack).
+        Skip.IfNot(_factory.Available, "Requires Postgres; skipped when unavailable.");
+        var rackId = await _factory.CreateRackAsync();
+
+        var parse = await SendAsync(
+            HttpMethod.Post, ParsePath(rackId), "NetworkConfigAuthor", new { yaml = ValidYaml("rack-x") });
+        parse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var envelope = await parse.Content.ReadFromJsonAsync<JsonElement>(Json);
+
+        var renderRequest = new
+        {
+            vlanCatalogue = envelope.GetProperty("supportedModel").GetProperty("vlanCatalogue"),
+            portIntents = envelope.GetProperty("supportedModel").GetProperty("portIntents"),
+            unknownBlocks = envelope.GetProperty("unknownBlocks"),
+            warnings = envelope.GetProperty("warnings"),
+            schemaVersion = envelope.GetProperty("schemaVersion"),
+        };
+
+        var render = await SendAsync(HttpMethod.Post, RenderPath(rackId), "NetworkConfigAuthor", renderRequest);
+        render.StatusCode.Should().Be(HttpStatusCode.OK);
+        var yaml = (await render.Content.ReadFromJsonAsync<JsonElement>(Json)).GetProperty("yaml").GetString()!;
+
+        var reparse = await SendAsync(HttpMethod.Post, ParsePath(rackId), "NetworkConfigAuthor", new { yaml });
+        reparse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [SkippableFact]
     public async Task Over_limit_request_body_is_rejected()
     {
         Skip.IfNot(_factory.Available, "Requires Postgres; skipped when unavailable.");

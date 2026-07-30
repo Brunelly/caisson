@@ -43,19 +43,18 @@ public static class DesiredStateYamlImporter
     private const string DocumentLabel = "desired-state.yaml";
     private const int MaxNodesVisited = 200_000;
 
-    private static readonly HashSet<string> RootKeys = new(StringComparer.Ordinal)
-    {
-        "apiVersion", "kind", "metadata", "spec", DesiredStateYamlSchema.ExtensionsKey,
-    };
+    // Every accepted-key allow-list is derived from DesiredStateYamlSchema's canonical *KeyOrder lists — the
+    // single source of truth (ADR 0049) — so the importer and the renderer can never disagree about which keys
+    // are part of the canonical shape. `description`/`neighbor` are the reserved tail of PortKeyOrder and are
+    // NOT in SupportedPortKeyOrder, so they are rejected here, keeping the v1 round-trip lossless (ADR 0050).
+    private static readonly HashSet<string> RootKeys = ToKeySet(DesiredStateYamlSchema.TopLevelKeyOrder);
+    private static readonly HashSet<string> MetadataKeys = ToKeySet(DesiredStateYamlSchema.MetadataKeyOrder);
+    private static readonly HashSet<string> SpecKeys = ToKeySet(DesiredStateYamlSchema.SpecKeyOrder);
+    private static readonly HashSet<string> VlanKeys = ToKeySet(DesiredStateYamlSchema.VlanKeyOrder);
+    private static readonly HashSet<string> SwitchKeys = ToKeySet(DesiredStateYamlSchema.SwitchKeyOrder);
+    private static readonly HashSet<string> PortKeys = ToKeySet(DesiredStateYamlSchema.SupportedPortKeyOrder);
 
-    private static readonly HashSet<string> MetadataKeys = new(StringComparer.Ordinal) { "rackSlug" };
-    private static readonly HashSet<string> SpecKeys = new(StringComparer.Ordinal) { "vlans", "switches" };
-    private static readonly HashSet<string> VlanKeys = new(StringComparer.Ordinal) { "vlanId", "name", "description" };
-    private static readonly HashSet<string> SwitchKeys = new(StringComparer.Ordinal) { "name", "ports" };
-
-    // v1 supported port keys: name + accessVlan only. `description`/`neighbor` are reserved in the schema
-    // ordering for a future convergence story but rejected here so the round-trip stays lossless (ADR 0050).
-    private static readonly HashSet<string> PortKeys = new(StringComparer.Ordinal) { "name", "accessVlan" };
+    private static HashSet<string> ToKeySet(IReadOnlyList<string> keys) => new(keys, StringComparer.Ordinal);
 
     private static readonly Regex ValidatorFieldPattern = new(
         @"^(vlanCatalogue|portIntents)\[(\d+)\]\.(\w+)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -295,6 +294,13 @@ public static class DesiredStateYamlImporter
     /// between the <c>extensions</c> key's start mark and the next top-level key's start mark (or EOF), so
     /// original indentation and line endings are preserved exactly. Returns <c>null</c> when no extensions
     /// block is present.
+    /// <para>
+    /// Note (ADR 0050): the block's <b>bytes</b> are preserved verbatim, but its <b>position</b> is canonical.
+    /// The renderer always re-emits the single <c>extensions</c> block last (after <c>spec</c>), so an input
+    /// that placed <c>extensions</c> earlier is relocated to the end on export. This is the intended
+    /// single-anchor, canonical-last v1 design — a deliberate, documented deviation from AC2's literal
+    /// "preserved blocks remain in their original anchor positions" wording, not a preservation bug.
+    /// </para>
     /// </summary>
     private static PreservedYamlBlock? CaptureExtensions(YamlMappingNode root, string content)
     {

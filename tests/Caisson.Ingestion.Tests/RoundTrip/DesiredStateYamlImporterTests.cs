@@ -64,6 +64,22 @@ public sealed class DesiredStateYamlImporterTests
     }
 
     [Fact]
+    public void Multi_document_input_is_rejected_fail_fast_rather_than_dropping_content()
+    {
+        // A '---'-separated stream would otherwise silently keep only the first document (lossy round-trip);
+        // it must be rejected with an actionable error and line/column of the second document (AC4).
+        var yaml = $"{ValidDocument()}\n---\n{ValidDocument()}";
+
+        var result = DesiredStateYamlImporter.Import(yaml);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Envelope.Should().BeNull();
+        result.Issues.Should().ContainSingle();
+        result.Issues[0].Message.Should().Contain("exactly one YAML document");
+        result.Issues[0].Line.Should().NotBeNull();
+    }
+
+    [Fact]
     public void Out_of_range_vlan_is_rejected_with_its_yaml_path()
     {
         var yaml = $"""

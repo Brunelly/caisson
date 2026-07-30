@@ -5,9 +5,17 @@ namespace Caisson.Domain.DesiredState;
 
 /// <summary>
 /// The single source of truth for the <b>canonical desired-state YAML document shape and ordering rules</b>
-/// (story #169, AC1). The round-trip renderer, parser, and their tests all read these constants so they can
-/// never drift about "what the canonical document looks like" — no key order or sort key is ever spelled as
-/// a literal scattered in the emitter.
+/// (story #169, AC1). These constants are actively consumed so the round-trip parts can never drift about
+/// "what the canonical document looks like":
+/// <list type="bullet">
+/// <item>the importer derives its per-level field allow-lists directly from the <c>*KeyOrder</c> lists
+/// (<see cref="Ingestion"/>-side <c>DesiredStateYamlImporter</c>), so accepted keys are defined only here;</item>
+/// <item>the hand-written renderer is deliberately literal (ADR 0025), but a golden-file + key-order test pins
+/// its emitted ordering to these same lists, so any reordering in the emitter fails the build.</item>
+/// </list>
+/// The list sort keys (<see cref="VlanCatalogueOrder"/>, <see cref="NameOrdinal"/>) are likewise the emitter's
+/// only ordering source. Keys reserved for a future convergence story (<c>description</c>/<c>neighbor</c> and
+/// <see cref="NeighborKeyOrder"/>) are marked as such below — they are not yet emitted or accepted (ADR 0050).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -58,12 +66,20 @@ public static class DesiredStateYamlSchema
     public static readonly IReadOnlyList<string> SwitchKeyOrder = new[] { "name", "ports" };
 
     /// <summary>
-    /// Key order within a <c>spec.switches[].ports[]</c> entry — mirrors <see cref="DesiredPortIntent"/>'s
-    /// field set for forward-compatibility. The v1 supported model (<see cref="PortAccessIntent"/>) only
-    /// carries <c>name</c>/<c>accessVlan</c>, so the renderer never emits <c>description</c>/<c>neighbor</c>
-    /// and the importer rejects them; the order is reserved here so a future convergence story is cheap.
+    /// Full reserved key order within a <c>spec.switches[].ports[]</c> entry — mirrors <see cref="DesiredPortIntent"/>'s
+    /// field set for forward-compatibility. The v1 supported model (<see cref="PortAccessIntent"/>) only carries
+    /// the leading <see cref="SupportedPortKeyOrder"/> keys, so the renderer never emits <c>description</c>/
+    /// <c>neighbor</c> and the importer rejects them; the full order is reserved here so a future convergence
+    /// story is cheap.
     /// </summary>
     public static readonly IReadOnlyList<string> PortKeyOrder = new[] { "name", "accessVlan", "description", "neighbor" };
+
+    /// <summary>
+    /// The v1-supported prefix of <see cref="PortKeyOrder"/> — the port keys the renderer actually emits and the
+    /// importer accepts. The importer's port allow-list is derived from this list; <c>description</c>/
+    /// <c>neighbor</c> are the reserved tail of <see cref="PortKeyOrder"/> and are rejected (ADR 0050).
+    /// </summary>
+    public static readonly IReadOnlyList<string> SupportedPortKeyOrder = new[] { "name", "accessVlan" };
 
     /// <summary>Key order within a port's <c>neighbor</c> mapping (reserved for a future convergence story).</summary>
     public static readonly IReadOnlyList<string> NeighborKeyOrder = new[] { "systemName", "portId" };

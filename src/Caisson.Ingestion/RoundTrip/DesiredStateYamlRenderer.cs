@@ -28,8 +28,12 @@ public sealed record DesiredStateRenderResult(string Yaml, IReadOnlyList<Desired
 /// <item>Repeated renders of the same model are byte-identical UTF-8, LF-only (AC1/NFR1).</item>
 /// <item>Lists are emitted in <see cref="DesiredStateYamlSchema"/> sort-key order, never insertion order.</item>
 /// <item>Output is locale-independent (numbers via <see cref="CultureInfo.InvariantCulture"/>, names via Ordinal).</item>
+/// <item><c>metadata.rackSlug</c> is validated with <see cref="DesiredStateSchema.IsValidRackSlug"/> — the SAME
+/// predicate the importer enforces — so the renderer never emits a document its own parser would reject
+/// (AC1 schema-conformance, AC2 export→re-import; see the note on <see cref="Render"/>).</item>
 /// <item>Preserved <c>extensions</c> blocks are re-emitted byte-for-byte at the canonical last position after
-/// checksum verification; a mismatch is rejected, never silently written (AC2).</item>
+/// verifying each block is anchored at the reserved <c>extensions</c> key and its checksum matches; either
+/// check failing is rejected, never silently written (AC2).</item>
 /// </list>
 /// </summary>
 public static class DesiredStateYamlRenderer
@@ -62,8 +66,16 @@ public static class DesiredStateYamlRenderer
 
     /// <summary>
     /// Renders <paramref name="model"/> plus its preserved <paramref name="unknownBlocks"/> to canonical YAML.
-    /// Re-runs <see cref="NetworkIntentValidator"/> and throws <see cref="DesiredStateRenderException"/> rather
-    /// than ever emitting an invalid document. Caller collections are never mutated.
+    /// Validates <c>metadata.rackSlug</c> and re-runs <see cref="NetworkIntentValidator"/>, throwing
+    /// <see cref="DesiredStateRenderException"/> rather than ever emitting an invalid document. Caller
+    /// collections are never mutated.
+    /// <para>
+    /// The <c>rackSlug</c> is server-authoritative: the caller resolves it from the target rack (its
+    /// <c>ExternalKey</c>), NOT from any imported <c>metadata.rackSlug</c> (which the round trip discards).
+    /// Because <c>ExternalKey</c> is only length-bounded, a rack whose key is not DNS-label-shaped would
+    /// otherwise render a document the parser rejects; validating here closes that AC1/AC2 gap symmetrically
+    /// with the importer (which enforces the same <see cref="DesiredStateSchema.IsValidRackSlug"/>).
+    /// </para>
     /// </summary>
     public static DesiredStateRenderResult Render(
         SupportedDesiredStateModel model,
@@ -72,6 +84,16 @@ public static class DesiredStateYamlRenderer
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentException.ThrowIfNullOrEmpty(model.RackSlug);
+
+        if (!DesiredStateSchema.IsValidRackSlug(model.RackSlug))
+        {
+            throw new DesiredStateRenderException(new[]
+            {
+                ("metadata.rackSlug",
+                    $"'{model.RackSlug}' is not a valid rackSlug (expected a DNS-label-shaped value of at most "
+                    + $"{DesiredStateSchema.MaxRackSlugLength} characters); the rack's external key cannot be exported as a slug."),
+            });
+        }
 
         var vlanCatalogue = model.VlanCatalogue ?? Array.Empty<VlanCatalogueEntry>();
         var portIntents = model.PortIntents ?? Array.Empty<PortAccessIntent>();
@@ -106,12 +128,26 @@ public static class DesiredStateYamlRenderer
             var appended = new StringBuilder(generated);
             foreach (var block in unknownBlocks)
             {
+                // v1 preserves exactly one anchor: the reserved top-level `extensions` key. Refuse any block
+                // claiming a different anchor so a re-emitted block can never smuggle in a forged top-level key.
+                if (!string.Equals(block.AnchorPath, DesiredStateYamlSchema.ExtensionsKey, StringComparison.Ordinal))
+                {
+                    throw new DesiredStateRenderException(new[]
+                    {
+                        ($"extensions:{block.AnchorPath}",
+                            $"Preserved block anchor '{block.AnchorPath}' is not the reserved "
+                            + $"'{DesiredStateYamlSchema.ExtensionsKey}' block; refusing to emit it."),
+                    });
+                }
+
+                // The checksum only detects corruption of RawYamlText in transit/storage between capture and
+                // render — it is NOT an authenticity control against the caller who supplies the bytes.
                 if (!block.ChecksumMatches())
                 {
                     throw new DesiredStateRenderException(new[]
                     {
                         ($"extensions:{block.AnchorPath}",
-                            "Preserved block checksum does not match its content; refusing to emit a tampered block."),
+                            "Preserved block checksum does not match its content; refusing to emit a corrupted block."),
                     });
                 }
 
@@ -168,11 +204,11 @@ public static class DesiredStateYamlRenderer
         AppendKey(sb, 1, "switches");
         foreach (var (name, ports) in switches)
         {
-            AppendSequenceItemScalar(sb, 2, "name", Quote(name));
+            AppendSequenceItemString(sb, 2, "name", name);
             AppendKey(sb, 3, "ports");
             foreach (var port in ports)
             {
-                AppendSequenceItemScalar(sb, 4, "name", Quote(port.PortName));
+                AppendSequenceItemString(sb, 4, "name", port.PortName);
                 AppendRawScalar(sb, 5, "accessVlan", FormatInt(port.AccessVlanId!.Value));
             }
         }
@@ -195,6 +231,14 @@ public static class DesiredStateYamlRenderer
     /// <summary>Emits the FIRST key of a sequence item (with the <c>- </c> dash); value is pre-formatted.</summary>
     private static void AppendSequenceItemScalar(StringBuilder sb, int level, string key, string formattedValue)
         => sb.Append(Indent(level)).Append("- ").Append(key).Append(": ").Append(formattedValue).Append(Newline);
+
+    /// <summary>
+    /// Emits the FIRST key of a sequence item whose value is a raw <b>string</b> — quotes it internally with the
+    /// same <see cref="Quote"/> predicate as <see cref="AppendScalar"/>, so a caller can never accidentally emit
+    /// an unquoted, potentially-ambiguous sequence-item string (the quoting rule stays uniform for string fields).
+    /// </summary>
+    private static void AppendSequenceItemString(StringBuilder sb, int level, string key, string value)
+        => AppendSequenceItemScalar(sb, level, key, Quote(value));
 
     private static string Indent(int level) => new(' ', level * DesiredStateYamlSchema.IndentSize);
 

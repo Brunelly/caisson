@@ -58,6 +58,13 @@ public sealed class DesiredStateRoundTripController : DiscoveryControllerBase
     /// Parses a YAML document into the UI-supported model plus byte-for-byte preserved unknown blocks and
     /// warnings (AC2/AC3/AC4). On any syntax/schema/semantic error returns 400 ProblemDetails with the failing
     /// paths and line/column, and NO partial model.
+    /// <para>
+    /// The imported <c>metadata.rackSlug</c> is validated for shape but is NOT cross-checked against
+    /// <paramref name="rackId"/>: <c>rackSlug</c> is server-authoritative and is re-derived from the target
+    /// rack's <c>ExternalKey</c> on <see cref="Render"/> (a YAML authored for a different rack is accepted and
+    /// re-slugged on export). Consequently import→export is byte/semantically identical for every field EXCEPT
+    /// <c>metadata.rackSlug</c>, which always reflects the target rack. See ADR 0050.
+    /// </para>
     /// </summary>
     [HttpPost("parse")]
     [Authorize(Policy = AuthorizationPolicies.NetworkConfigAuthor)]

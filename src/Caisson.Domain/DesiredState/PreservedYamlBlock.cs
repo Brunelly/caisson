@@ -16,7 +16,12 @@ namespace Caisson.Domain.DesiredState;
 /// </param>
 /// <param name="Checksum">
 /// Lower-case hex SHA-256 of <paramref name="RawYamlText"/>'s UTF-8 bytes. The renderer verifies this before
-/// re-emitting the block and rejects a mismatch, so a tampered/corrupted block is never silently written.
+/// re-emitting the block and rejects a mismatch, so a <b>corrupted</b> block is never silently written. Note
+/// this is a corruption/consistency check, NOT an authenticity control: on the render path the same caller
+/// supplies both the text and the checksum, so it only proves the two are internally consistent — it does not
+/// authenticate the bytes against a malicious caller (who already holds the elevated author permission and
+/// could submit any self-consistent block). A future story that persists or applies this block must re-validate
+/// its bytes server-side rather than trusting this checksum.
 /// </param>
 public sealed record PreservedYamlBlock(string AnchorPath, string RawYamlText, string Checksum)
 {

@@ -51,3 +51,6 @@ envelope. That pipeline keeps its flat shape; this story operates entirely in-me
 - The v1 supported model (`VlanCatalogueEntry` + `PortAccessIntent`) carries no port description/neighbor, so
   those port keys are reserved in the ordering constants but never emitted by the renderer and rejected by
   the importer (see ADR 0050) — keeping the v1 round-trip lossless for exactly the authoring model.
+- The "renderer, parser, and tests can never drift" guarantee above is made real, not aspirational, in
+  [ADR 0051](0051-desired-state-render-slug-validation-and-schema-constant-sourcing.md): the importer's field
+  allow-lists are derived from these constants and a renderer guard test pins the emitted key order to them.
