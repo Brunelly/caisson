@@ -10,6 +10,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import {
   TOPOLOGY_HARNESS_URL as HARNESS_URL,
+  captureConsoleErrors,
   gotoTopologyHarness as gotoHarness,
   themeToggle,
 } from './harness-helpers';
@@ -188,6 +189,29 @@ test.describe('Theming shell — dev harness (real browser)', () => {
       test(`stays WCAG AA across all three themes at ${viewport.name}`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await expectAllThemesAA(page);
+      });
+
+      // AC5/NFR5: no new console errors/warnings, extended to the mobile-viewport runs (mirrors the
+      // desktop-only "no new console errors" test above, plus the drawer interaction this story added).
+      test(`no new console errors opening/closing the nav drawer and switching themes at ${viewport.name}`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const errors = captureConsoleErrors(page);
+
+        await gotoHarness(page);
+        const hamburger = page.getByRole('button', { name: 'Open navigation' });
+        await hamburger.click();
+        await expect(page.locator('.nav-drawer')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.nav-drawer')).toBeHidden();
+
+        const toggle = themeToggle(page);
+        await toggle.getByRole('radio', { name: 'Light' }).click();
+        await toggle.getByRole('radio', { name: 'High contrast' }).click();
+        await toggle.getByRole('radio', { name: 'Dark' }).click();
+
+        expect(errors).toEqual([]);
       });
     }
   });

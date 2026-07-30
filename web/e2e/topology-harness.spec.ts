@@ -9,6 +9,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import {
+  captureConsoleErrors,
   expectNoHorizontalScroll,
   expectTouchTargets,
   gotoTopologyHarness as gotoHarness,
@@ -295,6 +296,23 @@ test.describe('Topology page — dev harness (real browser)', () => {
         test('no page-level horizontal scroll (NFR1)', async ({ page }) => {
           await gotoHarness(page);
           await expectNoHorizontalScroll(page);
+        });
+
+        // AC5/NFR5: no new console errors/warnings opening the drawer or selecting a node (the mobile
+        // bottom-sheet path) at this viewport.
+        test('no new console errors opening the drawer and selecting a node', async ({ page }) => {
+          const errors = captureConsoleErrors(page);
+
+          await gotoHarness(page);
+          await page.getByRole('button', { name: 'Open navigation' }).click();
+          await expect(page.locator('.nav-drawer')).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(page.locator('.nav-drawer')).toBeHidden();
+
+          await page.locator('g.node--confirmed[aria-label*="eth0"]').click();
+          await expect(page.locator('aside.details-panel')).toBeVisible();
+
+          expect(errors).toEqual([]);
         });
 
         test('the hamburger opens the nav drawer, which routes to Drift and closes itself', async ({

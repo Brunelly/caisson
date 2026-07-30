@@ -17,7 +17,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { expectNoHorizontalScroll, expectTouchTargets } from './harness-helpers';
+import {
+  captureConsoleErrors,
+  expectNoHorizontalScroll,
+  expectTouchTargets,
+} from './harness-helpers';
 
 const RACK_ID = 'rack-1';
 const DRIFT_ITEM_ID = 'harness-drift-item-1';
@@ -356,6 +360,20 @@ test.describe('Drift page — dev harness (real browser)', () => {
           expect(await page.evaluate(() => window.__harness__!.getApplyCorrectionCallCount())).toBe(
             1,
           );
+        });
+
+        // AC5/NFR5: no new console errors/warnings through the full apply workflow at this viewport.
+        test('no new console errors through the apply workflow', async ({ page }) => {
+          const errors = captureConsoleErrors(page);
+
+          await gotoDetail(page, true);
+          await page.locator('.apply-action__apply').click();
+          const dialog = page.locator('.apply-dialog');
+          await dialog.locator('input[type="checkbox"]').check();
+          await dialog.locator('.apply-dialog__submit').click();
+          await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 2000 });
+
+          expect(errors).toEqual([]);
         });
 
         test('live SignalR job status still patches in place, no reload', async ({ page }) => {
