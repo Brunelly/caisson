@@ -15,7 +15,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { StatusBadgeComponent } from '../../shared/badge/status-badge.component';
 import { TopologyStateService } from '../../topology/state/topology-state.service';
 import { NetworkConfigPermissionService } from '../services/network-config-permission.service';
@@ -112,7 +112,6 @@ export class PortIntentComponent {
   protected readonly state = inject(NetworkIntentStateService);
   protected readonly permission = inject(NetworkConfigPermissionService);
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly dialog = inject(Dialog);
 
   protected readonly switches = computed(() => this.topologyState.switches());
