@@ -1,0 +1,43 @@
+@use '../../shared/styles/cds-mixins';
+
+// Supplies the glass-surface chrome the static `.shell__sidebar` column normally gets from
+// app-shell.component.scss — `<app-sidebar-navigation>`'s own `.sidebar` element carries no background
+// of its own, by design, so the drawer wrapper (not the reused component) owns it here.
+.nav-drawer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+
+  @include cds-mixins.cds-glass-surface;
+
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  box-shadow: var(--cds-shadow-lg);
+}
+
+// The drawer already sits at the `--cds-glass-fill`/elevated tier, so hover uses `--cds-surface-sunken`
+// (recessed) to stay visibly distinct — matches topology-details-panel.component.scss's `__close`.
+.nav-drawer__close {
+  position: absolute;
+  top: var(--cds-sp-2-5);
+  right: var(--cds-sp-2-5);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--cds-radius-md);
+  background: none;
+  color: var(--cds-text-secondary);
+
+  @include cds-mixins.cds-touch-target;
+  @include cds-mixins.cds-focus-visible-ring;
+
+  &:hover {
+    background: var(--cds-surface-sunken);
+    color: var(--cds-text-primary);
+  }
+}

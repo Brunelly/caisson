@@ -12,6 +12,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
+// Story #123 NFR1: hard backstop against page-level horizontal scroll at sm/md. Individual components
+// (drift table, topology search overlay, etc.) still scroll horizontally within themselves where that's
+// the intentional responsive adaptation — this only stops the outermost document from doing so.
+body {
+  overflow-x: hidden;
+}
+
 // Story #119: stretches whichever page app-shell.component.ts's `<router-outlet/>` renders to fill the
 // shell's content region, so that page's own internal `height: 100%` layouts (e.g.
 // topology-page.component.ts's `.topology-page`) resolve against a definite height. This MUST live
@@ -33,4 +40,22 @@ body {
 // container, outside any component's view, so a scoped selector would never match.
 .cds-overlay-backdrop {
   background: var(--cds-surface-overlay);
+}
+
+// Story #123 Task #140 / ADR 0043: left-anchored, full-height mobile nav drawer panel (opened from
+// rack-selector-topbar.component.ts via `nav-drawer.component.ts`). CDK Dialog's default
+// `GlobalPositionStrategy` centers panels both ways using flex alignment on `.cdk-global-overlay-wrapper`
+// — `position: fixed` lifts this panel out of that flex flow entirely rather than fighting it, so no
+// custom `PositionStrategy` is needed. Global, not component-scoped, for the same reason as
+// `.cds-overlay-backdrop` above: CDK Dialog appends the pane outside any component's encapsulated view.
+// The combined `.cdk-overlay-pane.cds-nav-drawer-panel` selector (not the class alone) guarantees this
+// beats the equal-specificity base rule in `overlay-prebuilt.css` regardless of stylesheet load order.
+.cdk-overlay-pane.cds-nav-drawer-panel {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100vh;
+  max-height: 100vh;
+  width: 100%;
+  max-width: min(20rem, 85vw);
+  margin: 0;
 }

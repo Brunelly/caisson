@@ -52,4 +52,10 @@
   }
 
   @include cds-mixins.cds-focus-visible-ring;
+
+  // Story #123 Task #140 (NFR3): 44px touch-target floor at `sm` only — the segmented control's compact
+  // desktop/tablet density (26px) is otherwise unchanged.
+  @include cds-mixins.cds-respond-below(sm) {
+    @include cds-mixins.cds-touch-target;
+  }
 }

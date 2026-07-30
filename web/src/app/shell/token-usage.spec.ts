@@ -13,6 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SHELL_OWNED_SCSS_FILES = [
   'app-shell.component.scss',
   'sidebar-navigation/sidebar-navigation.component.scss',
+  'sidebar-navigation/nav-drawer.component.scss',
   'rack-selector-topbar/rack-selector-topbar.component.scss',
   'theme-toggle/theme-toggle.component.scss',
   '../shared/connection-status/live-connection-status-bar.component.scss',

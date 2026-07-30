@@ -125,3 +125,14 @@ $cds-breakpoints: (
     @content;
   }
 }
+
+// Single source of truth for the NFR3 44x44 CSS px touch-target floor (Story #123 Task #140). Sets a
+// comfortable hit area via `min-height`/`min-width` plus padding rather than forcing exact dimensions,
+// so it composes with a control's existing content/icon sizing instead of clipping it. Callers wrap
+// this in `cds-respond-below(sm)` where desktop density must be preserved (dense infra-ops rows/controls
+// that already meet the floor at lg/xl shouldn't grow needlessly there).
+@mixin cds-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 0.75rem;
+}
