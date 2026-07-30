@@ -29,3 +29,43 @@
     -webkit-backdrop-filter: blur(var(--cds-glass-blur));
   }
 }
+
+// Baseline styling for text inputs/native selects (search box, filters, etc.) — the `--cds-*`
+// equivalent of `tokens.form-input` (`_tokens.scss`), for feature components migrated onto the DS
+// (ADR 0038). Token-driven so it stays theme-safe in dark/light/hc-dark alike.
+@mixin cds-form-input {
+  background-color: var(--cds-bg-page);
+  color: var(--cds-text-primary);
+  caret-color: var(--cds-text-primary);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  padding: 0.5rem 0.75rem;
+  font-size: var(--cds-fs-lg);
+  line-height: 1.25rem;
+
+  &::placeholder {
+    color: var(--cds-text-secondary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--cds-surface-sunken);
+  }
+
+  &:disabled {
+    color: var(--cds-text-disabled);
+    background-color: var(--cds-surface-elevated);
+    cursor: not-allowed;
+  }
+
+  @include cds-focus-visible-ring;
+}
+
+// Reusable "needs attention" amber notice (stale drift / write-warning / details-panel notice) — a
+// single shared class so the amber-token pairing isn't duplicated across topology and drift SCSS.
+@mixin cds-status-notice {
+  background: var(--cds-warning-bg);
+  color: var(--cds-warning-fg);
+  border-radius: var(--cds-radius-md);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+}

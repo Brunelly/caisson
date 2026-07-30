@@ -66,18 +66,18 @@ const CSS_KIND: Record<DriftApplyJobStatus, JobStatusCssKind> = {
       }
 
       .job-status-badge--pending {
-        background: var(--color-bg-elevated);
-        color: var(--color-text-muted);
+        background: var(--cds-surface-elevated);
+        color: var(--cds-text-secondary);
       }
 
       .job-status-badge--success {
-        background: var(--color-status-confirmed-bg);
-        color: var(--color-status-confirmed);
+        background: var(--cds-success-bg);
+        color: var(--cds-success-fg);
       }
 
       .job-status-badge--error {
-        background: var(--color-status-unmapped-bg);
-        color: var(--color-status-unmapped);
+        background: var(--cds-error-bg);
+        color: var(--cds-error-fg);
       }
     `,
   ],

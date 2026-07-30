@@ -1,12 +1,12 @@
-@use '../../shared/styles/tokens';
+@use '../../shared/styles/cds-mixins';
 
 .apply-dialog {
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--cds-bg-page);
+  color: var(--cds-text-primary);
   border-radius: 8px;
   padding: 1.5rem;
   max-width: 28rem;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+  box-shadow: var(--cds-shadow-overlay);
 }
 
 .apply-dialog__heading {
@@ -22,7 +22,7 @@
   font-size: 0.875rem;
 
   dt {
-    color: var(--color-text-muted);
+    color: var(--cds-text-secondary);
   }
 
   dd {
@@ -33,13 +33,12 @@
 
 .apply-dialog__rollback {
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
   margin: 0 0 0.75rem;
 }
 
 .apply-dialog__write-warning {
-  font-size: 0.8125rem;
-  color: var(--color-status-ambiguous);
+  @include cds-mixins.cds-status-notice;
   margin: 0 0 1rem;
 }
 
@@ -53,7 +52,7 @@
 
   input {
     margin-top: 0.1875rem;
-    @include tokens.focus-visible-ring;
+    @include cds-mixins.cds-focus-visible-ring;
   }
 }
 
@@ -70,28 +69,28 @@
   font-size: 0.875rem;
   cursor: pointer;
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }
 
 .apply-dialog__cancel {
-  background: var(--color-bg);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
+  background: var(--cds-bg-page);
+  color: var(--cds-text-primary);
+  border: 1px solid var(--cds-border-default);
 
   &:hover {
-    background: var(--color-bg-hover);
+    background: var(--cds-surface-elevated);
   }
 }
 
 .apply-dialog__submit {
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: 1px solid var(--color-primary);
+  background: var(--cds-primary);
+  color: var(--cds-primary-contrast);
+  border: 1px solid var(--cds-primary);
 
   &:disabled {
-    background: var(--color-bg-elevated);
-    color: var(--color-text-muted);
-    border-color: var(--color-border);
+    background: var(--cds-surface-elevated);
+    color: var(--cds-text-disabled);
+    border-color: var(--cds-border-default);
     cursor: not-allowed;
   }
 }

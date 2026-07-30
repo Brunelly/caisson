@@ -1,7 +1,7 @@
-// All colours/typography here are token-driven (shared/styles/_tokens.scss) so search stays readable
-// in both light and dark themes (interactive-UI baseline: text/caret/placeholder contrast, visible
-// focus-visible ring, hover/active states).
-@use '../../shared/styles/tokens';
+// All colours/typography here are token-driven (shared/styles/_cds-tokens.scss, ADR 0038) so search
+// stays readable in dark/light/hc-dark alike (interactive-UI baseline: text/caret/placeholder
+// contrast, visible focus-visible ring, hover/active states).
+@use '../../shared/styles/cds-mixins';
 
 .topology-search {
   position: relative;
@@ -10,13 +10,8 @@
 }
 
 .topology-search__input {
-  @include tokens.form-input;
+  @include cds-mixins.cds-form-input;
   width: 100%;
-  caret-color: var(--color-input-text);
-
-  &::placeholder {
-    color: var(--color-search-placeholder);
-  }
 }
 
 .topology-search__results {
@@ -25,14 +20,14 @@
   padding: 0.25rem 0;
   max-height: 20rem;
   overflow-y: auto;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  background: var(--cds-surface-elevated);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  box-shadow: var(--cds-shadow-md);
 }
 
 .topology-search__group + .topology-search__group {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--cds-border-default);
 }
 
 .topology-search__group-heading {
@@ -40,7 +35,7 @@
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
 }
 
 .topology-search__group-list {
@@ -52,20 +47,22 @@
 .topology-search__option {
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
-  color: var(--color-text);
+  color: var(--cds-text-primary);
   cursor: pointer;
 
+  // The results dropdown is already `--cds-surface-elevated`, so hover/keyboard-highlight use
+  // `--cds-surface-sunken` (recessed) to stay visibly distinct — see topology-graph.component.scss.
   &:hover {
-    background: var(--color-bg-hover);
+    background: var(--cds-surface-sunken);
   }
 
   &--active {
-    background: var(--color-bg-hover);
+    background: var(--cds-surface-sunken);
   }
 }
 
 .topology-search__empty {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  color: var(--color-text-muted);
+  color: var(--cds-text-secondary);
 }

@@ -65,27 +65,27 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
 
       .status-badge--confirmed,
       .status-badge--high {
-        background: var(--color-status-confirmed-bg);
-        color: var(--color-status-confirmed);
+        background: var(--cds-success-bg);
+        color: var(--cds-success-fg);
       }
 
       .status-badge--ambiguous,
       .status-badge--medium,
       .status-badge--severity-medium {
-        background: var(--color-status-ambiguous-bg);
-        color: var(--color-status-ambiguous);
+        background: var(--cds-warning-bg);
+        color: var(--cds-warning-fg);
       }
 
       .status-badge--unmapped,
       .status-badge--low,
       .status-badge--severity-high {
-        background: var(--color-status-unmapped-bg);
-        color: var(--color-status-unmapped);
+        background: var(--cds-error-bg);
+        color: var(--cds-error-fg);
       }
 
       .status-badge--severity-low {
-        background: var(--color-bg-elevated);
-        color: var(--color-text-muted);
+        background: var(--cds-surface-elevated);
+        color: var(--cds-text-secondary);
       }
     `,
   ],

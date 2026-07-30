@@ -1,14 +1,14 @@
 // ViewEncapsulation.None (see topology-graph.component.ts — D3-authored SVG elements bypass Angular's
 // emulated encapsulation attributes), so every selector here is scoped under .topology-graph to avoid
-// leaking into the rest of the app. Colours are all token-driven (shared/styles/_tokens.scss) — never
-// hard-coded — so the graph stays theme-safe in both light and dark (NFR4).
-@use '../../shared/styles/tokens';
+// leaking into the rest of the app. Colours are all token-driven (shared/styles/_cds-tokens.scss,
+// ADR 0038) — never hard-coded — so the graph stays theme-safe in dark/light/hc-dark alike.
+@use '../../shared/styles/cds-mixins';
 
 .topology-graph {
   width: 100%;
   height: 100%;
   display: block;
-  background: var(--color-bg);
+  background: var(--cds-bg-page);
   cursor: grab;
 
   &:active {
@@ -17,7 +17,7 @@
 }
 
 .structural-edge {
-  stroke: var(--color-border);
+  stroke: var(--cds-border-default);
   stroke-width: 1;
   stroke-dasharray: 2 3;
 }
@@ -27,20 +27,20 @@
   fill: none;
 
   &--confirmed {
-    stroke: var(--color-status-confirmed);
+    stroke: var(--cds-success-fg);
   }
 
   &--ambiguous {
-    stroke: var(--color-status-ambiguous);
+    stroke: var(--cds-warning-fg);
     stroke-dasharray: 6 3;
   }
 
   &--unmapped {
-    stroke: var(--color-status-unmapped);
+    stroke: var(--cds-error-fg);
     stroke-dasharray: 2 4;
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 }
 
 .edge-badge {
@@ -49,11 +49,11 @@
   pointer-events: none;
 
   &--ambiguous {
-    fill: var(--color-status-ambiguous);
+    fill: var(--cds-warning-fg);
   }
 
   &--unmapped {
-    fill: var(--color-status-unmapped);
+    fill: var(--cds-error-fg);
   }
 }
 
@@ -61,38 +61,42 @@
   cursor: pointer;
 
   rect {
-    fill: var(--color-bg-elevated);
-    stroke: var(--color-border-strong);
+    fill: var(--cds-surface-elevated);
+    stroke: var(--cds-border-default);
     stroke-width: 1;
   }
 
   text {
-    fill: var(--color-text);
+    fill: var(--cds-text-primary);
     font-size: 12px;
     pointer-events: none;
   }
 
+  // Hover/press feedback: the resting fill is already `--cds-surface-elevated` (the "raised" tier), so
+  // both interaction states use `--cds-surface-sunken` (the "recessed" tier) to stay visibly distinct
+  // from rest — there's no fourth neutral-surface tier in the DS token set to give hover/active their
+  // own separate shade.
   &:hover rect {
-    fill: var(--color-bg-hover);
+    fill: var(--cds-surface-sunken);
   }
 
   &:active rect {
-    fill: var(--color-bg-active);
+    fill: var(--cds-surface-sunken);
   }
 
-  @include tokens.focus-visible-ring;
+  @include cds-mixins.cds-focus-visible-ring;
 
   &--confirmed rect {
-    stroke: var(--color-status-confirmed);
+    stroke: var(--cds-success-fg);
   }
 
   &--ambiguous rect {
-    stroke: var(--color-status-ambiguous);
+    stroke: var(--cds-warning-fg);
     stroke-dasharray: 4 2;
   }
 
   &--unmapped rect {
-    stroke: var(--color-status-unmapped);
+    stroke: var(--cds-error-fg);
     stroke-dasharray: 2 3;
   }
 
@@ -100,17 +104,17 @@
   // mapping-state colours above (a port can carry both at once) — see ADR 0033 (severity polarity is
   // the inverse of confidence: High severity is bad, so it reuses the same red "unmapped" token).
   &--drift-high rect {
-    stroke: var(--color-status-unmapped);
+    stroke: var(--cds-error-fg);
     stroke-width: 3;
   }
 
   &--drift-medium rect {
-    stroke: var(--color-status-ambiguous);
+    stroke: var(--cds-warning-fg);
     stroke-width: 3;
   }
 
   &--drift-low rect {
-    stroke: var(--color-text-muted);
+    stroke: var(--cds-text-secondary);
     stroke-width: 2;
   }
 }
@@ -121,14 +125,14 @@
   pointer-events: none;
 
   &.node--drift-high {
-    fill: var(--color-status-unmapped);
+    fill: var(--cds-error-fg);
   }
 
   &.node--drift-medium {
-    fill: var(--color-status-ambiguous);
+    fill: var(--cds-warning-fg);
   }
 
   &.node--drift-low {
-    fill: var(--color-text-muted);
+    fill: var(--cds-text-secondary);
   }
 }
