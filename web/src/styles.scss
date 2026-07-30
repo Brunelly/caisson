@@ -1,5 +1,6 @@
 /* You can add global styles to this file, and also import other style files */
 @use 'app/shared/styles/tokens';
+@use 'app/shared/styles/cds-tokens';
 
 html,
 body {
@@ -8,4 +9,18 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+// Story #119: stretches whichever page app-shell.component.ts's `<router-outlet/>` renders to fill the
+// shell's content region, so that page's own internal `height: 100%` layouts (e.g.
+// topology-page.component.ts's `.topology-page`) resolve against a definite height. This MUST live
+// here, unscoped, rather than in app-shell.component.scss: Angular's emulated view encapsulation scopes
+// even the universal `*` selector to the owning component's content attribute, and a router-inserted
+// component's host element carries its OWN component's attribute, never the shell's — a scoped version
+// of this rule would silently never match.
+.shell__content > router-outlet + * {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }

@@ -1,0 +1,274 @@
+// Caisson Design System (CDS) tokens — Story #119 (ADR 0037). Transcribed from the design system's
+// `design-system-caisson-design-syste-tokens.json` (themes/colors/typography/spacing/radii/shadows/
+// motion) into CSS custom properties, all under a `--cds-*` prefix.
+//
+// ADR 0037: `--cds-*` is a SEPARATE, parallel token layer to the existing `--color-*` tokens in
+// `_tokens.scss` — it is NOT an alias/replacement. The DS primary is cyan (#06B6D4) vs the app's
+// existing blue; aliasing `--color-*` to `--cds-*` would silently re-skin every out-of-scope feature
+// screen (topology graph, drift badges, etc). New shell components (app-shell, sidebar-navigation,
+// rack-selector-topbar, theme-toggle, live-connection-status-bar, toast-outlet) consume `--cds-*` ONLY;
+// existing feature components keep reading `--color-*` unchanged.
+//
+// Theme enum: `dark` (default) | `light` | `hc-dark` (high-contrast-dark) — the SAME string is used for
+// both the persisted localStorage value and the `data-theme` DOM attribute; there is no translation
+// layer even though the design preview HTML uses `data-theme="high-contrast-dark"`.
+//
+// Convention for adding a new token/theme (NFR2): add the CSS custom property to all three theme
+// blocks below (`:root`/`[data-theme='dark']`, `[data-theme='light']`, `[data-theme='hc-dark']`) and,
+// if it should apply before an explicit choice is persisted, to the `prefers-color-scheme` mirror
+// block. Never hard-code a colour literal outside this file — shell components read `var(--cds-*)`
+// only (enforced by `token-usage.spec.ts`).
+
+:root,
+[data-theme='dark'] {
+  // Brand
+  --cds-primary: #06b6d4;
+  --cds-primary-hover: #22d3ee;
+  --cds-primary-active: #0891b2;
+  --cds-primary-subtle: #0e2a33;
+  --cds-primary-contrast: #020d10;
+  --cds-secondary: #4ade80;
+  --cds-secondary-hover: #6ee7a0;
+  --cds-secondary-active: #22c55e;
+  --cds-secondary-subtle: #0d2a18;
+  --cds-secondary-contrast: #032010;
+
+  // Surfaces / elevation tiers
+  --cds-bg-page: #14161a;
+  --cds-surface-elevated: #1c1f26;
+  --cds-surface-sunken: #0e1015;
+  --cds-surface-overlay: rgba(0, 0, 0, 0.65);
+
+  // Text
+  --cds-text-primary: #e8eaed;
+  --cds-text-secondary: #a1a8b5;
+  --cds-text-disabled: #4c5361;
+  --cds-text-inverse: #0e1015;
+
+  // Borders
+  --cds-border-default: #383e4a;
+  --cds-border-focus: #06b6d4;
+
+  // Semantic
+  --cds-success-bg: #14311f;
+  --cds-success-fg: #4ade80;
+  --cds-warning-bg: #3a2f0d;
+  --cds-warning-fg: #f2c94c;
+  --cds-error-bg: #3a1512;
+  --cds-error-fg: #f28b82;
+  --cds-info-bg: #0e2a33;
+  --cds-info-fg: #06b6d4;
+
+  // Shadows (dark-theme opacities per the DS tokens JSON)
+  --cds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --cds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --cds-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.36);
+  --cds-shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48);
+
+  // Enterprise-glass surfaces (story-mandated; not present in the DS tokens JSON as such). Opaque fill
+  // >= 0.78 in dark (design requires >= 0.72; picked with margin against the scrim requirement below),
+  // real blur. Sidebar/topbar read these three tokens only — no per-component conditionals for
+  // high-contrast (see the `hc-dark` block, which collapses them to opaque/no-blur/no-mesh).
+  --cds-glass-fill: rgba(28, 31, 38, 0.82);
+  --cds-glass-blur: 12px;
+  --cds-mesh-opacity: 0.5;
+}
+
+[data-theme='light'] {
+  --cds-primary: #1e3a5f;
+  --cds-primary-hover: #2563eb;
+  --cds-primary-active: #1d4ed8;
+  --cds-primary-subtle: #eff6ff;
+  --cds-primary-contrast: #ffffff;
+  --cds-secondary: #187536;
+  --cds-secondary-hover: #15803d;
+  --cds-secondary-active: #166534;
+  --cds-secondary-subtle: #e6f4ea;
+  --cds-secondary-contrast: #ffffff;
+
+  --cds-bg-page: #ffffff;
+  --cds-surface-elevated: #f7f8fa;
+  --cds-surface-sunken: #eef1f5;
+  --cds-surface-overlay: rgba(0, 0, 0, 0.4);
+
+  --cds-text-primary: #1a1d23;
+  --cds-text-secondary: #5b6270;
+  --cds-text-disabled: #aab1bd;
+  --cds-text-inverse: #ffffff;
+
+  --cds-border-default: #d3d8e0;
+  --cds-border-focus: #2563eb;
+
+  --cds-success-bg: #e6f4ea;
+  --cds-success-fg: #187536;
+  --cds-warning-bg: #fdf1d6;
+  --cds-warning-fg: #8a5c00;
+  --cds-error-bg: #fbe7e6;
+  --cds-error-fg: #b42318;
+  --cds-info-bg: #eff6ff;
+  --cds-info-fg: #1e3a5f;
+
+  --cds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --cds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --cds-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.14);
+  --cds-shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.18);
+
+  // Opaque fill >= 0.90 in light (design requires >= 0.85; picked with margin).
+  --cds-glass-fill: rgba(247, 248, 250, 0.92);
+  --cds-glass-blur: 12px;
+  --cds-mesh-opacity: 0.35;
+}
+
+[data-theme='hc-dark'] {
+  --cds-primary: #22d3ee;
+  --cds-primary-hover: #67e8f9;
+  --cds-primary-active: #06b6d4;
+  --cds-primary-subtle: #082830;
+  --cds-primary-contrast: #000000;
+  --cds-secondary: #6ee7a0;
+  --cds-secondary-hover: #a7f3d0;
+  --cds-secondary-active: #4ade80;
+  --cds-secondary-subtle: #052010;
+  --cds-secondary-contrast: #000000;
+
+  --cds-bg-page: #0a0c10;
+  --cds-surface-elevated: #1a1d24;
+  --cds-surface-sunken: #0a0c10;
+  --cds-surface-overlay: rgba(0, 0, 0, 0.8);
+
+  --cds-text-primary: #ffffff;
+  --cds-text-secondary: #c8cdd6;
+  --cds-text-disabled: #5c6370;
+  --cds-text-inverse: #000000;
+
+  --cds-border-default: #4c5361;
+  --cds-border-focus: #22d3ee;
+
+  --cds-success-bg: #0a2214;
+  --cds-success-fg: #6ee7a0;
+  --cds-warning-bg: #2a1f00;
+  --cds-warning-fg: #fbbf24;
+  --cds-error-bg: #2a0e0c;
+  --cds-error-fg: #fca5a5;
+  --cds-info-bg: #061820;
+  --cds-info-fg: #22d3ee;
+
+  // Higher-contrast shadows so elevation is legible without relying on blur/glass.
+  --cds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --cds-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --cds-shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.7);
+
+  // "Disable mesh/glass in high-contrast" (resolved Q&A) is pure CSS here: fully opaque fill, zero
+  // blur, zero mesh — no `hc-dark` conditionals anywhere in shell component code.
+  --cds-glass-fill: var(--cds-surface-elevated);
+  --cds-glass-blur: 0px;
+  --cds-mesh-opacity: 0;
+}
+
+// Pre-JS resilience mirror (matches the pattern in `_tokens.scss`): before ThemeService/the inline FOUC
+// script run, honour the OS preference. Only applies when no explicit `data-theme` has been set yet.
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='hc-dark']) {
+    --cds-primary: #06b6d4;
+    --cds-primary-hover: #22d3ee;
+    --cds-primary-active: #0891b2;
+    --cds-primary-subtle: #0e2a33;
+    --cds-primary-contrast: #020d10;
+    --cds-secondary: #4ade80;
+    --cds-secondary-hover: #6ee7a0;
+    --cds-secondary-active: #22c55e;
+    --cds-secondary-subtle: #0d2a18;
+    --cds-secondary-contrast: #032010;
+
+    --cds-bg-page: #14161a;
+    --cds-surface-elevated: #1c1f26;
+    --cds-surface-sunken: #0e1015;
+    --cds-surface-overlay: rgba(0, 0, 0, 0.65);
+
+    --cds-text-primary: #e8eaed;
+    --cds-text-secondary: #a1a8b5;
+    --cds-text-disabled: #4c5361;
+    --cds-text-inverse: #0e1015;
+
+    --cds-border-default: #383e4a;
+    --cds-border-focus: #06b6d4;
+
+    --cds-success-bg: #14311f;
+    --cds-success-fg: #4ade80;
+    --cds-warning-bg: #3a2f0d;
+    --cds-warning-fg: #f2c94c;
+    --cds-error-bg: #3a1512;
+    --cds-error-fg: #f28b82;
+    --cds-info-bg: #0e2a33;
+    --cds-info-fg: #06b6d4;
+
+    --cds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --cds-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.28);
+    --cds-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.36);
+    --cds-shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.48);
+
+    --cds-glass-fill: rgba(28, 31, 38, 0.82);
+    --cds-glass-blur: 12px;
+    --cds-mesh-opacity: 0.5;
+  }
+}
+
+:root {
+  // Typography (DS tokens: Inter / JetBrains Mono, system-font fallback stacks — NO external font
+  // <link>/CDN; this is an enterprise/air-gapped-safe app, unlike the design preview HTML, which loads
+  // Google Fonts).
+  --cds-font-base: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --cds-font-mono:
+    'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, Monaco, 'Liberation Mono', monospace;
+
+  --cds-fs-2xs: 10px;
+  --cds-fs-xs: 11px;
+  --cds-fs-sm: 12px;
+  --cds-fs-base: 13px;
+  --cds-fs-md: 14px;
+  --cds-fs-lg: 15px;
+  --cds-fs-xl: 16px;
+  --cds-fs-2xl: 18px;
+  --cds-fs-3xl: 20px;
+  --cds-fs-4xl: 24px;
+
+  // Spacing
+  --cds-sp-px: 1px;
+  --cds-sp-0-5: 2px;
+  --cds-sp-1: 4px;
+  --cds-sp-1-5: 6px;
+  --cds-sp-2: 8px;
+  --cds-sp-2-5: 10px;
+  --cds-sp-3: 12px;
+  --cds-sp-3-5: 14px;
+  --cds-sp-4: 16px;
+  --cds-sp-5: 20px;
+  --cds-sp-6: 24px;
+  --cds-sp-7: 28px;
+  --cds-sp-8: 32px;
+  --cds-sp-10: 40px;
+  --cds-sp-12: 48px;
+
+  // Radii
+  --cds-radius-sm: 4px;
+  --cds-radius-md: 6px;
+  --cds-radius-lg: 8px;
+  --cds-radius-xl: 12px;
+  --cds-radius-full: 9999px;
+
+  // Motion
+  --cds-duration-fast: 120ms;
+  --cds-duration-normal: 200ms;
+  --cds-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  // Focus ring (DS `accessibility` block)
+  --cds-focus-ring-width: 2px;
+  --cds-focus-ring-offset: 2px;
+}
+
+// NOTE: mixins live in the sibling `_cds-mixins.scss` partial, NOT here. Sass `@use` emits a module's
+// top-level CSS rules into every file that uses it (the `:root`/theme blocks above are ~6kB alone) —
+// components must `@use 'cds-mixins'` (mixin-only, no CSS output of its own) rather than this file, or
+// every per-component style budget instantly inherits this whole token block. This file is `@use`d
+// exactly once, globally, from `styles.scss`.

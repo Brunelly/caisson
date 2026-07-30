@@ -1,0 +1,82 @@
+@use '../shared/styles/cds-mixins';
+
+.shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 256px 1fr;
+  min-height: 100vh;
+  background: var(--cds-bg-page);
+  color: var(--cds-text-primary);
+  font-family: var(--cds-font-base);
+}
+
+// Background mesh (Task #127 / story AC3: "CSS-based mesh/gradient ... using tokenized opacities").
+// Sits behind everything at a fixed, full-viewport layer so it also shows (blurred) through the
+// translucent sidebar/top bar. Purely decorative — `--cds-mesh-opacity` alone disables it in hc-dark
+// (0), no conditional here.
+.shell__mesh {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--cds-mesh-opacity);
+  background:
+    radial-gradient(circle at 15% 10%, var(--cds-primary) 0%, transparent 35%),
+    radial-gradient(circle at 85% 90%, var(--cds-secondary) 0%, transparent 35%);
+}
+
+.shell__sidebar {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+
+  @include cds-mixins.cds-glass-surface;
+
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  box-shadow: var(--cds-shadow-lg);
+}
+
+.shell__main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shell__main > app-rack-selector-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: block;
+
+  @include cds-mixins.cds-glass-surface;
+
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  box-shadow: var(--cds-shadow-md);
+}
+
+// Sunken elevation tier for the content region (the 3rd of the 3 elevation tiers: elevated
+// sidebar/topbar, sunken content, overlay for modals/toasts). Routed pages keep their own existing
+// background/layout entirely unchanged (AC5). The `router-outlet + *` stretch rule that fills this
+// region with whichever page is routed lives in the GLOBAL `styles.scss`, not here: Angular's emulated
+// view encapsulation scopes even the universal `*` selector to THIS component's content attribute, and
+// a router-inserted sibling component's host element never carries that attribute (it carries its own
+// component's), so the rule would silently never match if scoped — see styles.scss for the full story.
+.shell__content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cds-surface-sunken);
+}

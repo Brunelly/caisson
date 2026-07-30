@@ -1,6 +1,11 @@
 .drift-detail {
   padding: 1rem;
   max-width: 40rem;
+  // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of what the
+  // app-shell (Story #119) paints behind it — e.g. the shell's hc-dark chrome background, which
+  // --color-* (this page's token system) has no hc-dark variant for.
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .drift-detail__header {

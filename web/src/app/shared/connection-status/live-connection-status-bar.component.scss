@@ -1,0 +1,58 @@
+.lcsb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cds-sp-1-5);
+  height: 26px;
+  padding: 0 var(--cds-sp-2-5);
+  border-radius: var(--cds-radius-full);
+  font-family: var(--cds-font-base);
+  font-size: var(--cds-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lcsb-badge__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--cds-radius-full);
+  background: currentcolor;
+}
+
+.lcsb-badge--connecting {
+  background: var(--cds-info-bg);
+  color: var(--cds-info-fg);
+}
+
+.lcsb-badge--live {
+  background: var(--cds-success-bg);
+  color: var(--cds-success-fg);
+}
+
+.lcsb-badge--stale {
+  background: var(--cds-warning-bg);
+  color: var(--cds-warning-fg);
+}
+
+.lcsb-badge--disconnected {
+  background: var(--cds-error-bg);
+  color: var(--cds-error-fg);
+}
+
+.lcsb-banner {
+  margin: 0;
+  padding: var(--cds-sp-2) var(--cds-sp-4);
+  font-family: var(--cds-font-base);
+  font-size: var(--cds-fs-base);
+
+  &--stale {
+    background: var(--cds-warning-bg);
+    color: var(--cds-warning-fg);
+  }
+
+  &--disconnected {
+    background: var(--cds-error-bg);
+    color: var(--cds-error-fg);
+  }
+}

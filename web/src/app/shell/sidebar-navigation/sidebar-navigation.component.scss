@@ -1,0 +1,148 @@
+@use '../../shared/styles/cds-mixins';
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-sp-2-5);
+  height: 57px;
+  padding: 0 var(--cds-sp-4);
+  border-bottom: 1px solid var(--cds-border-default);
+  flex: none;
+}
+
+.sidebar__brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--cds-radius-md);
+  background: linear-gradient(150deg, var(--cds-primary), var(--cds-primary-active));
+  color: var(--cds-primary-contrast);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-sm);
+  font-weight: 700;
+}
+
+.sidebar__brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar__brand-name {
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-base);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--cds-text-primary);
+}
+
+.sidebar__brand-sub {
+  font-size: var(--cds-fs-2xs);
+  color: var(--cds-text-secondary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sidebar__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--cds-sp-3) var(--cds-sp-2-5);
+}
+
+.sidebar__group-label {
+  margin: var(--cds-sp-4) var(--cds-sp-2) var(--cds-sp-1-5);
+  font-size: var(--cds-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  // `--cds-text-secondary`, not `--cds-text-disabled` — this is a section heading, not disabled
+  // content, and `--cds-text-disabled` fails WCAG AA against `--cds-surface-elevated` in hc-dark
+  // (2.78:1, needs 4.5:1 — caught by the real-browser axe pass, web/e2e/theme-shell.spec.ts).
+  color: var(--cds-text-secondary);
+
+  &:first-child {
+    margin-top: var(--cds-sp-1);
+  }
+}
+
+.sidebar__nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--cds-sp-2-5);
+  min-height: 36px;
+  padding: var(--cds-sp-2) var(--cds-sp-2-5);
+  border-radius: var(--cds-radius-md);
+  color: var(--cds-text-secondary);
+  font-family: var(--cds-font-base);
+  font-size: var(--cds-fs-base);
+  text-decoration: none;
+  transition:
+    background var(--cds-duration-fast) var(--cds-easing-standard),
+    color var(--cds-duration-fast) var(--cds-easing-standard);
+
+  &:hover {
+    background: var(--cds-surface-elevated);
+    color: var(--cds-text-primary);
+  }
+
+  &:active {
+    background: var(--cds-surface-sunken);
+  }
+
+  &--active {
+    background: var(--cds-primary-subtle);
+    color: var(--cds-text-primary);
+    font-weight: 500;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: -6px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: var(--cds-radius-full);
+      background: var(--cds-primary);
+    }
+
+    .sidebar__nav-icon {
+      color: var(--cds-primary);
+    }
+  }
+
+  &--disabled {
+    color: var(--cds-text-disabled);
+    cursor: not-allowed;
+
+    .sidebar__nav-icon {
+      color: var(--cds-text-disabled);
+    }
+  }
+
+  @include cds-mixins.cds-focus-visible-ring;
+}
+
+.sidebar__nav-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.sidebar__nav-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

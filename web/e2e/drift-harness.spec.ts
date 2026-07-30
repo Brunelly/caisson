@@ -213,11 +213,10 @@ test.describe('Drift page — dev harness (real browser)', () => {
     await dialog.locator('.apply-dialog__submit').click();
     await expect(page.locator('.apply-action__job')).toBeVisible({ timeout: 2000 });
 
-    // Drop the hub — the existing stale/disconnected banner (reused, not a second state machine) shows.
+    // Drop the hub — the existing stale/disconnected banner (reused, not a second state machine; now
+    // rendered by the shared LiveConnectionStatusBarComponent, Story #119) shows.
     await page.evaluate(() => window.__harness__!.hub.simulateClose());
-    await expect(
-      page.locator('.apply-action__connection-banner').filter({ hasText: 'disconnected' }),
-    ).toBeVisible();
+    await expect(page.locator('.lcsb-banner--disconnected')).toBeVisible();
 
     // Advance the harness's job status so the next poll observes a terminal outcome.
     await page.evaluate(() => window.__harness__!.setDriftJobStatus('Completed'));
@@ -258,6 +257,8 @@ test.describe('Drift page — dev harness (real browser)', () => {
     await expect(page.locator('.audit-view__fields')).toContainText('harness-user');
     await expect(page.locator('.audit-view__fields')).toContainText('SW-1');
     await expect(page.locator('.audit-view__fields')).toContainText('ether2');
-    await expect(page.locator('button, input, form')).toHaveCount(0);
+    // Scoped to the audit view's own content, not the whole page — the app-shell chrome (Story #119)
+    // legitimately adds its own interactive controls (e.g. the theme toggle) outside this page.
+    await expect(page.locator('.audit-view').locator('button, input, form')).toHaveCount(0);
   });
 });

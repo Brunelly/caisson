@@ -6,6 +6,7 @@ import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, effect, inject, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { LiveConnectionStatusBarComponent } from '../shared/connection-status/live-connection-status-bar.component';
 import { TopologyDetailsPanelComponent } from './details/topology-details-panel.component';
 import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyLegendComponent } from './legend/topology-legend.component';
@@ -46,16 +47,11 @@ import { TopologyStateService } from './state/topology-state.service';
           <app-topology-search (resultSelected)="onSearchResultSelected($event)" />
         </header>
 
-        @if (state.connectionStatus() === 'stale' || state.connectionStatus() === 'disconnected') {
-          <p class="connection-banner" role="status">
-            {{
-              state.connectionStatus() === 'stale'
-                ? 'Live updates are stale'
-                : 'Live updates disconnected'
-            }}
-            — showing the last known snapshot.
-          </p>
-        }
+        <app-live-connection-status-bar
+          variant="banner"
+          [status]="state.connectionStatus()"
+          detail="showing the last known snapshot."
+        />
 
         <div class="topology-shell">
           <app-topology-graph
@@ -77,6 +73,11 @@ import { TopologyStateService } from './state/topology-state.service';
         display: flex;
         flex-direction: column;
         height: 100%;
+        // Explicit (not merely inherited) so this page stays self-contained/opaque regardless of
+        // what the app-shell (Story #119) paints behind it — e.g. the shell's hc-dark chrome
+        // background, which --color-* (this page's token system) has no hc-dark variant for.
+        background: var(--color-bg);
+        color: var(--color-text);
       }
 
       .topology-header {
@@ -107,14 +108,6 @@ import { TopologyStateService } from './state/topology-state.service';
         font-size: 0.875rem;
       }
 
-      .connection-banner {
-        margin: 0;
-        padding: 0.5rem 1rem;
-        background: var(--color-status-ambiguous-bg);
-        color: var(--color-status-ambiguous);
-        font-size: 0.8125rem;
-      }
-
       .topology-shell {
         flex: 1;
         min-height: 0;
@@ -137,6 +130,7 @@ import { TopologyStateService } from './state/topology-state.service';
   ],
   imports: [
     DatePipe,
+    LiveConnectionStatusBarComponent,
     TopologyGraphComponent,
     TopologyLegendComponent,
     TopologySearchComponent,

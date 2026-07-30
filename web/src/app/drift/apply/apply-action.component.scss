@@ -46,15 +46,6 @@
   @include tokens.focus-visible-ring;
 }
 
-.apply-action__connection-banner {
-  margin: 0.375rem 0;
-  padding: 0.375rem 0.625rem;
-  border-radius: 6px;
-  background: var(--color-status-ambiguous-bg);
-  color: var(--color-status-ambiguous);
-  font-size: 0.75rem;
-}
-
 .apply-action__stale {
   display: flex;
   flex-direction: column;
