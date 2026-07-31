@@ -6,13 +6,28 @@
 // toast/telemetry feedback) lives here, not in the state service, matching apply-action.component.ts's
 // separation: state services own signals/HTTP-fetch, components own user-facing feedback.
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, Injector, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, computed, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  ActivatedRoute,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { TelemetryService } from '../core/telemetry/telemetry.service';
 import { ToastService } from '../shared/toast/toast.service';
+import type { ValidationIssue } from './model/preflight-validation-contracts';
+import { PreflightValidationService } from './services/preflight-validation.service';
+import { PrService } from './services/pr.service';
 import { NetworkConfigPermissionService } from './services/network-config-permission.service';
 import { NetworkIntentStateService } from './state/network-intent-state.service';
+import {
+  CreatePrDialogComponent,
+  type CreatePrDialogData,
+  type CreatePrDialogResult,
+} from './pr/create-pr-dialog.component';
+import { ValidationIssuesPanelComponent } from './validation/validation-issues-panel.component';
 import {
   YamlImportDialogComponent,
   type YamlImportDialogData,
@@ -24,7 +39,13 @@ import { ValidationSummaryComponent } from './yaml/validation-summary.component'
 @Component({
   selector: 'app-network-config-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, ValidationSummaryComponent],
+  imports: [
+    RouterLink,
+    RouterLinkActive,
+    RouterOutlet,
+    ValidationSummaryComponent,
+    ValidationIssuesPanelComponent,
+  ],
   styleUrl: './network-config-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -102,8 +123,45 @@ import { ValidationSummaryComponent } from './yaml/validation-summary.component'
         </span>
       </nav>
 
-      <div class="network-config-shell__body">
-        <router-outlet />
+      <div class="network-config-shell__panes">
+        <div class="network-config-shell__editor">
+          <router-outlet />
+        </div>
+        <aside class="network-config-shell__validation" aria-label="Validation and preview">
+          <app-validation-issues-panel
+            [canRevalidate]="permission.canAuthorNetworkConfig()"
+            (revalidate)="onValidateClick()"
+            (issueSelected)="onIssueSelected($event)"
+          />
+        </aside>
+      </div>
+
+      <div class="network-config-shell__action-bar">
+        @if (permission.canAuthorNetworkConfig()) {
+          <button
+            type="button"
+            class="network-config-shell__validate"
+            [disabled]="state.validating()"
+            (click)="onValidateClick()"
+          >
+            {{ state.validating() ? 'Validating…' : 'Validate' }}
+          </button>
+          <button
+            type="button"
+            class="network-config-shell__preview-action"
+            (click)="onExportClick()"
+          >
+            Preview changes
+          </button>
+          <button
+            type="button"
+            class="network-config-shell__create-pr"
+            [disabled]="!canOpenPr()"
+            (click)="onCreatePrClick()"
+          >
+            Create pull request
+          </button>
+        }
       </div>
     </section>
   `,
@@ -112,13 +170,22 @@ export class NetworkConfigShellComponent {
   protected readonly state = inject(NetworkIntentStateService);
   protected readonly permission = inject(NetworkConfigPermissionService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   private readonly telemetry = inject(TelemetryService);
+  private readonly preflight = inject(PreflightValidationService);
+  private readonly pr = inject(PrService);
   private readonly dialog = inject(Dialog);
   // The dialogs inject NetworkIntentStateService/DesiredStateRoundTripService; passing THIS component's
   // injector makes the CDK overlay resolve them from the network-config route's injector (in the dev
   // harness, that is where the fakes live) rather than the root injector.
   private readonly injector = inject(Injector);
+
+  /** Whether the Create-PR dialog can be opened: a fresh validation run exists with no blocking errors.
+   * (Full gating — including warning acknowledgement — is enforced in the dialog and re-checked server-side.) */
+  protected readonly canOpenPr = computed(
+    () => this.state.validationRunId() !== null && this.state.issueErrors().length === 0,
+  );
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -251,5 +318,122 @@ export class NetworkConfigShellComponent {
           this.telemetry.networkIntentSaveOutcome(rackId, result.kind);
       }
     });
+  }
+
+  /** Runs pre-flight validation against the current draft. Never mutates or saves the draft (AC3/AC4). */
+  protected onValidateClick(): void {
+    const rackId = this.state.rackId();
+    if (!rackId || this.state.validating()) {
+      return;
+    }
+
+    this.state.beginValidation();
+    this.preflight
+      .validate(rackId, this.state.vlanCatalogue(), this.state.portIntents())
+      .subscribe((result) => {
+        if (result.kind === 'ok') {
+          this.state.applyValidation(result.value);
+          return;
+        }
+        this.state.failValidation();
+        this.toast.error(
+          result.kind === 'forbidden'
+            ? 'You do not have the NetworkConfigAuthor permission to run validation.'
+            : 'Validation could not be completed. Try again shortly.',
+        );
+      });
+  }
+
+  /** Opens the acknowledgement dialog and, on submit (never on cancel/Escape/backdrop), creates the PR. */
+  protected onCreatePrClick(): void {
+    const rackId = this.state.rackId();
+    const validationRunId = this.state.validationRunId();
+    if (!rackId || validationRunId === null) {
+      return;
+    }
+
+    const ref = this.dialog.open<CreatePrDialogResult, CreatePrDialogData>(
+      CreatePrDialogComponent,
+      {
+        data: { warnings: this.state.issueWarnings() },
+        injector: this.injector,
+        ariaLabelledBy: 'create-pr-dialog-heading',
+        hasBackdrop: true,
+        backdropClass: 'cds-overlay-backdrop',
+        ariaModal: true,
+      },
+    );
+
+    ref.closed.subscribe((result) => {
+      if (!result) {
+        return;
+      }
+      this.state.setAcknowledgedWarningCodes(result.acknowledgedWarningCodes);
+      this.createPullRequest(rackId, validationRunId, result.acknowledgedWarningCodes);
+    });
+  }
+
+  private createPullRequest(
+    rackId: string,
+    validationRunId: string,
+    acknowledgedWarningCodes: string[],
+  ): void {
+    this.pr
+      .createPullRequest(
+        rackId,
+        validationRunId,
+        acknowledgedWarningCodes,
+        this.state.vlanCatalogue(),
+        this.state.portIntents(),
+      )
+      .subscribe((result) => {
+        switch (result.kind) {
+          case 'ok':
+            this.toast.success(result.value.detail);
+            break;
+          case 'gateRejected':
+            // The candidate/topology changed or an ack was stale — re-render the fresh issue set the
+            // server returned so the user can act on it, then prompt a re-validate.
+            if (result.response) {
+              this.state.applyValidation(result.response);
+            }
+            this.toast.error(
+              result.reasonCode === 'revalidate'
+                ? 'The configuration changed since it was validated. Re-validate, then try again.'
+                : 'Resolve the reported issues and acknowledge all safety warnings, then try again.',
+            );
+            break;
+          case 'forbidden':
+            this.toast.error(
+              'You do not have the NetworkConfigAuthor permission to create a pull request.',
+            );
+            break;
+          case 'unauthorized':
+            this.toast.error('Your session has expired. Sign in again.');
+            break;
+          default:
+            this.toast.error('Something went wrong creating the pull request.');
+        }
+      });
+  }
+
+  /** Navigates to the offending VLAN/port control and asks the routed editor to focus/scroll to it (AC4). */
+  protected onIssueSelected(issue: ValidationIssue): void {
+    this.state.requestFocus({
+      uiPath: issue.uiPath,
+      entityRef: issue.entityRef,
+      message: issue.message,
+    });
+
+    if (issue.entityRef.kind === 'vlan') {
+      void this.router.navigate(['vlans'], { relativeTo: this.route });
+      return;
+    }
+
+    const queryParams =
+      issue.entityRef.switchStableKey && issue.entityRef.portName
+        ? { switch: issue.entityRef.switchStableKey, port: issue.entityRef.portName }
+        : {};
+    void this.router.navigate(['ports'], { relativeTo: this.route, queryParams });
   }
 }

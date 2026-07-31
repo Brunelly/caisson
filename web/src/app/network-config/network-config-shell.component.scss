@@ -41,7 +41,10 @@
 .network-config-shell__reload,
 .network-config-shell__import,
 .network-config-shell__preview,
-.network-config-shell__save {
+.network-config-shell__save,
+.network-config-shell__validate,
+.network-config-shell__preview-action,
+.network-config-shell__create-pr {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -67,7 +70,9 @@
 
 .network-config-shell__reload,
 .network-config-shell__import,
-.network-config-shell__preview {
+.network-config-shell__preview,
+.network-config-shell__validate,
+.network-config-shell__preview-action {
   background: transparent;
   color: var(--cds-text-secondary);
   border: 1px solid var(--cds-border-default);
@@ -78,7 +83,8 @@
   }
 }
 
-.network-config-shell__save {
+.network-config-shell__save,
+.network-config-shell__create-pr {
   background: var(--cds-primary);
   color: var(--cds-primary-contrast);
   border: 1px solid var(--cds-primary);
@@ -147,7 +153,40 @@
   padding: var(--cds-sp-0-5) var(--cds-sp-2);
 }
 
-.network-config-shell__body {
+// Two-pane desktop layout: the editor (VLAN catalogue / port intent) on the left, the validation/preview
+// panel on the right. Below the lg breakpoint the panes stack, the validation panel moving beneath the
+// editor (story #170 / NetworkConfigWorkspace design).
+.network-config-shell__panes {
   flex: 1 1 auto;
   min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--cds-sp-4);
+
+  @include cds-mixins.cds-respond-below(lg) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.network-config-shell__editor {
+  min-width: 0;
+}
+
+.network-config-shell__validation {
+  min-width: 0;
+}
+
+// Sticky bottom action bar: Validate / Preview changes / Create pull request.
+.network-config-shell__action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--cds-sp-3);
+  margin-top: var(--cds-sp-4);
+  padding: var(--cds-sp-3) 0 var(--cds-sp-1);
+  background: var(--cds-bg-page);
+  border-top: 1px solid var(--cds-border-default);
 }

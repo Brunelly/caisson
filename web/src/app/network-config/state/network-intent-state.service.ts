@@ -7,7 +7,7 @@
 // payload per rack, story Q3's "single saved state only"), so mutation methods here are immediate local
 // edits — nothing is sent to the server until save() is called (typically from the shell's persistent
 // Save action).
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Observable } from 'rxjs';
 import { tap } from 'rxjs';
 import type {
@@ -23,8 +23,22 @@ import type {
   PreservedYamlBlockDto,
   VlanCatalogueEntryDto,
 } from '../model/network-intent-contracts';
+import type {
+  PreflightValidationResponse,
+  ValidationIssue,
+} from '../model/preflight-validation-contracts';
 
 export type NetworkIntentLoadError = 'unauthorized' | 'forbidden' | 'notFound' | 'error';
+
+/** The status of the current pre-flight validation cycle (story #170). */
+export type PreflightStatus = 'idle' | 'validating' | 'validated' | 'error';
+
+/** The editor target an issue click resolves to (story #170, AC4): the offending control to focus/scroll. */
+export interface FocusTarget {
+  uiPath: string | null;
+  entityRef: ValidationIssue['entityRef'];
+  message: string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class NetworkIntentStateService {
@@ -48,6 +62,18 @@ export class NetworkIntentStateService {
   private readonly _schemaVersion = signal<number | null>(null);
   private readonly _warnings = signal<string[]>([]);
 
+  // Story #170 pre-flight validation state. The validationRunId binds the issue set to the exact candidate
+  // + topology it was validated against; any draft edit clears it (stale-on-edit) so a fresh validation is
+  // forced before a PR can be created. Acknowledged safety-warning codes gate PR creation.
+  private readonly _issueErrors = signal<ValidationIssue[]>([]);
+  private readonly _issueWarnings = signal<ValidationIssue[]>([]);
+  private readonly _validationRunId = signal<string | null>(null);
+  private readonly _topologySnapshotId = signal<string | null>(null);
+  private readonly _acknowledgedWarningCodes = signal<ReadonlySet<string>>(new Set());
+  private readonly _lastValidatedAtUtc = signal<string | null>(null);
+  private readonly _preflightStatus = signal<PreflightStatus>('idle');
+  private readonly _focusTarget = signal<FocusTarget | null>(null);
+
   readonly rackId = this._rackId.asReadonly();
   readonly vlanCatalogue = this._vlanCatalogue.asReadonly();
   readonly portIntents = this._portIntents.asReadonly();
@@ -61,6 +87,31 @@ export class NetworkIntentStateService {
   readonly unknownBlocks = this._unknownBlocks.asReadonly();
   readonly schemaVersion = this._schemaVersion.asReadonly();
   readonly warnings = this._warnings.asReadonly();
+
+  readonly issueErrors = this._issueErrors.asReadonly();
+  readonly issueWarnings = this._issueWarnings.asReadonly();
+  readonly validationRunId = this._validationRunId.asReadonly();
+  readonly topologySnapshotId = this._topologySnapshotId.asReadonly();
+  readonly acknowledgedWarningCodes = this._acknowledgedWarningCodes.asReadonly();
+  readonly lastValidatedAtUtc = this._lastValidatedAtUtc.asReadonly();
+  readonly preflightStatus = this._preflightStatus.asReadonly();
+  readonly validating = computed(() => this._preflightStatus() === 'validating');
+  readonly focusTarget = this._focusTarget.asReadonly();
+
+  /** The distinct safety-warning codes in the current run that still require acknowledgement. */
+  readonly warningCodesRequiringAck = computed(() => [
+    ...new Set(this._issueWarnings().map((w) => w.code)),
+  ]);
+
+  /** PR creation is allowed only when the current run is still valid (a validationRunId exists — cleared
+   * on any edit), has no errors, and every safety-warning code has been acknowledged (AC3/AC5). */
+  readonly canCreatePr = computed(() => {
+    if (this._validationRunId() === null || this._issueErrors().length > 0) {
+      return false;
+    }
+    const acknowledged = this._acknowledgedWarningCodes();
+    return this.warningCodesRequiringAck().every((code) => acknowledged.has(code));
+  });
 
   /** Loads (or reloads) the rack's saved network intent, discarding any unsaved local edits — used on
    * first navigation into the feature and as the explicit "reload" action after a 409 conflict. */
@@ -182,6 +233,62 @@ export class NetworkIntentStateService {
     this.markDirty();
   }
 
+  /** Marks the start of a validation cycle (drives the panel's shimmer skeletons). */
+  beginValidation(): void {
+    this._preflightStatus.set('validating');
+  }
+
+  /** Records that the validation cycle failed to reach the server (403/network/etc). */
+  failValidation(): void {
+    this._preflightStatus.set('error');
+  }
+
+  /** Applies a successful pre-flight validation result: swaps the issue set, binds the validationRunId to
+   * this candidate + topology, resets acknowledgements (a fresh run is a fresh acknowledgement slate), and
+   * stamps the last-validated time. Never mutates or saves the draft (AC3/AC4). */
+  applyValidation(response: PreflightValidationResponse): void {
+    this._issueErrors.set(response.errors);
+    this._issueWarnings.set(response.warnings);
+    this._validationRunId.set(response.validationRunId);
+    this._topologySnapshotId.set(response.topologySnapshotId);
+    this._lastValidatedAtUtc.set(response.validatedAtUtc);
+    this._acknowledgedWarningCodes.set(new Set());
+    this._preflightStatus.set('validated');
+  }
+
+  /** Toggles acknowledgement of one safety-warning code (per-warning checkbox in the Create-PR dialog). */
+  acknowledgeWarning(code: string, acknowledged: boolean): void {
+    this._acknowledgedWarningCodes.update((set) => {
+      const next = new Set(set);
+      if (acknowledged) {
+        next.add(code);
+      } else {
+        next.delete(code);
+      }
+      return next;
+    });
+  }
+
+  /** Acknowledges every current safety-warning code at once (dialog "acknowledge all" convenience). */
+  acknowledgeAllWarnings(): void {
+    this._acknowledgedWarningCodes.set(new Set(this.warningCodesRequiringAck()));
+  }
+
+  /** Replaces the acknowledged-warning-code set wholesale (the Create-PR dialog commits its acks on submit). */
+  setAcknowledgedWarningCodes(codes: readonly string[]): void {
+    this._acknowledgedWarningCodes.set(new Set(codes));
+  }
+
+  /** Requests that the editor focus/scroll to the control an issue points at (cleared once consumed). */
+  requestFocus(target: FocusTarget): void {
+    this._focusTarget.set(target);
+  }
+
+  /** Clears the pending focus target once a routed editor has consumed it. */
+  clearFocusTarget(): void {
+    this._focusTarget.set(null);
+  }
+
   private applyLoaded(intent: NetworkIntentDto, etag: string | null): void {
     this._vlanCatalogue.set(intent.vlanCatalogue);
     this._portIntents.set(intent.portIntents);
@@ -190,11 +297,26 @@ export class NetworkIntentStateService {
     this._etag.set(etag);
     this._dirty.set(false);
     this._fieldErrors.set([]);
+    this.clearValidation();
   }
 
   private markDirty(): void {
     this._dirty.set(true);
     this._fieldErrors.set([]);
+    // Stale-on-edit: any draft change invalidates the last validation run so a fresh one is forced before
+    // a PR can be created (TOCTOU safety, AC3/AC4). Keep no stale issues/acks around.
+    this.clearValidation();
+  }
+
+  private clearValidation(): void {
+    this._issueErrors.set([]);
+    this._issueWarnings.set([]);
+    this._validationRunId.set(null);
+    this._topologySnapshotId.set(null);
+    this._acknowledgedWarningCodes.set(new Set());
+    this._lastValidatedAtUtc.set(null);
+    this._preflightStatus.set('idle');
+    this._focusTarget.set(null);
   }
 
   private clearImportState(): void {

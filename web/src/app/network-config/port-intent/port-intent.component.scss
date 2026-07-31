@@ -106,3 +106,23 @@
 .port-intent__identifier {
   @include cds-mixins.cds-identifier-text;
 }
+
+// A pre-flight issue's target port row: a theme-safe highlight when navigated to from the validation
+// panel (story #170, AC4), paired with aria-invalid + a described-by message (colour never the sole cue).
+.port-intent__row--invalid {
+  outline: 2px solid var(--cds-error-fg);
+  outline-offset: -2px;
+  background: var(--cds-error-bg);
+}
+
+.port-intent__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
