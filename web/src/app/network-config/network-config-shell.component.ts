@@ -107,6 +107,13 @@ import { ValidationSummaryComponent } from './yaml/validation-summary.component'
         >
           Port Intent
         </a>
+        <a
+          class="network-config-shell__tab"
+          routerLink="impact-preview"
+          routerLinkActive="network-config-shell__tab--active"
+        >
+          Impact Preview
+        </a>
         <span
           class="network-config-shell__tab network-config-shell__tab--disabled"
           aria-disabled="true"

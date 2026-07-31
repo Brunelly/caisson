@@ -84,6 +84,13 @@ export const routes: Routes = [
             (m) => m.PortIntentComponent,
           ),
       },
+      {
+        path: 'impact-preview',
+        loadComponent: () =>
+          import('./network-config/impact-preview/impact-preview.component').then(
+            (m) => m.ImpactPreviewComponent,
+          ),
+      },
     ],
   },
   { path: 'access-denied', component: AccessDeniedComponent },
@@ -148,6 +155,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./network-config/port-intent/port-intent.component').then(
             (m) => m.PortIntentComponent,
+          ),
+      },
+      {
+        path: 'impact-preview',
+        loadComponent: () =>
+          import('./network-config/impact-preview/impact-preview.component').then(
+            (m) => m.ImpactPreviewComponent,
           ),
       },
     ],

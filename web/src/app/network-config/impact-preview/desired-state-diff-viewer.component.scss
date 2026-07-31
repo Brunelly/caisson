@@ -1,0 +1,204 @@
+@use '../../shared/styles/cds-mixins';
+
+.diff-viewer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-lg);
+  background: var(--cds-surface-sunken);
+  overflow: hidden;
+}
+
+.diff-viewer__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cds-sp-2);
+  padding: var(--cds-sp-2) var(--cds-sp-3);
+  border-bottom: 1px solid var(--cds-border-default);
+  background: var(--cds-surface-elevated);
+}
+
+.diff-viewer__title {
+  margin: 0;
+  font-size: var(--cds-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cds-text-secondary);
+}
+
+.diff-viewer__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cds-sp-1);
+  min-height: 32px;
+  padding: 0 var(--cds-sp-2);
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  background: var(--cds-surface-default);
+  color: var(--cds-text-primary);
+  font-size: var(--cds-fs-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-surface-sunken);
+    border-color: var(--cds-border-focus);
+  }
+
+  @include cds-mixins.cds-focus-visible-ring;
+
+  @include cds-mixins.cds-respond-below(sm) {
+    min-height: 44px;
+  }
+}
+
+.diff-viewer__empty {
+  margin: 0;
+  padding: var(--cds-sp-4);
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-fs-sm);
+}
+
+// ---- Unified view (default; also the screen-reader-facing rendering) ----
+.diff-viewer__unified {
+  margin: 0;
+  max-height: 26rem;
+  overflow: auto;
+  padding: var(--cds-sp-2) 0;
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-sm);
+  line-height: 1.55;
+  white-space: pre;
+
+  &:focus-visible {
+    @include cds-mixins.cds-focus-visible-ring;
+  }
+
+  @include cds-mixins.cds-respond-below(md) {
+    display: block;
+  }
+}
+
+.diff-viewer__line {
+  display: block;
+  padding-inline: var(--cds-sp-3);
+}
+
+.diff-viewer__line--add {
+  background: var(--cds-success-bg);
+  color: var(--cds-success-fg);
+}
+
+.diff-viewer__line--remove {
+  background: var(--cds-error-bg);
+  color: var(--cds-error-fg);
+}
+
+.diff-viewer__line--context {
+  color: var(--cds-text-primary);
+}
+
+.diff-viewer__glyph {
+  display: inline-block;
+  width: 1.1ch;
+  font-weight: 700;
+}
+
+.diff-viewer__hunk {
+  display: block;
+  width: 100%;
+  padding: var(--cds-sp-1) var(--cds-sp-3);
+  border: 0;
+  border-block: 1px dashed var(--cds-border-default);
+  background: var(--cds-surface-elevated);
+  color: var(--cds-text-secondary);
+  font: var(--cds-fs-xs) / 1.4 var(--cds-font-mono);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--cds-primary);
+  }
+
+  @include cds-mixins.cds-focus-visible-ring;
+}
+
+// ---- Split view (>= md) ----
+.diff-viewer__split {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .diff-viewer__split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    max-height: 26rem;
+    overflow: auto;
+    font-family: var(--cds-font-mono);
+    font-size: var(--cds-fs-sm);
+    line-height: 1.55;
+  }
+
+  // On >= md the unified <pre> is hidden visually but kept for assistive tech.
+  .diff-viewer__unified {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+.diff-viewer__pane-head {
+  padding: var(--cds-sp-1) var(--cds-sp-3);
+  border-bottom: 1px solid var(--cds-border-default);
+  background: var(--cds-surface-elevated);
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-fs-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.diff-viewer__hunk--split {
+  grid-column: 1 / -1;
+}
+
+.diff-viewer__cell {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cds-sp-1);
+  padding-inline: var(--cds-sp-2);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-viewer__cell--add {
+  background: var(--cds-success-bg);
+  color: var(--cds-success-fg);
+}
+
+.diff-viewer__cell--remove {
+  background: var(--cds-error-bg);
+  color: var(--cds-error-fg);
+}
+
+.diff-viewer__cell--empty {
+  background: var(--cds-surface-sunken);
+}
+
+.diff-viewer__ln {
+  min-width: 2.5ch;
+  color: var(--cds-text-secondary);
+  text-align: right;
+  user-select: none;
+}
+
+.diff-viewer__text {
+  white-space: pre;
+}

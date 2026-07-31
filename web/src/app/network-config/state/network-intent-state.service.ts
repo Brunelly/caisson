@@ -72,6 +72,12 @@ export class NetworkIntentStateService {
   private readonly _acknowledgedWarningCodes = signal<ReadonlySet<string>>(new Set());
   private readonly _lastValidatedAtUtc = signal<string | null>(null);
   private readonly _preflightStatus = signal<PreflightStatus>('idle');
+
+  // Impact-preview freshness (story #171): the last computed preview's candidate id and whether it still
+  // reflects the current draft. Any draft edit/import/reload invalidates it (via clearValidation) so a fresh
+  // preview is required before PR submission.
+  private readonly _previewCandidateId = signal<string | null>(null);
+  private readonly _previewFresh = signal(false);
   private readonly _focusTarget = signal<FocusTarget | null>(null);
 
   readonly rackId = this._rackId.asReadonly();
@@ -95,6 +101,8 @@ export class NetworkIntentStateService {
   readonly acknowledgedWarningCodes = this._acknowledgedWarningCodes.asReadonly();
   readonly lastValidatedAtUtc = this._lastValidatedAtUtc.asReadonly();
   readonly preflightStatus = this._preflightStatus.asReadonly();
+  readonly previewCandidateId = this._previewCandidateId.asReadonly();
+  readonly previewFresh = this._previewFresh.asReadonly();
   readonly validating = computed(() => this._preflightStatus() === 'validating');
   readonly focusTarget = this._focusTarget.asReadonly();
 
@@ -308,6 +316,12 @@ export class NetworkIntentStateService {
     this.clearValidation();
   }
 
+  /** Records that a fresh impact preview was computed for the current draft (story #171). */
+  applyPreview(candidateId: string): void {
+    this._previewCandidateId.set(candidateId);
+    this._previewFresh.set(true);
+  }
+
   private clearValidation(): void {
     this._issueErrors.set([]);
     this._issueWarnings.set([]);
@@ -317,6 +331,9 @@ export class NetworkIntentStateService {
     this._lastValidatedAtUtc.set(null);
     this._preflightStatus.set('idle');
     this._focusTarget.set(null);
+    // Any draft change also invalidates the impact preview (stale-on-edit, story #171 AC3).
+    this._previewCandidateId.set(null);
+    this._previewFresh.set(false);
   }
 
   private clearImportState(): void {
