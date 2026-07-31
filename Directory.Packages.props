@@ -102,6 +102,14 @@
     -->
     <PackageVersion Include="LibGit2Sharp" Version="0.32.0" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <!--
+      Azure Key Vault credential retrieval for GitHub PR creation (story #172, Task #205). Both are MIT
+      licensed (Apache-2.0 compatible; NFR5) and are the first Azure SDK dependencies in the tree. The PAT is
+      fetched at runtime via managed identity (DefaultAzureCredential); no secret is ever bound into an
+      options POCO, appsettings, or source (AC4). See ADR 0059.
+    -->
+    <PackageVersion Include="Azure.Identity" Version="1.12.1" />
+    <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.6.0" />
   </ItemGroup>
 
   <ItemGroup>
