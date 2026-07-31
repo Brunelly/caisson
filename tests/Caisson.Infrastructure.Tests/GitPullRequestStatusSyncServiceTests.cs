@@ -174,6 +174,7 @@ public sealed class GitPullRequestStatusSyncServiceTests : IClassFixture<Postgre
             transitions,
             Microsoft.Extensions.Options.Options.Create(new GitPullRequestStatusOptions { PollIntervalSeconds = 60, BatchSize = 50, LeaseSeconds = 120 }),
             time,
+            new Caisson.Ingestion.Observability.GitPullRequestStatusMetrics(),
             NullLogger<GitPullRequestStatusSyncService>.Instance);
     }
 

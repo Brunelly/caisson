@@ -1,6 +1,7 @@
 using Caisson.Domain.Git;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
+using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,7 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
     private readonly IPrStatusTransitionService _transitions;
     private readonly IOptions<GitPullRequestStatusOptions> _options;
     private readonly TimeProvider _time;
+    private readonly GitPullRequestStatusMetrics _metrics;
     private readonly ILogger<GitPullRequestStatusSyncService> _logger;
 
     public GitPullRequestStatusSyncService(
@@ -38,6 +40,7 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
         IPrStatusTransitionService transitions,
         IOptions<GitPullRequestStatusOptions> options,
         TimeProvider time,
+        GitPullRequestStatusMetrics metrics,
         ILogger<GitPullRequestStatusSyncService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -45,6 +48,7 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
         _transitions = transitions ?? throw new ArgumentNullException(nameof(transitions));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -60,6 +64,7 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
         var claimedIds = await GitPullRequestStatusQueries.ClaimDueAsync(
             _context, now, leaseUntil, options.BatchSize, cancellationToken);
 
+        _metrics.RecordRowsClaimed(claimedIds.Count);
         if (claimedIds.Count == 0)
         {
             return 0;
@@ -105,22 +110,37 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
         }
 
         var now = _time.GetUtcNow().UtcDateTime;
+        _metrics.RecordPollAttempt();
+        var startedAt = _time.GetTimestamp();
 
         GitHubPullRequestSnapshot prSnapshot;
         GitHubChecksSummary checks;
         try
         {
+            _metrics.RecordGitHubCall();
             prSnapshot = await _gitHub.GetPullRequestAsync(record.PullRequestNumber, cancellationToken);
 
-            checks = string.IsNullOrEmpty(prSnapshot.HeadSha)
-                ? new GitHubChecksSummary(GitPullRequestChecksConclusion.Unknown, null, "{}")
-                : GitHubChecksRollup.Summarize(await _gitHub.GetCheckRunsForRefAsync(prSnapshot.HeadSha, cancellationToken));
+            if (string.IsNullOrEmpty(prSnapshot.HeadSha))
+            {
+                checks = new GitHubChecksSummary(GitPullRequestChecksConclusion.Unknown, null, "{}");
+            }
+            else
+            {
+                _metrics.RecordGitHubCall();
+                checks = GitHubChecksRollup.Summarize(
+                    await _gitHub.GetCheckRunsForRefAsync(prSnapshot.HeadSha, cancellationToken));
+            }
         }
         catch (GitHubStatusApiException ex)
         {
+            var reason = GitPrPollFailureReasons.FromCategory(ex.Category);
+            _metrics.RecordPollFailure(reason, _time.GetElapsedTime(startedAt));
             await RecordFailureAsync(record, ex, options, now, cancellationToken);
             return;
         }
+
+        _metrics.RecordPollSuccess(_time.GetElapsedTime(startedAt));
+        _metrics.RecordSuccessfulContact(now);
 
         var newState = MapState(prSnapshot);
         var previous = new PrStatusTransitionSnapshot(record.State, record.ChecksConclusion);
@@ -142,6 +162,7 @@ public sealed class GitPullRequestStatusSyncService : IGitPullRequestStatusSyncS
 
         if (meaningful)
         {
+            _metrics.RecordTransition();
             // Choke point: audit + persist (status/link/audit) in one unit of work, then fail-open publish.
             await _transitions.OnStatusChangedAsync(_context, record, previous, correlationId, cancellationToken);
         }

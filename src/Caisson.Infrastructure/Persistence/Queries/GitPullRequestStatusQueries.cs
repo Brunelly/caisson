@@ -76,4 +76,42 @@ RETURNING id AS ""Value""";
             .ToListAsync(cancellationToken);
         return claimed;
     }
+
+    /// <summary>
+    /// Reads the health snapshot the PR status health check reports on (story #173, Task #218) WITHOUT any
+    /// live GitHub call: total records, the newest successful-poll timestamp, the worst consecutive-failure
+    /// count, and its sanitized reason.
+    /// </summary>
+    public static async Task<GitPullRequestStatusHealth> HealthSnapshotAsync(
+        CaissonDbContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var total = await context.GitPullRequestStatuses.AsNoTracking().CountAsync(cancellationToken);
+        if (total == 0)
+        {
+            return new GitPullRequestStatusHealth(0, null, 0, null);
+        }
+
+        var lastSuccessfulPollAtUtc = await context.GitPullRequestStatuses.AsNoTracking()
+            .Where(s => s.ConsecutivePollFailures == 0)
+            .OrderByDescending(s => s.LastCheckedAtUtc)
+            .Select(s => (DateTime?)s.LastCheckedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var worst = await context.GitPullRequestStatuses.AsNoTracking()
+            .OrderByDescending(s => s.ConsecutivePollFailures)
+            .Select(s => new { s.ConsecutivePollFailures, s.LastPollFailureReason })
+            .FirstAsync(cancellationToken);
+
+        return new GitPullRequestStatusHealth(
+            total, lastSuccessfulPollAtUtc, worst.ConsecutivePollFailures, worst.LastPollFailureReason);
+    }
 }
+
+/// <summary>The DB-only health snapshot for the PR status poller (story #173, Task #218).</summary>
+public sealed record GitPullRequestStatusHealth(
+    int TotalRecords,
+    DateTime? LastSuccessfulPollAtUtc,
+    int MaxConsecutiveFailures,
+    string? LastFailureReason);

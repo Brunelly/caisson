@@ -114,3 +114,62 @@ null URL.
 Every create/reuse/refuse/fail is audited (`git.pr.created` / `git.pr.reused` / `git.pr.refused_pr_only` /
 `git.pr.failed`) with the correlation id, rack, fingerprint, repo, branch and PR metadata — never the PAT or
 the candidate YAML.
+
+## PR status polling, checks, gating and events (story #173)
+
+Once a PR exists, a background poller (`GitPullRequestStatusPoller`) periodically reads its GitHub state and
+check-runs, persists the result to the separate 1:1 `git_pull_request_status` table (ADR 0061), and — only on a
+*meaningful* transition (a change in PR state or the rolled-up checks conclusion) — writes an append-only
+`topology_audit_event` in the SAME transaction as the status upsert and publishes a `git-pr-status-changed`
+event over the existing Redis pub/sub → SignalR pipeline to the rack group. No-op polls and transient failures
+produce neither an audit row nor an event.
+
+Concurrency across API replicas uses the codebase's `UPDATE ... FOR UPDATE SKIP LOCKED ... RETURNING id`
+lease (ADR 0063), so two replicas never double-claim a PR and the ≤2-GitHub-calls-per-PR-per-cycle budget
+(NFR1) holds. Each claimed PR makes exactly two GitHub reads: the PR (`GET repos/{o}/{r}/pulls/{n}`) then the
+check-runs for the PR's head SHA (`GET repos/{o}/{r}/commits/{sha}/check-runs?per_page=100`).
+
+Apply/promote is **blocked until the exact candidate's PR is merged** (ADR 0062): `DriftApplyController`
+returns RFC 7807 `409 Conflict` with `reasonCode` `PrNotMerged`/`NoPrLinked` before any job is created, and
+`DriftApplyJobService` re-checks as defence-in-depth. The rack-scoped read APIs
+`GET api/racks/{rackId}/git/pull-request` and `.../pull-request/events` (RBAC `TopologyRead`, rack-access
+checked first) drive the UI panel and its SignalR-down fallback polling.
+
+### Configuration (`GitPullRequestStatus` section, non-secret)
+
+Credentials still come ONLY from Key Vault / managed identity via `IGitCredentialProvider` — never from this
+section, source, or logs. The read client reuses the `Git:GitHub` `ApiBaseUrl`/`RepoOwner`/`RepoName`.
+
+| Key | Meaning | Default | Bounds |
+| --- | --- | --- | --- |
+| `Enabled` | Whether the poller runs | `false` | — |
+| `PollIntervalSeconds` | Poll cadence (NFR1) | `300` (prod); `60` in Development/CI | 60–600 |
+| `BatchSize` | Max due PRs claimed + polled per tick | `20` | 1–500 |
+| `MaxBackoffSeconds` | Cap on exponential backoff-with-jitter after a failed poll | `600` | 1–86400 |
+| `LeaseSeconds` | Lease horizon a claim advances `NextPollAfterUtc` to (crash recovery) | `120` | 30–3600 |
+| `DegradedAfterMinutes` | Health `Degraded` threshold when GitHub is unreachable (NFR3) | `15` | 1–1440 |
+
+Per-environment interval defaults: **dev/CI 60s**, **prod 300s** (`appsettings.json` = 300; `appsettings.Development.json` overrides to 60).
+
+### Failure handling
+
+- `401`/`403` → a failed poll recorded with the sanitized reason `CredentialsRejected` (no audit, no event) and
+  exponential backoff-with-jitter into `NextPollAfterUtc`.
+- `429` → honours `Retry-After` / `X-RateLimit-Reset` into `NextPollAfterUtc`; the last-known status stays
+  visible in the UI with its `Last updated` timestamp.
+- timeout / `5xx` / transport → exponential backoff-with-jitter. Every fault is isolated per-PR so one poisoned
+  PR never aborts the batch or crashes the host (NFR3).
+
+### Health & metrics
+
+`GitPullRequestStatusHealthCheck` (`/health/ready`, tag `git-pr-status`) reports `Degraded` — never
+`Unhealthy`/throwing, and without any live GitHub call — when no successful poll is newer than
+`DegradedAfterMinutes` while polls are actively failing. `GitPullRequestStatusMetrics`
+(meter `Caisson.Ingestion.GitPrStatus`) emits poll attempts/results/duration, rows claimed, transitions,
+poll-failures-by-reason, GitHub call count, and the last-successful-GitHub-contact gauge.
+
+### Status transition audit actions
+
+`git.pr.status_changed` and `git.pr.checks_changed` (target type `git-pull-request`, actor `system`) — each with
+rackId, prNumber, repo, previous/new state + checks, headSha and the tick correlation id, secret-scrubbed and
+bounded to 8 KB.

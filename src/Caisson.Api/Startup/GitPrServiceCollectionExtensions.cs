@@ -71,6 +71,7 @@ public static class GitPrServiceCollectionExtensions
             http.Timeout = TimeSpan.FromSeconds(20);
         });
 
+        services.TryAddSingleton<Ingestion.Observability.GitPullRequestStatusMetrics>();
         services.TryAddScoped<IGitPullRequestStatusSyncService, GitPullRequestStatusSyncService>();
         services.AddScoped<IPrStatusTransitionService, PrStatusTransitionService>();
 
