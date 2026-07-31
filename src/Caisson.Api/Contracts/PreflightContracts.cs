@@ -63,15 +63,42 @@ public sealed record CreatePrRequest(
     IReadOnlyList<PortAccessIntentDto>? PortIntents);
 
 /// <summary>
-/// The PR-creation response (story #170). The real forge/PR pipeline is deferred to #172; today the gate
-/// passes and the stub publisher accepts the request without any git write. <see cref="Status"/> is a
-/// stable string; <see cref="PullRequestUrl"/> is null until #172 lands.
+/// The structured change summary carried in the PR-creation response and PR body (story #172, AC1). Counts
+/// are derived from the pure <c>SemanticDiffEngine</c> between the rack's baseline revision and the candidate;
+/// <see cref="Total"/> is the sum of all VLAN and port changes.
+/// </summary>
+public sealed record PrChangeSummary(
+    int VlansAdded,
+    int VlansRemoved,
+    int VlansModified,
+    int PortsAdded,
+    int PortsRemoved,
+    int PortsModified,
+    int Total);
+
+/// <summary>
+/// The PR-creation response (stories #170/#172). The story-#170 gate fields (<see cref="ValidationRunId"/>,
+/// <see cref="Status"/>, <see cref="Detail"/>, <see cref="PullRequestUrl"/>) are unchanged; story #172 adds
+/// the real PR metadata (all additive, nullable/defaulted so existing serialization and the web client stay
+/// unbroken). On a stubbed/disabled deployment the additive fields remain null/default; on a real create or
+/// reuse they carry the branch, PR number/url, commit SHA, fingerprint, reuse flag, repo owner/name, and the
+/// structured <see cref="ChangeSummary"/>. <see cref="ErrorCode"/> is a stable
+/// <see cref="GitPrErrorCodes"/> value on a failure surfaced in-band.
 /// </summary>
 public sealed record CreatePrResponse(
     string ValidationRunId,
     string Status,
     string Detail,
-    string? PullRequestUrl);
+    string? PullRequestUrl,
+    int? PullRequestNumber = null,
+    string? BranchName = null,
+    string? CommitSha = null,
+    string? CandidateFingerprint = null,
+    bool Reused = false,
+    string? RepoOwner = null,
+    string? RepoName = null,
+    string? ErrorCode = null,
+    PrChangeSummary? ChangeSummary = null);
 
 /// <summary>Maps the pure <see cref="PreflightIssue"/> set onto the grouped wire response.</summary>
 public static class PreflightContractMappers

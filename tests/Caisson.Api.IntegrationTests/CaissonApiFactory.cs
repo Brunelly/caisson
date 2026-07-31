@@ -1,6 +1,7 @@
 using Caisson.Domain.Topology;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Ingestion.Git.GitHub;
 using Caisson.Ingestion.Git.ReadOnly;
 using Caisson.Ingestion.Options;
 using Caisson.Ingestion.Security;
@@ -41,6 +42,17 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
     /// <summary>The seeded topology identifiers (null when <see cref="Available"/> is false).</summary>
     public SeededTopology Seed { get; private set; } = null!;
 
+    /// <summary>The in-memory GitHub write client the PR suite asserts against (no real network).</summary>
+    public FakeGitHubPullRequestClient GitHub { get; }
+
+    /// <summary>The in-memory git credential provider the PR suite asserts against (no Azure).</summary>
+    public FakeGitCredentialProvider Credentials { get; } = new();
+
+    /// <summary>A pinnable clock so the PR-guardrail-collision test can compute the exact generated branch.</summary>
+    public MutableTimeProvider Clock { get; } = new();
+
+    public CaissonApiFactory() => GitHub = new FakeGitHubPullRequestClient(Credentials);
+
     public async Task InitializeAsync()
     {
         await _harness.InitializeAsync();
@@ -54,6 +66,16 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Caisson", _harness.ConnectionString);
+
+        // Enable the desired-state GitHub PR feature (story #172) against a target repo, backed by the fake
+        // GitHub client + credential provider registered below — no real network / Azure. Read at DI-time by
+        // AddCaissonGitPr, so it must be a host setting (not a ConfigureTestServices override).
+        builder.UseSetting("Git:GitHub:Enabled", "true");
+        builder.UseSetting("Git:GitHub:RepoOwner", "test-owner");
+        builder.UseSetting("Git:GitHub:RepoName", "test-repo");
+        builder.UseSetting("Git:GitHub:DefaultBranch", "main");
+        builder.UseSetting("Git:GitHub:ApiBaseUrl", "https://api.github.test");
+
         if (_redis.Available)
         {
             // Enable the live-updates pipeline (backplane + relay) against the harness Redis. Resolved via
@@ -103,6 +125,17 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
             {
                 options.RepoUrl = "https://example.com/stub-repo.git";
             });
+
+            // Story #172: swap the typed GitHub write client + Key Vault credential provider for the in-memory
+            // fakes (no real network / Azure) and pin the clock behind the pinnable MutableTimeProvider so the
+            // guardrail-collision test can compute the exact generated branch. Registered as the exact
+            // instances the test asserts against.
+            services.RemoveAll(typeof(IGitHubPullRequestClient));
+            services.AddSingleton<IGitHubPullRequestClient>(GitHub);
+            services.RemoveAll(typeof(IGitCredentialProvider));
+            services.AddSingleton<IGitCredentialProvider>(Credentials);
+            services.RemoveAll(typeof(TimeProvider));
+            services.AddSingleton<TimeProvider>(Clock);
         });
     }
 

@@ -44,9 +44,15 @@ Connection strings are read from environment variables — **no secrets are comm
 | ----------------- | ----------------------------------------- | ------------------------------------------------------------------- |
 | `CAISSON_DB`      | design-time factory (`dotnet ef …`)       | `Host=localhost;Port=5432;Database=caisson;Username=caisson;Password=caisson` |
 | `CAISSON_TEST_DB` | integration tests (preferred over Docker) | same shape, pointing at a throwaway test database                   |
+| `CAISSON_GITHUB_TOKEN` | local/CI GitHub PR credential (dev only) | a GitHub PAT; hosted deployments use Key Vault instead              |
 
 If `CAISSON_TEST_DB` is unset, the integration suite falls back to spinning up PostgreSQL via
 [Testcontainers](https://dotnet.testcontainers.org/) (requires Docker).
+
+The optional **GitHub PR publishing** feature (story #172) is configured under the non-secret `Git:GitHub`
+section (feature flag, repo owner/name/default branch, and the Key Vault URI + PAT secret **name** — never the
+PAT value). Hosted deployments retrieve the PAT from Azure Key Vault via managed identity; the token is never
+committed or logged. See [`docs/github-pr-publishing.md`](docs/github-pr-publishing.md).
 
 ## Build / test / migrate
 
@@ -96,6 +102,7 @@ discovered by the real drivers through the real orchestration pipeline, with no 
 - Architecture record for AI/human contributors: [`CLAUDE.md`](CLAUDE.md)
 - Frontend getting started: [`docs/frontend-getting-started.md`](docs/frontend-getting-started.md)
 - Simulation harness: [`docs/simulation-harness.md`](docs/simulation-harness.md)
+- GitHub PR publishing (Key Vault + managed identity): [`docs/github-pr-publishing.md`](docs/github-pr-publishing.md)
 
 ## License
 

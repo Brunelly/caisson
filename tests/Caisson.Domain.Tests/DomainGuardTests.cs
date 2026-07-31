@@ -165,6 +165,14 @@ public sealed class DomainGuardTests
         "InventoryPort.StableKey",
         "EntityRef.SwitchStableKey",
         "EntityRefDto.SwitchStableKey",
+        // Story #172: non-secret GitHub PR options/settings — the PAT NAME (not value), the vault URI, and
+        // the auth MODE enum. The secret value itself is never bound here; it resolves at runtime through
+        // IGitCredentialProvider (Key Vault via managed identity, ADR 0059), never through these POCOs.
+        "GitHubOptions.PatSecretName",
+        "GitHubOptions.KeyVaultUri",
+        "GitHubOptions.AuthMode",
+        "KeyVaultCredentialSettings.KeyVaultUri",
+        "KeyVaultCredentialSettings.SecretName",
     };
 
     public static IEnumerable<object[]> ObservedProperties()

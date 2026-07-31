@@ -77,6 +77,26 @@ jobs:
             exit 1
           fi
 
+      # OSS-license gate (NFR5): the project is Apache-2.0, so every dependency must carry an Apache-2.0-
+      # compatible licence. Story #172 adds the first Azure SDK dependencies (Azure.Identity,
+      # Azure.Security.KeyVault.Secrets) — both MIT. This asserts their restored .nuspec licence expression
+      # is on the compatible allow-list, failing the build if a future bump ever ships an incompatible one.
+      - name: OSS license check (new Azure SDK dependencies)
+        run: |
+          set -euo pipefail
+          allow='MIT|Apache-2.0|BSD-2-Clause|BSD-3-Clause|MS-PL'
+          fail=0
+          for pkg in azure.identity azure.security.keyvault.secrets; do
+            nuspec=$(find "$HOME/.nuget/packages/$pkg" -name '*.nuspec' 2>/dev/null | head -n1 || true)
+            if [ -z "$nuspec" ]; then echo "::error::$pkg was not restored"; fail=1; continue; fi
+            lic=$(grep -oE '<license type="expression">[^<]+' "$nuspec" | sed 's/.*>//' | head -n1 || true)
+            echo "$pkg licence: ${lic:-<none>}"
+            if ! printf '%s' "${lic:-}" | grep -qE "$allow"; then
+              echo "::error::$pkg licence '${lic:-unknown}' is not on the Apache-2.0-compatible allow-list"; fail=1
+            fi
+          done
+          exit $fail
+
       - name: Build (warnings as errors)
         run: dotnet build --no-restore -c Release -warnaserror
 
@@ -163,8 +183,25 @@ jobs:
 
       # Control-plane API: RBAC matrix, correlation-id, pagination/problem-details, query round-trips and
       # the read-only guard, hosted in-process via WebApplicationFactory against the Postgres service.
+      # Excludes the story #172 desired-state GitHub PR suite (run as its own named step below) so the two
+      # steps partition the project's tests rather than re-running the PR suite twice.
       - name: API integration tests
-        run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release
+        run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release --filter "FullyQualifiedName!~DesiredStatePrApiTests"
+
+      # Story #172 (Task #209): the desired-state GitHub PR-creation flow — create/reuse/refuse(409),
+      # N=5-concurrent → 1 PR, RBAC, and the no-merge/no-default-ref-write assertions — against the fake
+      # GitHub client injected through CaissonApiFactory. A DEDICATED, filtered step so a PR-workflow
+      # failure produces its own clearly-named signal instead of being buried in the broad API step.
+      - name: Desired-state GitHub PR API integration tests
+        run: dotnet test tests/Caisson.Api.IntegrationTests --no-build -c Release --filter "FullyQualifiedName~DesiredStatePrApiTests" --logger "trx;LogFileName=git-pr-integration.trx"
+
+      - name: Upload Git PR integration test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: git-pr-integration-test-logs
+          path: tests/Caisson.Api.IntegrationTests/TestResults/git-pr-integration.trx
+          if-no-files-found: ignore
 
       # Story #11: the consolidated virtual-rack harness — drives the REAL RouterOsSwitchDriver/
       # RedfishBmcDriver against the in-process simulators through the real orchestration/persistence/

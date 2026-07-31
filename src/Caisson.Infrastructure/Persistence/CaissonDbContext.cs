@@ -2,6 +2,7 @@ using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Drift.Apply;
+using Caisson.Domain.Git;
 using Caisson.Domain.NetworkConfig;
 using Caisson.Domain.Topology;
 using Microsoft.EntityFrameworkCore;
@@ -103,6 +104,9 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Durable, TTL-pruned impact-preview diff cache, keyed per rack + baseline + candidate (story #171).</summary>
     public DbSet<DesiredStateCandidateDiffCache> DesiredStateCandidateDiffCaches => Set<DesiredStateCandidateDiffCache>();
+
+    /// <summary>Durable idempotency + audit link from a rack candidate fingerprint to its GitHub PR (story #172).</summary>
+    public DbSet<GitPullRequestLink> GitPullRequestLinks => Set<GitPullRequestLink>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

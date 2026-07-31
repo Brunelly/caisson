@@ -12,7 +12,9 @@ using Caisson.Domain.NetworkConfig.Preflight;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Infrastructure.Persistence.Shaping;
+using Caisson.Ingestion.Git.GitHub;
 using Caisson.Ingestion.Observability;
+using Caisson.Ingestion.RoundTrip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -116,23 +118,102 @@ public sealed class DesiredStatePrController : DiscoveryControllerBase
             return GateRejection(reject, response);
         }
 
-        var result = await _prService.CreatePullRequestAsync(
-            new DesiredStatePrCreationRequest(
-                rackId, recomputedRunId, vlanCatalogue, portIntents,
-                request.AcknowledgedWarningCodes ?? Array.Empty<string>()),
-            cancellationToken);
+        DesiredStatePrCreationResult result;
+        try
+        {
+            result = await _prService.CreatePullRequestAsync(
+                new DesiredStatePrCreationRequest(
+                    rackId, recomputedRunId, vlanCatalogue, portIntents,
+                    request.AcknowledgedWarningCodes ?? Array.Empty<string>()),
+                cancellationToken);
+        }
+        catch (DesiredStateRenderException ex)
+        {
+            // The candidate cannot be rendered to a valid desired-state document (e.g. a non-DNS-shaped rack
+            // slug) — a 422, never a git write. The publisher performed no side effect.
+            stopwatch.Stop();
+            _metrics.RecordCreatePr(PreflightValidationOutcome.Rejected, stopwatch.Elapsed);
+            return RenderRejection(ex);
+        }
+        catch (PrOnlyGuardrailViolationException)
+        {
+            // The PR-only guardrail refused the request (AC3). The publisher already audited the refusal.
+            stopwatch.Stop();
+            _metrics.RecordCreatePr(PreflightValidationOutcome.Rejected, stopwatch.Elapsed);
+            _logger.LogInformation("Desired-state PR refused by the PR-only guardrail.");
+            return GuardrailViolation();
+        }
 
         stopwatch.Stop();
         _metrics.RecordCreatePr(PreflightValidationOutcome.Created, stopwatch.Elapsed);
-        await WriteAuditAsync(
-            rackId, "desired-state.pr-created", "success", PreflightValidationOutcome.Created,
-            response.Errors.Count, response.Warnings.Count, response.TopologySnapshotId,
-            request.AcknowledgedWarningCodes, reasonCode: null, cancellationToken);
 
-        _logger.LogInformation("Desired-state PR gate passed ({Status}).", result.Status);
+        if (result.ErrorCode is { } errorCode)
+        {
+            // The gate passed but the git write failed; the publisher audited git.pr.failed. Surface a stable
+            // error code with no secret text (AC6).
+            _logger.LogWarning("Desired-state PR creation failed ({ErrorCode}).", errorCode);
+            return PublisherFailure(errorCode);
+        }
+
+        _logger.LogInformation(
+            "Desired-state PR {Status} (reused={Reused}, prNumber={PrNumber}).",
+            result.Status, result.Reused, result.PullRequestNumber);
 
         return Accepted(new CreatePrResponse(
-            recomputedRunId, result.Status, result.Detail, result.PullRequestUrl));
+            recomputedRunId, result.Status, result.Detail, result.PullRequestUrl,
+            result.PullRequestNumber, result.BranchName, result.CommitSha, result.CandidateFingerprint,
+            result.Reused, result.RepoOwner, result.RepoName, result.ErrorCode, result.ChangeSummary));
+    }
+
+    /// <summary>Maps a candidate that cannot be rendered to a 422 with a stable reason code.</summary>
+    private ObjectResult RenderRejection(DesiredStateRenderException ex)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status422UnprocessableEntity,
+            Title = "The candidate cannot be rendered to a desired-state document",
+            Detail = "The candidate could not be rendered to a valid desired-state document; no pull request was created.",
+        };
+        problem.Extensions["reasonCode"] = "render";
+        problem.Extensions["correlationId"] = _correlation.CorrelationId;
+        problem.Extensions["errors"] = ex.Errors.Select(e => new { field = e.Field, message = e.Message });
+        return new ObjectResult(problem) { StatusCode = StatusCodes.Status422UnprocessableEntity };
+    }
+
+    /// <summary>Maps a PR-only guardrail violation to a 409 RFC7807 problem (AC3).</summary>
+    private ObjectResult GuardrailViolation()
+    {
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status409Conflict,
+            Title = "PR-only guardrail violation",
+            Detail = GitPrErrorCodes.MessageFor(GitPrErrorCodes.PrOnlyGuardrailViolation),
+        };
+        problem.Extensions["errorCode"] = GitPrErrorCodes.PrOnlyGuardrailViolation;
+        problem.Extensions["reasonCode"] = GitPrErrorCodes.PrOnlyGuardrailViolation;
+        problem.Extensions["correlationId"] = _correlation.CorrelationId;
+        return new ObjectResult(problem) { StatusCode = StatusCodes.Status409Conflict };
+    }
+
+    /// <summary>Maps a publisher failure error code to a stable RFC7807 problem for UI display + triage (AC6).</summary>
+    private ObjectResult PublisherFailure(string errorCode)
+    {
+        var status = errorCode switch
+        {
+            GitPrErrorCodes.GitHubApiFailed or GitPrErrorCodes.GitCredentialsUnavailable => StatusCodes.Status502BadGateway,
+            // A deployment-configuration gap (owner/name unset) is a server-side condition, not a client error.
+            GitPrErrorCodes.GitRepoNotConfigured => StatusCodes.Status500InternalServerError,
+            _ => StatusCodes.Status500InternalServerError,
+        };
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = "Pull-request creation failed",
+            Detail = GitPrErrorCodes.MessageFor(errorCode),
+        };
+        problem.Extensions["errorCode"] = errorCode;
+        problem.Extensions["correlationId"] = _correlation.CorrelationId;
+        return new ObjectResult(problem) { StatusCode = status };
     }
 
     /// <summary>Applies the TOCTOU-safe gate: run-id match, then no errors, then all warnings acknowledged.</summary>

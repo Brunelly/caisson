@@ -108,15 +108,45 @@ jobs:
         run: |
           az containerapp secret set -g "$RG" -n "$APP_API" \
             --secrets "caisson-db=${{ secrets.CAISSON_DB }}"
-      - name: Deploy image + runtime config
+      # Story #172: the Container App's SYSTEM-ASSIGNED managed identity is granted least-scope
+      # "Key Vault Secrets User" on the configured vault, so Caisson.Api can read the GitHub PAT at runtime
+      # via DefaultAzureCredential. The PAT is NEVER copied into an Actions secret or a Container App secret
+      # — only the non-secret vault URI + secret NAME are passed as env vars below. Opt-in via the
+      # CAISSON_KEYVAULT_NAME repository variable so the existing TEST deploy is unaffected until configured.
+      - name: Grant the app's managed identity Key Vault Secrets User
+        if: ${{ vars.CAISSON_KEYVAULT_NAME != '' }}
         run: |
+          principal=$(az containerapp identity assign -g "$RG" -n "$APP_API" --system-assigned \
+            --query principalId -o tsv)
+          scope=$(az keyvault show -n "${{ vars.CAISSON_KEYVAULT_NAME }}" --query id -o tsv)
+          az role assignment create --assignee-object-id "$principal" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Key Vault Secrets User" --scope "$scope"
+      - name: Deploy image + runtime config
+        # Git PR (story #172) runtime config is all NON-SECRET: the feature flag, repo owner/name/default
+        # branch, and — when a vault is configured — the vault URI and the PAT secret NAME (never its value).
+        run: |
+          set -euo pipefail
+          env_vars=(
+            ASPNETCORE_ENVIRONMENT=Testing
+            Testing__EnableTestAuth=true
+            ASPNETCORE_URLS=http://+:8080
+            CAISSON_DB=secretref:caisson-db
+          )
+          if [ "${{ vars.GIT_PR_ENABLED }}" = "true" ]; then
+            env_vars+=(
+              Git__GitHub__Enabled=true
+              Git__GitHub__RepoOwner="${{ vars.GIT_PR_REPO_OWNER }}"
+              Git__GitHub__RepoName="${{ vars.GIT_PR_REPO_NAME }}"
+              Git__GitHub__DefaultBranch="${{ vars.GIT_PR_DEFAULT_BRANCH }}"
+              Git__GitHub__AuthMode=Pat
+              Git__GitHub__KeyVaultUri="${{ vars.CAISSON_KEYVAULT_URI }}"
+              Git__GitHub__PatSecretName="${{ vars.GIT_PR_PAT_SECRET_NAME }}"
+            )
+          fi
           az containerapp update -g "$RG" -n "$APP_API" \
             --image "${IMAGE}:${{ needs.build-push-api.outputs.tag }}" \
-            --set-env-vars \
-              ASPNETCORE_ENVIRONMENT=Testing \
-              Testing__EnableTestAuth=true \
-              ASPNETCORE_URLS=http://+:8080 \
-              CAISSON_DB=secretref:caisson-db
+            --set-env-vars "${env_vars[@]}"
           az containerapp ingress update -g "$RG" -n "$APP_API" --target-port 8080
       - name: Health check the public endpoint
         run: |
