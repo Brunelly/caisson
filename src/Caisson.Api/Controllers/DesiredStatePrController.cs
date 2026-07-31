@@ -201,7 +201,8 @@ public sealed class DesiredStatePrController : DiscoveryControllerBase
         var status = errorCode switch
         {
             GitPrErrorCodes.GitHubApiFailed or GitPrErrorCodes.GitCredentialsUnavailable => StatusCodes.Status502BadGateway,
-            GitPrErrorCodes.DefaultBranchMismatch => StatusCodes.Status409Conflict,
+            // A deployment-configuration gap (owner/name unset) is a server-side condition, not a client error.
+            GitPrErrorCodes.GitRepoNotConfigured => StatusCodes.Status500InternalServerError,
             _ => StatusCodes.Status500InternalServerError,
         };
         var problem = new ProblemDetails

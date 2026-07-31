@@ -62,4 +62,14 @@ public sealed class GitHubOptions
     /// Must match the ingestion read path so a created PR feeds back through ingestion unchanged.
     /// </summary>
     public string CommitPathTemplate { get; set; } = "desired-state/racks/{slug}.yaml";
+
+    /// <summary>
+    /// How long a concurrent idempotent reuse waits (DB polling only — no Key Vault / GitHub call) for the
+    /// reservation winner to publish its PR metadata before returning a distinct <c>pr-pending</c> result
+    /// instead of a metadata-less reuse (AC2/NFR3). Bounded generously above the create latency budget.
+    /// </summary>
+    public int ReusePublishWaitMs { get; set; } = 10_000;
+
+    /// <summary>The poll interval used while a concurrent reuse waits for the winner to publish (AC2/NFR3).</summary>
+    public int ReusePublishPollMs { get; set; } = 100;
 }

@@ -21,9 +21,6 @@ public static class GitPrErrorCodes
     /// <summary>A GitHub API call failed (network/auth/rate-limit/unexpected status) with no PR created.</summary>
     public const string GitHubApiFailed = "GITHUB_API_FAILED";
 
-    /// <summary>The configured default branch disagrees with the repository's actual default branch metadata.</summary>
-    public const string DefaultBranchMismatch = "DEFAULT_BRANCH_MISMATCH";
-
     /// <summary>An unexpected error aborted PR creation.</summary>
     public const string UnexpectedError = "UNEXPECTED_ERROR";
 
@@ -36,7 +33,6 @@ public static class GitPrErrorCodes
         GitCredentialsUnavailable => "Git credentials are currently unavailable; no pull request was created.",
         GitRepoNotConfigured => "No git repository is configured for pull-request creation.",
         GitHubApiFailed => "The GitHub API call failed; no pull request was created.",
-        DefaultBranchMismatch => "The configured default branch does not match the repository's default branch.",
         _ => "An unexpected error occurred while creating the pull request.",
     };
 }

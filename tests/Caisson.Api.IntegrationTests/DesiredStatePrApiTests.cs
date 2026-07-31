@@ -238,6 +238,53 @@ public sealed class DesiredStatePrApiTests
         bodies.Count(b => b!.Reused == false).Should().Be(1);
         bodies.Count(b => b!.Reused).Should().Be(4);
         (await CountLinksAsync(Preflight.RackId, bodies[0]!.CandidateFingerprint!)).Should().Be(1);
+
+        // Every 'reuse' carries the winner's full PR metadata — never reused=true with a null PR url/number (AC2).
+        var winner = bodies.Single(b => b!.Reused == false)!;
+        bodies.Where(b => b!.Reused).Should().OnlyContain(b =>
+            b!.PullRequestNumber == winner.PullRequestNumber
+            && b.PullRequestUrl == winner.PullRequestUrl
+            && !string.IsNullOrEmpty(b.PullRequestUrl));
+    }
+
+    [SkippableFact]
+    public async Task Concurrent_reuses_during_a_slow_publish_window_carry_full_metadata()
+    {
+        Skip.IfNot(_factory.Available, SkipReason);
+        _factory.GitHub.Reset();
+
+        // Hold the winner Open-but-unpublished for a full second so the four losing requests genuinely re-read
+        // the winner's still-unpublished reservation — the exact NFR3 window the reuse-metadata wait covers.
+        _factory.GitHub.OpenDelay = TimeSpan.FromSeconds(1);
+        try
+        {
+            var candidate = ValidRequest("slowpub-" + Suffix());
+            var runId = await ValidateForRunIdAsync(Preflight.RackId, candidate);
+            var request = new CreatePrRequest(runId, Array.Empty<string>(), candidate.VlanCatalogue!, candidate.PortIntents!);
+
+            var responses = await Task.WhenAll(Enumerable.Range(0, 5)
+                .Select(_ => PostAsync(Preflight.RackId, "NetworkConfigAuthor", request)));
+
+            responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Accepted);
+            var bodies = await Task.WhenAll(responses.Select(r => r.Content.ReadFromJsonAsync<CreatePrResponse>()));
+
+            _factory.GitHub.OpenPullRequestCalls.Should().Be(1);
+            var winner = bodies.Single(b => b!.Reused == false)!;
+            winner.PullRequestNumber.Should().NotBeNull();
+
+            var reuses = bodies.Where(b => b!.Reused).ToList();
+            reuses.Should().HaveCount(4);
+            reuses.Should().OnlyContain(b =>
+                b!.PullRequestNumber == winner.PullRequestNumber
+                && b.PullRequestUrl == winner.PullRequestUrl
+                && b.CommitSha == winner.CommitSha
+                && !string.IsNullOrEmpty(b.PullRequestUrl));
+            bodies.Should().NotContain(b => b!.Status == "pr-pending");
+        }
+        finally
+        {
+            _factory.GitHub.OpenDelay = TimeSpan.Zero;
+        }
     }
 
     // ---- PR-only guardrail (AC3) -------------------------------------------------------------------------

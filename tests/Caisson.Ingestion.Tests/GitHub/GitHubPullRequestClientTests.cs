@@ -106,6 +106,47 @@ public sealed class GitHubPullRequestClientTests
         attempts.Should().BeGreaterThanOrEqualTo(2);
     }
 
+    [Fact]
+    public async Task A_non_idempotent_post_5xx_is_not_retried()
+    {
+        // A 5xx on the create-ref/open-PR POST may reflect a partial success (the ref/PR was created); a blind
+        // retry would then hit a 422 "already exists" and surface a spurious failure. So POST 5xx is surfaced
+        // immediately (exactly one attempt), never retried.
+        var attempts = 0;
+        var handler = new StubHandler(_ =>
+        {
+            attempts++;
+            return (HttpStatusCode.InternalServerError, "{}");
+        });
+        var client = NewClient(handler);
+
+        var act = async () => await client.OpenPullRequestAsync("t", "b", "head", "main", default);
+
+        await act.Should().ThrowAsync<GitHubApiException>();
+        attempts.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_post_429_is_still_retried_because_the_request_was_never_processed()
+    {
+        // A 429 means the request was rejected/rate-limited and never processed, so it is safe to retry even a
+        // non-idempotent POST.
+        var attempts = 0;
+        var handler = new StubHandler(_ =>
+        {
+            attempts++;
+            return attempts < 2
+                ? (HttpStatusCode.TooManyRequests, "{}")
+                : Created("{\"number\":7,\"html_url\":\"https://gh/pr/7\",\"head\":{\"ref\":\"f\"},\"base\":{\"ref\":\"main\"},\"state\":\"open\"}");
+        });
+        var client = NewClient(handler);
+
+        var pr = await client.OpenPullRequestAsync("t", "b", "head", "main", default);
+
+        pr.Number.Should().Be(7);
+        attempts.Should().Be(2);
+    }
+
     private static GitHubRestPullRequestClient NewClient(StubHandler handler)
         => new(new HttpClient(handler), Settings, new StubCredentialProvider(), NullLogger<GitHubRestPullRequestClient>.Instance);
 

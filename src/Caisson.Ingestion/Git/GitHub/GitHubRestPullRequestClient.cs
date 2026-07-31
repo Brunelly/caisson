@@ -165,19 +165,6 @@ public sealed class GitHubRestPullRequestClient : IGitHubPullRequestClient
         return ToPullRequest(dto!);
     }
 
-    /// <inheritdoc />
-    public async Task<GitHubPullRequest?> FindOpenPullRequestAsync(
-        string headBranch, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(headBranch);
-
-        var head = Uri.EscapeDataString($"{_settings.RepoOwner}:{headBranch}");
-        var url = $"{RepoPath}/pulls?state=open&head={head}";
-        var dtos = await SendAsync<List<PullRequestDto>>(HttpMethod.Get, url, body: null, cancellationToken);
-        var match = dtos?.FirstOrDefault();
-        return match is null ? null : ToPullRequest(match);
-    }
-
     private static GitHubPullRequest ToPullRequest(PullRequestDto dto)
         => new(dto.Number, dto.HtmlUrl ?? string.Empty, dto.Head?.Ref ?? string.Empty,
             dto.Base?.Ref ?? string.Empty, dto.State ?? "open");
@@ -207,7 +194,7 @@ public sealed class GitHubRestPullRequestClient : IGitHubPullRequestClient
             using var request = BuildRequest(method, path, body, credential);
             response = await _http.SendAsync(request, cancellationToken);
 
-            if (IsTransient(response.StatusCode) && attempt < MaxAttempts)
+            if (ShouldRetry(method, response.StatusCode) && attempt < MaxAttempts)
             {
                 _logger.LogWarning(
                     "GitHub API {Method} {Path} returned transient HTTP {Status}; retrying (attempt {Attempt}/{Max}).",
@@ -269,8 +256,26 @@ public sealed class GitHubRestPullRequestClient : IGitHubPullRequestClient
         return new Uri($"{baseUri}/{path}");
     }
 
-    private static bool IsTransient(HttpStatusCode status)
-        => status == HttpStatusCode.TooManyRequests || (int)status >= 500;
+    /// <summary>
+    /// Decides whether a non-success status is safely retryable for this verb. A 429 (rate-limited) means the
+    /// request was rejected and never processed, so it is safe to retry for any verb. A 5xx means the server
+    /// received — and may have partially applied — the request, so it is retried ONLY for idempotent verbs:
+    /// retrying a non-idempotent POST (create-ref / open-PR) risks a duplicate or a 422 "already exists" on a
+    /// request that in fact succeeded, surfacing a spurious GITHUB_API_FAILED for a partial success.
+    /// </summary>
+    private static bool ShouldRetry(HttpMethod method, HttpStatusCode status)
+    {
+        if (status == HttpStatusCode.TooManyRequests)
+        {
+            return true;
+        }
+
+        return (int)status >= 500 && IsIdempotent(method);
+    }
+
+    private static bool IsIdempotent(HttpMethod method)
+        => method == HttpMethod.Get || method == HttpMethod.Put
+            || method == HttpMethod.Head || method == HttpMethod.Delete;
 
     private static TimeSpan RetryDelay(int attempt) => TimeSpan.FromMilliseconds(100 * attempt);
 

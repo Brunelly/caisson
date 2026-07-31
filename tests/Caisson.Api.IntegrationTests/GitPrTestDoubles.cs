@@ -84,6 +84,13 @@ public sealed class FakeGitHubPullRequestClient : IGitHubPullRequestClient
     /// <summary>The HTTP status simulated when <see cref="FailOnOpen"/> is set.</summary>
     public int FailOnOpenStatus { get; set; } = 500;
 
+    /// <summary>
+    /// An artificial delay applied inside <see cref="OpenPullRequestAsync"/> (the winner's publish window). It
+    /// widens the concurrency race so losing requests genuinely re-read the winner's still-unpublished
+    /// reservation, exercising the reuse-metadata wait (AC2/NFR3).
+    /// </summary>
+    public TimeSpan OpenDelay { get; set; } = TimeSpan.Zero;
+
     public int GetRepositoryCalls => Volatile.Read(ref _getRepositoryCalls);
     public int CreateBranchCalls => Volatile.Read(ref _createBranchCalls);
     public int CommitFileCalls => Volatile.Read(ref _commitFileCalls);
@@ -105,6 +112,7 @@ public sealed class FakeGitHubPullRequestClient : IGitHubPullRequestClient
         ExistingFile = null;
         FailOnOpen = false;
         FailOnOpenStatus = 500;
+        OpenDelay = TimeSpan.Zero;
         LastTitle = null;
         LastBody = null;
         LastCommitContent = null;
@@ -141,7 +149,7 @@ public sealed class FakeGitHubPullRequestClient : IGitHubPullRequestClient
         return Task.FromResult(new GitHubCommit("commit" + Guid.NewGuid().ToString("N")[..12]));
     }
 
-    public Task<GitHubPullRequest> OpenPullRequestAsync(
+    public async Task<GitHubPullRequest> OpenPullRequestAsync(
         string title, string body, string headBranch, string baseBranch, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _openPullRequestCalls);
@@ -150,13 +158,16 @@ public sealed class FakeGitHubPullRequestClient : IGitHubPullRequestClient
             throw new GitHubApiException(FailOnOpenStatus, "POST", "/pulls");
         }
 
+        if (OpenDelay > TimeSpan.Zero)
+        {
+            // Hold the reservation Open-but-unpublished so concurrent losers hit the reuse-metadata wait.
+            await Task.Delay(OpenDelay, cancellationToken);
+        }
+
         LastTitle = title;
         LastBody = body;
         var number = Interlocked.Increment(ref _prNumber);
-        return Task.FromResult(new GitHubPullRequest(
-            number, $"https://github.test/{headBranch}/pull/{number}", headBranch, baseBranch, "open"));
+        return new GitHubPullRequest(
+            number, $"https://github.test/{headBranch}/pull/{number}", headBranch, baseBranch, "open");
     }
-
-    public Task<GitHubPullRequest?> FindOpenPullRequestAsync(string headBranch, CancellationToken cancellationToken)
-        => Task.FromResult<GitHubPullRequest?>(null);
 }

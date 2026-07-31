@@ -23,11 +23,20 @@ public static class CandidateFingerprint
     /// Throws <see cref="DesiredStateRenderException"/> if the model is semantically invalid (the caller
     /// surfaces that as a 422 rather than attempting any git write).
     /// </summary>
-    public static string Compute(SupportedDesiredStateModel model)
+    public static string Compute(SupportedDesiredStateModel model) => Render(model).Fingerprint;
+
+    /// <summary>
+    /// Renders <paramref name="model"/> to canonical YAML <em>once</em> and returns both the rendered document
+    /// and its lowercase 64-hex SHA-256 fingerprint, so a caller that also needs the YAML (e.g. to commit it)
+    /// reuses the single render rather than re-rendering. Keeps the canonical "render → hash" algorithm in one
+    /// place; <see cref="Compute"/> is the fingerprint-only shorthand. Throws
+    /// <see cref="DesiredStateRenderException"/> on a semantically invalid model.
+    /// </summary>
+    public static (string Yaml, string Fingerprint) Render(SupportedDesiredStateModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var canonicalYaml = DesiredStateYamlRenderer.Render(model).Yaml;
-        return DesiredStateContentHash.Compute(canonicalYaml);
+        return (canonicalYaml, DesiredStateContentHash.Compute(canonicalYaml));
     }
 }

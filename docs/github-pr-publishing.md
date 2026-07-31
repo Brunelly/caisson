@@ -93,6 +93,14 @@ The candidate **fingerprint** is the SHA-256 of its canonical YAML (order-indepe
 repeat request reuses the existing open PR (`reused=true`, no Key Vault/GitHub call) and N concurrent identical
 requests collapse to exactly one PR. A closed/merged PR for the same candidate does not block a fresh one.
 
+A concurrent **loser** re-reads the winner's reservation, which may still be unpublished during the winner's
+multi-second GitHub publish window. To honour AC2 ("reuse returns the existing PR URL and metadata"), a reuse
+waits (DB polling only — no Key Vault/GitHub call, bounded by `Git:GitHub:ReusePublishWaitMs`, default 10s) for
+the winner to populate the PR number/URL/commit before returning `reused=true` with the full metadata. If the
+winner is still publishing when the wait elapses (or its reservation was closed by a failure), the response is
+a distinct `pr-pending` status (`reused=false`, no PR URL) so the caller retries — never `reused=true` with a
+null URL.
+
 ## Error codes (AC6)
 
 | Code | Meaning | HTTP |
@@ -101,7 +109,6 @@ requests collapse to exactly one PR. A closed/merged PR for the same candidate d
 | `GIT_CREDENTIALS_UNAVAILABLE` | The PAT could not be retrieved from Key Vault | 502 |
 | `GIT_REPO_NOT_CONFIGURED` | No target repository is configured | 500 |
 | `GITHUB_API_FAILED` | A GitHub API call failed (no PR created) | 502 |
-| `DEFAULT_BRANCH_MISMATCH` | Configured default branch disagrees with repo metadata | 409 |
 | `UNEXPECTED_ERROR` | An unexpected error aborted PR creation | 500 |
 
 Every create/reuse/refuse/fail is audited (`git.pr.created` / `git.pr.reused` / `git.pr.refused_pr_only` /

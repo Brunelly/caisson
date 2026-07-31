@@ -77,6 +77,10 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             .FirstOrDefaultAsync(cancellationToken);
         if (rackSlug is null)
         {
+            // TOCTOU-only path (the controller pre-checks rack existence; the rack was deleted mid-request).
+            // Audit it like the other failure paths (AC6) rather than failing silently.
+            await AuditFailureAsync(request.RackId, rackSlug: string.Empty, fingerprint: null, branchName: null,
+                GitPrErrorCodes.UnexpectedError, cancellationToken);
             return Failure(GitPrErrorCodes.UnexpectedError, fingerprint: null, branchName: null);
         }
 
@@ -87,11 +91,11 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             return Failure(GitPrErrorCodes.GitRepoNotConfigured, fingerprint: null, branchName: null);
         }
 
-        // Render the candidate to canonical YAML (server-authoritative rackSlug) and fingerprint it. A render
-        // failure is a 422, surfaced by letting DesiredStateRenderException propagate — never a git write.
+        // Render the candidate to canonical YAML (server-authoritative rackSlug) and fingerprint it via the
+        // single canonical helper (one render, reused for the commit body). A render failure is a 422, surfaced
+        // by letting DesiredStateRenderException propagate — never a git write.
         var candidateModel = new SupportedDesiredStateModel(rackSlug, request.VlanCatalogue, request.PortIntents);
-        var candidateYaml = DesiredStateYamlRenderer.Render(candidateModel).Yaml;
-        var fingerprint = DesiredStateContentHash.Compute(candidateYaml);
+        var (candidateYaml, fingerprint) = CandidateFingerprint.Render(candidateModel);
 
         var actorId = ResolveActorId();
         var operatorSlug = PrBranchNaming.Slugify(actorId);
@@ -103,11 +107,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         var existing = await _links.FindOpenByFingerprintAsync(request.RackId, fingerprint, cancellationToken);
         if (existing is not null)
         {
-            await AuditLinkAsync(GitPrAuditActions.Reused, existing, rackSlug, reused: true, errorCode: null, cancellationToken);
-            _logger.LogInformation(
-                "Desired-state PR reused prNumber={PrNumber} branch={Branch} elapsedMs={ElapsedMs}",
-                existing.PullRequestNumber, existing.BranchName, stopwatch.ElapsedMilliseconds);
-            return ReuseResult(existing, fingerprint);
+            return await CompleteReuseAsync(request.RackId, fingerprint, existing, rackSlug, stopwatch, options, cancellationToken);
         }
 
         var now = _time.GetUtcNow().UtcDateTime;
@@ -132,8 +132,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         var reservation = await _links.InsertOrGetExistingAsync(link, cancellationToken);
         if (!reservation.Inserted)
         {
-            await AuditLinkAsync(GitPrAuditActions.Reused, reservation.Link, rackSlug, reused: true, errorCode: null, cancellationToken);
-            return ReuseResult(reservation.Link, fingerprint);
+            return await CompleteReuseAsync(request.RackId, fingerprint, reservation.Link, rackSlug, stopwatch, options, cancellationToken);
         }
 
         // Winner: compute the change summary (DB reads only, no GitHub) then perform the git write.
@@ -150,7 +149,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             var head = await _github.GetBranchHeadAsync(defaultBranch, cancellationToken);
             await _github.CreateBranchAsync(branchName, head.CommitSha, cancellationToken);
 
-            var filePath = options.CommitPathTemplate.Replace("{slug}", rackSlug, StringComparison.Ordinal);
+            var filePath = BuildCommitFilePath(options.CommitPathTemplate, rackSlug);
             var existingFile = await _github.GetFileMetadataAsync(branchName, filePath, cancellationToken);
             var commitMessage = PrMetadataComposer.ComposeTitle(rackSlug, operatorSlug);
             var commit = await _github.CommitFileAsync(
@@ -205,6 +204,82 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         }
     }
 
+    /// <summary>
+    /// Completes an idempotent reuse (AC2). A concurrent loser can re-read the winner's reservation while the
+    /// winner is still inside its multi-second GitHub publish window, so the row's PR number/url/commit are
+    /// still null (NFR3). This waits — DB reads only, no Key Vault / GitHub call, preserving the
+    /// zero-GitHub-traffic reuse property — for the winner to publish, then returns the full PR metadata. If
+    /// the winner is still publishing when the bounded wait elapses, or its reservation was closed by a
+    /// failure, it returns a distinct <c>pr-pending</c> result (never <c>reused=true</c> with a null PR URL),
+    /// so the caller retries and self-heals rather than receiving metadata-less reuse.
+    /// </summary>
+    private async Task<DesiredStatePrCreationResult> CompleteReuseAsync(
+        Guid rackId, string fingerprint, GitPullRequestLink link, string rackSlug, Stopwatch stopwatch,
+        GitHubOptions options, CancellationToken cancellationToken)
+    {
+        var published = await AwaitPublishedReuseAsync(rackId, fingerprint, link, options, cancellationToken);
+        if (published?.PullRequestNumber is null)
+        {
+            _logger.LogInformation(
+                "Desired-state PR reuse pending: the reservation winner has not published within {WaitMs}ms; "
+                + "returning pr-pending for the caller to retry.", options.ReusePublishWaitMs);
+            return PendingResult(fingerprint, link.BranchName);
+        }
+
+        await AuditLinkAsync(GitPrAuditActions.Reused, published, rackSlug, reused: true, errorCode: null, cancellationToken);
+        _logger.LogInformation(
+            "Desired-state PR reused prNumber={PrNumber} branch={Branch} elapsedMs={ElapsedMs}",
+            published.PullRequestNumber, published.BranchName, stopwatch.ElapsedMilliseconds);
+        return ReuseResult(published, fingerprint);
+    }
+
+    /// <summary>
+    /// Polls the idempotency store (no Key Vault / GitHub call) until the reused link carries published PR
+    /// metadata, its Open reservation disappears (winner failed → the caller should retry into a fresh PR), or
+    /// the bounded wait elapses. Uses a real monotonic <see cref="Stopwatch"/> for the timeout, NOT the
+    /// injected <see cref="TimeProvider"/>, which may be pinned for deterministic branch-name tests.
+    /// </summary>
+    private async Task<GitPullRequestLink?> AwaitPublishedReuseAsync(
+        Guid rackId, string fingerprint, GitPullRequestLink current, GitHubOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (current.PullRequestNumber is not null)
+        {
+            return current;
+        }
+
+        var pollInterval = TimeSpan.FromMilliseconds(Math.Max(1, options.ReusePublishPollMs));
+        var waited = Stopwatch.StartNew();
+        var link = current;
+        while (waited.ElapsedMilliseconds < options.ReusePublishWaitMs)
+        {
+            await Task.Delay(pollInterval, cancellationToken);
+            link = await _links.FindOpenByFingerprintAsync(rackId, fingerprint, cancellationToken);
+            if (link is null || link.PullRequestNumber is not null)
+            {
+                break;
+            }
+        }
+
+        return link;
+    }
+
+    /// <summary>
+    /// Substitutes the rack slug into the commit-path template, rejecting any path separator / traversal
+    /// sequence outright. Defense-in-depth: a rendered candidate's slug is already DNS-shape-validated before
+    /// this point, so this guard normally never fires; it keeps traversal-safety local to the write and robust
+    /// against a future refactor that moves or removes the earlier render step (security review).
+    /// </summary>
+    private static string BuildCommitFilePath(string template, string rackSlug)
+    {
+        if (rackSlug.Contains('/') || rackSlug.Contains('\\') || rackSlug.Contains("..", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The rack slug is not a valid single path segment for the commit path.");
+        }
+
+        return template.Replace("{slug}", rackSlug, StringComparison.Ordinal);
+    }
+
     private async Task<PrChangeSummary> ComputeChangeSummaryAsync(
         string rackSlug, SupportedDesiredStateModel candidateModel, Guid rackId, CancellationToken cancellationToken)
     {
@@ -246,6 +321,17 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             Reused: true,
             RepoOwner: link.RepoOwner,
             RepoName: link.RepoName);
+
+    private static DesiredStatePrCreationResult PendingResult(string fingerprint, string branchName)
+        => new(
+            GatePassed: true,
+            Status: "pr-pending",
+            Detail: "A pull request for this candidate is being created by a concurrent request; retry shortly "
+                + "to obtain its URL and metadata.",
+            PullRequestUrl: null,
+            BranchName: branchName,
+            CandidateFingerprint: fingerprint,
+            Reused: false);
 
     private static DesiredStatePrCreationResult CreatedResult(
         GitPullRequestLink link, string fingerprint, PrChangeSummary summary)

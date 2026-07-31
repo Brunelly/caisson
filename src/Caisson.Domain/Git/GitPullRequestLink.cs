@@ -153,9 +153,6 @@ public sealed class GitPullRequestLink
         LastCheckedAtUtc = atUtc;
     }
 
-    /// <summary>Stamps the last-reconciled time without changing status (a no-op liveness check).</summary>
-    public void MarkChecked(DateTime atUtc) => LastCheckedAtUtc = atUtc;
-
     private static string Bound(string value, int maxLength, string paramName)
     {
         if (value.Length > maxLength)

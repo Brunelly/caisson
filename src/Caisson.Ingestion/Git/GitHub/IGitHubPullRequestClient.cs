@@ -22,7 +22,7 @@ public sealed record GitHubPullRequest(int Number, string HtmlUrl, string HeadRe
 /// <para>
 /// The PR-only guardrail is <b>structural</b>: this interface exposes ONLY the operations needed to read repo
 /// metadata / a branch head / a file, create a NEW feature branch from the default head, commit the
-/// desired-state file onto that feature branch, and open/find a PR targeting the default branch. It exposes
+/// desired-state file onto that feature branch, and open a PR targeting the default branch. It exposes
 /// NO merge, force-push, push-to-default, delete-branch, or default-ref-update operation — enforced by a
 /// reflection guard test (NFR4). Direct-default-branch writes are impossible because no method here can
 /// target the default branch for a write (the branch to commit onto is always a caller-supplied feature
@@ -55,7 +55,4 @@ public interface IGitHubPullRequestClient
     /// <summary>Opens a pull request from <paramref name="headBranch"/> targeting <paramref name="baseBranch"/> (the default branch).</summary>
     Task<GitHubPullRequest> OpenPullRequestAsync(
         string title, string body, string headBranch, string baseBranch, CancellationToken cancellationToken);
-
-    /// <summary>Finds the open pull request whose head is <paramref name="headBranch"/>, or <c>null</c> if none.</summary>
-    Task<GitHubPullRequest?> FindOpenPullRequestAsync(string headBranch, CancellationToken cancellationToken);
 }
