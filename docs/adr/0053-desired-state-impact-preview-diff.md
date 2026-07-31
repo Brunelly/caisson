@@ -50,5 +50,21 @@ modified, per-port access-VLAN changes). Several forces shaped the diff engine d
   model, so "port description changes if present" (AC1) is out of the *semantic-summary* scope. Description
   changes still surface in the *raw unified diff*. If the supported model later gains a port description,
   the semantic engine gains a `Modified` clause for it — no cache-key change required.
+- **VLAN name/description "modified" is unreachable in the M1 pipeline.** The `SemanticDiffEngine` *does*
+  emit a VLAN `Modified` change (AC1's `VLAN 20 name changed 'corp'→'prod'` example, unit-tested), but the
+  real API pipeline can never surface it. M1 ingestion (`ValidatedRackDocument`) persists only
+  `rackSlug` + `switches[].ports[]` — there is **no persisted VLAN catalogue** (`spec.vlans`). So
+  `BaselineIntentProjection` synthesizes the baseline VLAN catalogue from the distinct access-VLAN ids the
+  baseline ports reference and takes each VLAN's *name* from the candidate as a hint (so an unchanged VLAN
+  does not diff as a spurious name change). The consequence is that for any VLAN present in both baseline
+  and candidate, `baseline.Name == candidate.Name` by construction, so the name/description `Modified`
+  branch is dead at runtime and is invisible in the raw diff too (both sides render the same synthesized
+  name). This is a deliberate trade-off: without persisted baseline VLAN names, deriving them any other way
+  would manufacture false "name changed" diffs on every preview. VLAN *added*/*removed* and per-port
+  access-VLAN changes are fully reachable and tested; VLAN name/description modifications become reachable
+  the moment ingestion persists a VLAN catalogue — at which point `BaselineIntentProjection` reads the
+  baseline names from persisted data instead of the candidate hint, and no engine or cache-key change is
+  needed. Human reviewers should be aware the specific AC1 *name-change* example cannot be produced
+  end-to-end today.
 - The hand-rolled LCS is O(n·m) in lines; acceptable for the bounded canonical-YAML sizes here but not a
   general-purpose diff for arbitrarily large inputs.

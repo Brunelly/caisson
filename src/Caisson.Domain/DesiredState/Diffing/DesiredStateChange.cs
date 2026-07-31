@@ -36,9 +36,10 @@ public enum DesiredStateChangeCategory
 /// <param name="Kind">Whether the entity was added, removed, or modified.</param>
 /// <param name="Category">Whether the change concerns a VLAN or a port.</param>
 /// <param name="ChangeId">
-/// A stable, deterministic identifier for this change, derived from the change's identity via
-/// <see cref="Drift.Diffing.DeterministicGuid"/>. Identical inputs always yield the identical id, so
-/// automation can key off it across re-runs (NFR3).
+/// A stable, deterministic identifier for this change, derived from the change's identity by
+/// <see cref="SemanticDiffEngine"/> using the same SHA-256/first-16-bytes discipline that
+/// <see cref="Drift.Diffing.DeterministicGuid"/> mirrors (its drift-specific signature can't be reused
+/// directly). Identical inputs always yield the identical id, so automation can key off it across re-runs (NFR3).
 /// </param>
 /// <param name="EntityRef">A reused pointer to the rack entity this change concerns (VLAN by id / port by switch+name).</param>
 /// <param name="Summary">The preformatted, human-readable one-line summary (e.g. <c>"VLAN 100 added"</c>).</param>

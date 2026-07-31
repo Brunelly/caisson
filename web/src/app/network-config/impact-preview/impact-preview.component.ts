@@ -194,13 +194,18 @@ export class ImpactPreviewComponent {
     const vlanRemoved = preview.vlanChanges.filter((c) => c.kind === 'Removed').length;
     const vlanModified = preview.vlanChanges.filter((c) => c.kind === 'Modified').length;
     return [
-      { filter: 'vlan-added' as const, tone: 'add', value: `+${vlanAdded}`, label: 'VLANs' },
-      { filter: 'vlan-removed' as const, tone: 'remove', value: `−${vlanRemoved}`, label: 'VLAN' },
+      { filter: 'vlan-added' as const, tone: 'add', value: `+${vlanAdded}`, label: 'VLANs added' },
+      {
+        filter: 'vlan-removed' as const,
+        tone: 'remove',
+        value: `−${vlanRemoved}`,
+        label: 'VLANs removed',
+      },
       {
         filter: 'vlan-modified' as const,
         tone: 'change',
         value: `~${vlanModified}`,
-        label: 'changed',
+        label: 'VLANs changed',
       },
       {
         filter: 'port' as const,

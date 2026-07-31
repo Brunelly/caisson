@@ -91,4 +91,17 @@ describe('DesiredStateDiffViewerComponent', () => {
     expect(host.querySelector('.diff-viewer__unified .diff-viewer__line--add')).toBeTruthy();
     expect(host.querySelector('.diff-viewer__unified .diff-viewer__line--remove')).toBeTruthy();
   });
+
+  it('parses a hunk header that omits the single-line ,count (git convention) without mis-numbering', () => {
+    // The shipped server always emits ',count', but the parser tolerates its omission so a future
+    // formatter change can't silently fall back to line 0.
+    const fixture = render('@@ -5 +5 @@\n context\n-old\n+new\n');
+    const host = fixture.nativeElement as HTMLElement;
+
+    const removeLine = host.querySelector('.diff-viewer__cell--remove .diff-viewer__ln');
+    const addLine = host.querySelector('.diff-viewer__cell--add .diff-viewer__ln');
+    // Line 5 is the context row; the removed/added rows are numbered from 6, not from 0.
+    expect(removeLine!.textContent).toContain('6');
+    expect(addLine!.textContent).toContain('6');
+  });
 });

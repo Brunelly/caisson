@@ -26,6 +26,14 @@ namespace Caisson.Ingestion.RoundTrip;
 /// same id (avoiding a false "name changed" diff for an unchanged VLAN); a VLAN id the candidate does not
 /// carry falls back to a synthetic <c>vlan-{id}</c> name.
 /// </para>
+/// <para>
+/// Runtime consequence (ADR 0053): because a VLAN present in both baseline and candidate takes its baseline
+/// name from the candidate hint, <c>baseline.Name == candidate.Name</c> by construction, so the
+/// <see cref="Diffing.SemanticDiffEngine"/>'s VLAN name/description "Modified" branch is unreachable in the
+/// M1 pipeline (AC1's <c>VLAN 20 name changed 'corp'→'prod'</c> example cannot be produced end-to-end until
+/// ingestion persists a VLAN catalogue). VLAN add/remove and per-port access-VLAN changes are fully
+/// reachable.
+/// </para>
 /// </summary>
 public static class BaselineIntentProjection
 {

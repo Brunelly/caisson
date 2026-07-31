@@ -170,7 +170,9 @@ function parseUnifiedDiff(diff: string): Hunk[] {
   for (const raw of lines) {
     if (raw.startsWith('@@')) {
       flush();
-      const match = /@@ -(\d+),\d+ \+(\d+),\d+ @@/.exec(raw);
+      // The server's UnifiedDiffFormatter always emits the ',count' segment, but tolerate git's convention
+      // of omitting it when the count is 1 so a future formatter change can't silently mis-number lines.
+      const match = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
       oldNum = match ? Number(match[1]) : 0;
       newNum = match ? Number(match[2]) : 0;
       current = { header: raw, contextCount: 0, unified: [], split: [] };

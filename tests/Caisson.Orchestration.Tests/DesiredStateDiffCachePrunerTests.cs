@@ -59,7 +59,35 @@ public sealed class DesiredStateDiffCachePrunerTests : IClassFixture<PostgresFix
         pruned.Should().Be(0);
     }
 
-    private DesiredStateDiffCachePruner CreatePruner(DateTime nowUtc)
+    [Fact]
+    public async Task Tick_drains_a_backlog_larger_than_one_batch_in_a_single_pass()
+    {
+        await _fixture.MigrateAsync();
+        var rackId = await SeedRackAsync();
+        var now = new DateTime(2026, 7, 31, 0, 0, 0, DateTimeKind.Utc);
+
+        // Seed more expired rows than a (deliberately small) batch so a single Tick must loop
+        // (`while (deleted == batchSize)`) across several batches — the ADR's large-backlog drain path.
+        const int batchSize = 3;
+        const int expiredCount = 10; // 4 batches: 3 + 3 + 3 + 1
+        for (var i = 0; i < expiredCount; i++)
+        {
+            await SeedCacheAsync(rackId, createdAt: now.AddHours(-2), expiresAt: now.AddHours(-1));
+        }
+
+        // A single live row must survive the whole drain.
+        var liveId = await SeedCacheAsync(rackId, createdAt: now, expiresAt: now.AddHours(1));
+
+        var pruned = await CreatePruner(now, batchSize).TickAsync(default);
+
+        pruned.Should().Be(expiredCount);
+        await using var verify = _fixture.CreateContext();
+        var remaining = await verify.DesiredStateCandidateDiffCaches
+            .Where(c => c.RackId == rackId).Select(c => c.Id).ToListAsync();
+        remaining.Should().BeEquivalentTo(new[] { liveId });
+    }
+
+    private DesiredStateDiffCachePruner CreatePruner(DateTime nowUtc, int pruneBatchSize = 500)
     {
         var services = new ServiceCollection();
         services.AddDbContext<CaissonDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
@@ -68,7 +96,7 @@ public sealed class DesiredStateDiffCachePrunerTests : IClassFixture<PostgresFix
         return new DesiredStateDiffCachePruner(
             provider.GetRequiredService<IServiceScopeFactory>(),
             new FixedTimeProvider(nowUtc),
-            MsOptions.Create(new DesiredStateDiffCacheOptions { PruneBatchSize = 500 }),
+            MsOptions.Create(new DesiredStateDiffCacheOptions { PruneBatchSize = pruneBatchSize }),
             NullLogger<DesiredStateDiffCachePruner>.Instance);
     }
 

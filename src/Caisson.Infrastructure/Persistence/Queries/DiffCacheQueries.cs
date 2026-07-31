@@ -13,7 +13,9 @@ public static class DiffCacheQueries
 {
     /// <summary>
     /// Finds the cached preview for a candidate against a baseline revision within one rack, or <c>null</c>
-    /// on a miss. Tracked so the caller can observe the row's stored fields verbatim.
+    /// on a miss. Returned untracked (<see cref="EntityFrameworkQueryableExtensions.AsNoTracking{TEntity}"/>):
+    /// this is a read-only lookup path (including the concurrent-conflict re-read after the losing row is
+    /// detached), so no change tracking is needed.
     /// </summary>
     public static Task<DesiredStateCandidateDiffCache?> FindAsync(
         this CaissonDbContext context,
