@@ -30,7 +30,7 @@ public sealed class TopologyEventSerializationTests
     public void Serialize_then_Deserialize_round_trips_a_git_pr_status_changed_event()
     {
         var @event = new GitPullRequestStatusChangedEvent(
-            Guid.NewGuid(), "octo", "repo", 42, "https://gh/pr/42", "Merged", "abc123", "Success", 0,
+            Guid.NewGuid(), Guid.NewGuid(), "octo", "repo", 42, "https://gh/pr/42", "Merged", "abc123", "Success", 0,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 9, Guid.NewGuid());
 
         var json = TopologyEventSerialization.Serialize(@event);

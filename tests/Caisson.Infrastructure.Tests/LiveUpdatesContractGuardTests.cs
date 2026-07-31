@@ -62,7 +62,7 @@ public sealed class LiveUpdatesContractGuardTests
             Guid.NewGuid(), Guid.NewGuid(), "Failed", "InProgress", null, "SWITCH_DISCOVERY_FAILED",
             DateTimeOffset.UnixEpoch, 3, Guid.NewGuid());
         var prStatus = new GitPullRequestStatusChangedEvent(
-            Guid.NewGuid(), "octo", "repo", 7, "https://gh/pr/7", "Merged", "abc123", "Success", 0,
+            Guid.NewGuid(), Guid.NewGuid(), "octo", "repo", 7, "https://gh/pr/7", "Merged", "abc123", "Success", 0,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 5, Guid.NewGuid());
 
         foreach (var @event in new TopologyEvent[] { snapshot, status, prStatus, new HeartbeatEvent(DateTimeOffset.UnixEpoch) })

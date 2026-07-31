@@ -54,6 +54,7 @@ async function renderWithRoles(
           connect: () => undefined,
           disconnect: () => undefined,
           trackJob: () => undefined,
+          trackPrStatus: () => undefined,
         },
       },
       {

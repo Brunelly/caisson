@@ -31,6 +31,7 @@ public static class GitPullRequestStatusPublisher
             var seq = await sequencer.NextAsync(TopologyStreams.ForPullRequest(record.PullRequestLinkId), cancellationToken);
             var @event = new GitPullRequestStatusChangedEvent(
                 record.RackId,
+                record.PullRequestLinkId,
                 record.RepoOwner,
                 record.RepoName,
                 record.PullRequestNumber,

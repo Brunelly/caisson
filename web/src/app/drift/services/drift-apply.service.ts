@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type Observable, catchError, map, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -23,6 +23,8 @@ import type {
 export type ApplyDriftCorrectionResult =
   | { kind: 'created'; jobId: string }
   | { kind: 'existingJob'; jobId: string }
+  // 409 (story #173): the merged-apply gate rejected the request; reasonCode is 'PrNotMerged'/'NoPrLinked'.
+  | { kind: 'prGateBlocked'; reasonCode: string | null }
   | Exclude<ApiResult<never>, { kind: 'ok' }>;
 
 export interface DriftApplyJobFilters {
@@ -55,8 +57,24 @@ export class DriftApplyService {
             ? { kind: 'created', jobId }
             : { kind: 'existingJob', jobId };
         }),
-        catchError((error: unknown) => of(apiResultFromError<never>(error))),
+        catchError((error: unknown) => of(this.errorFrom(error))),
       );
+  }
+
+  // The shared apiResultFromError has no 409 branch (it falls through to a generic 'error'); the merged-apply
+  // gate (story #173) returns 409 with a ProblemDetails reasonCode, mapped to its own branch here — the same
+  // custom-errorFrom precedent network-intent.service.ts set for its 409.
+  private errorFrom(
+    error: unknown,
+  ): Exclude<ApplyDriftCorrectionResult, { kind: 'created' | 'existingJob' }> {
+    if (error instanceof HttpErrorResponse && error.status === 409) {
+      const body = error.error as { reasonCode?: unknown } | null;
+      return {
+        kind: 'prGateBlocked',
+        reasonCode: body && typeof body.reasonCode === 'string' ? body.reasonCode : null,
+      };
+    }
+    return apiResultFromError<never>(error);
   }
 
   getJob(rackId: string, jobId: string): Observable<ApiResult<DriftApplyJobDetailDto>> {

@@ -10,6 +10,7 @@ namespace Caisson.Infrastructure.LiveUpdates;
 /// raw device data (NFR5, no-secrets contract guard).
 /// </summary>
 /// <param name="RackId">The rack the PR belongs to (SignalR group scoping).</param>
+/// <param name="PullRequestLinkId">The owning link id — the client's per-link dedup/watermark key.</param>
 /// <param name="RepoOwner">The GitHub repository owner.</param>
 /// <param name="RepoName">The GitHub repository name.</param>
 /// <param name="PullRequestNumber">The pull request number.</param>
@@ -24,6 +25,7 @@ namespace Caisson.Infrastructure.LiveUpdates;
 /// <param name="CorrelationId">The tick correlation id.</param>
 public sealed record GitPullRequestStatusChangedEvent(
     Guid RackId,
+    Guid PullRequestLinkId,
     string RepoOwner,
     string RepoName,
     int PullRequestNumber,

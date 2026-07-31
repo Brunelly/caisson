@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { DriftApplyJobStatusService } from '../../drift/live/drift-apply-job-status.service';
 import { DriftApplyService } from '../../drift/services/drift-apply.service';
+import { PrStatusService } from '../../network-config/pr/pr-status.service';
+import { PrStatusStateService } from '../../network-config/pr/pr-status-state.service';
 import type { DiscoveryStatusDto, SnapshotDetailDto } from '../model/topology-contracts';
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
@@ -161,6 +163,11 @@ describe('TopologySignalRService', () => {
         { provide: TelemetryService, useValue: new TelemetryService() },
         { provide: DriftApplyJobStatusService, useValue: { applyEvent, applyPolledDetail } },
         { provide: DriftApplyService, useValue: { getJob } },
+        {
+          provide: PrStatusStateService,
+          useValue: { applyEvent: vi.fn(), applyPolledStatus: vi.fn() },
+        },
+        { provide: PrStatusService, useValue: { getStatus: () => of({ kind: 'ok', value: {} }) } },
       ],
     });
 

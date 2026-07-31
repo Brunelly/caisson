@@ -28,6 +28,7 @@ import {
   type CreatePrDialogResult,
 } from './pr/create-pr-dialog.component';
 import { ValidationIssuesPanelComponent } from './validation/validation-issues-panel.component';
+import { PullRequestStatusPanelComponent } from './pr/pull-request-status-panel.component';
 import {
   YamlImportDialogComponent,
   type YamlImportDialogData,
@@ -45,6 +46,7 @@ import { ValidationSummaryComponent } from './yaml/validation-summary.component'
     RouterOutlet,
     ValidationSummaryComponent,
     ValidationIssuesPanelComponent,
+    PullRequestStatusPanelComponent,
   ],
   styleUrl: './network-config-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -140,6 +142,9 @@ import { ValidationSummaryComponent } from './yaml/validation-summary.component'
             (revalidate)="onValidateClick()"
             (issueSelected)="onIssueSelected($event)"
           />
+          @if (state.rackId(); as rackId) {
+            <app-pull-request-status-panel [rackId]="rackId" />
+          }
         </aside>
       </div>
 
