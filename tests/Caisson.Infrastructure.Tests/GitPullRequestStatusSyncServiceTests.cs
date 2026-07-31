@@ -128,6 +128,34 @@ public sealed class GitPullRequestStatusSyncServiceTests : IClassFixture<Postgre
     }
 
     [Fact]
+    public async Task Check_runs_failure_after_a_successful_pr_call_records_a_sanitized_backoff_failure()
+    {
+        await _fixture.MigrateAsync();
+        var (rackId, linkId, number) = await SeedLinkAsync();
+        var github = new FakeGitHub
+        {
+            Pr = new GitHubPullRequestSnapshot("open", false, "sha1"),
+            // The PR call succeeds; the SECOND (check-runs) call within the <=2-call budget then fails.
+            CheckException = new GitHubStatusApiException(
+                GitHubStatusFailureCategory.RateLimited, "GET", "/commits/sha1/check-runs", 429, TimeSpan.FromSeconds(180)),
+        };
+        var transitions = new FakeTransitions();
+
+        var now = new DateTime(2026, 7, 31, 9, 0, 0, DateTimeKind.Utc);
+        await Poll(github, transitions, now);
+
+        github.PullRequestCalls.Should().Be(1);
+        github.CheckRunCalls.Should().Be(1, "the check-runs call is attempted after the PR call succeeds");
+        transitions.Calls.Should().BeEmpty("a failed poll writes no transition");
+
+        await using var verify = _fixture.CreateContext();
+        var record = await verify.GitPullRequestStatuses.SingleAsync(x => x.PullRequestLinkId == linkId);
+        record.LastPollFailureReason.Should().Be(GitPrPollFailureReasons.RateLimited);
+        record.ConsecutivePollFailures.Should().Be(1);
+        record.NextPollAfterUtc.Should().Be(now.AddSeconds(180));
+    }
+
+    [Fact]
     public async Task Rate_limited_poll_respects_retry_after_timing()
     {
         await _fixture.MigrateAsync();

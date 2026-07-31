@@ -93,8 +93,12 @@ RETURNING id AS ""Value""";
             return new GitPullRequestStatusHealth(0, null, 0, null);
         }
 
+        // A "successful poll" requires an actual observation, not merely zero failures: a first-sighted record
+        // (UpsertMissingStatusRecordsAsync, never polled) also has ConsecutivePollFailures == 0 but a null
+        // HeadSha, and must not masquerade as a recent success and suppress the Degraded signal. HeadSha is set
+        // only by ApplyObservation (a real successful GitHub read).
         var lastSuccessfulPollAtUtc = await context.GitPullRequestStatuses.AsNoTracking()
-            .Where(s => s.ConsecutivePollFailures == 0)
+            .Where(s => s.ConsecutivePollFailures == 0 && s.HeadSha != null)
             .OrderByDescending(s => s.LastCheckedAtUtc)
             .Select(s => (DateTime?)s.LastCheckedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);

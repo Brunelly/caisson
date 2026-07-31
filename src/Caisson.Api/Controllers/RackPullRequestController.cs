@@ -68,14 +68,16 @@ public sealed class RackPullRequestController : ReadOnlyControllerBase
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, EventsEndpoint, out var limit, out var after, out var pagingError))
-        {
-            return ValidationError(pagingError!.Value);
-        }
-
+        // Access check FIRST (matches GetStatus and the class-level invariant), before paging validation, so a
+        // denied rack cannot distinguish a valid from an invalid page request.
         if (await CheckRackAccessAsync(rackId, cancellationToken) is { } denied)
         {
             return denied;
+        }
+
+        if (!RequestPaging.TryResolve(pageSize, cursor, rackId, EventsEndpoint, out var limit, out var after, out var pagingError))
+        {
+            return ValidationError(pagingError!.Value);
         }
 
         if (!await _context.RackExistsAsync(rackId, cancellationToken))

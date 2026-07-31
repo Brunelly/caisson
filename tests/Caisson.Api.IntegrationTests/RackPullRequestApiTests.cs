@@ -91,6 +91,7 @@ public sealed class RackPullRequestApiTests : IAsyncLifetime
 
         var response = await GetAsync(host, $"/api/racks/{rackId}/git/pull-request", "ReadOnly");
 
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var dto = await response.Content.ReadFromJsonAsync<PullRequestStatusDto>();
         dto!.CanApply.Should().BeFalse();
         dto.GateReasonCode.Should().Be(GitPrGateReasonCodes.PrNotMerged);

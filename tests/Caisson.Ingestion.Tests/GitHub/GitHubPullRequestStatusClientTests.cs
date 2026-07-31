@@ -105,6 +105,46 @@ public sealed class GitHubPullRequestStatusClientTests
     }
 
     [Fact]
+    public async Task Forbidden_with_exhausted_rate_limit_maps_to_rate_limited_and_honours_reset()
+    {
+        // GitHub signals a hit primary rate limit with 403 + X-RateLimit-Remaining: 0 (not 429). It must be
+        // treated as RateLimited so the reset timing is respected rather than generic credentials backoff (NFR1).
+        var resetUnix = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds();
+        var handler = new StubHandler(_ => (
+            HttpStatusCode.Forbidden,
+            "{\"message\":\"API rate limit exceeded\"}",
+            new Dictionary<string, string>
+            {
+                ["X-RateLimit-Remaining"] = "0",
+                ["X-RateLimit-Reset"] = resetUnix.ToString(),
+            }));
+        var client = NewClient(handler);
+
+        var act = async () => await client.GetPullRequestAsync(1, default);
+
+        var ex = (await act.Should().ThrowAsync<GitHubStatusApiException>()).Which;
+        ex.Category.Should().Be(GitHubStatusFailureCategory.RateLimited);
+        ex.RateLimitResetUtc!.Value.ToUnixTimeSeconds().Should().Be(resetUnix);
+    }
+
+    [Fact]
+    public async Task Forbidden_with_remaining_budget_stays_a_credentials_forbidden()
+    {
+        // A 403 without a rate-limit signal (budget remaining, no Retry-After) is a genuine authorization/
+        // credentials rejection, not rate limiting.
+        var handler = new StubHandler(_ => (
+            HttpStatusCode.Forbidden,
+            "{\"message\":\"Resource not accessible\"}",
+            new Dictionary<string, string> { ["X-RateLimit-Remaining"] = "4999" }));
+        var client = NewClient(handler);
+
+        var act = async () => await client.GetPullRequestAsync(1, default);
+
+        var ex = (await act.Should().ThrowAsync<GitHubStatusApiException>()).Which;
+        ex.Category.Should().Be(GitHubStatusFailureCategory.Forbidden);
+    }
+
+    [Fact]
     public async Task Timeout_maps_to_the_timeout_category()
     {
         var handler = new StubHandler(_ => throw new TaskCanceledException("timeout"));

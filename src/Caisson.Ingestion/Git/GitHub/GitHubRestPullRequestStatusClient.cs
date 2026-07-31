@@ -145,6 +145,10 @@ public sealed class GitHubRestPullRequestStatusClient : IGitHubPullRequestStatus
         var category = status switch
         {
             401 => GitHubStatusFailureCategory.Unauthorized,
+            // GitHub commonly signals primary/secondary rate limiting with 403 + X-RateLimit-Remaining: 0
+            // and/or Retry-After, not only 429 (NFR1). Classify those as RateLimited so ComputeNextPollAfter
+            // honours the reset window instead of applying generic backoff; a plain 403 stays Forbidden.
+            403 when IsRateLimitSignalled(response, retryAfter) => GitHubStatusFailureCategory.RateLimited,
             403 => GitHubStatusFailureCategory.Forbidden,
             429 => GitHubStatusFailureCategory.RateLimited,
             404 => GitHubStatusFailureCategory.NotFound,
@@ -158,6 +162,27 @@ public sealed class GitHubRestPullRequestStatusClient : IGitHubPullRequestStatus
             method.Method, path, status, category);
 
         return new GitHubStatusApiException(category, method.Method, path, status, retryAfter, reset);
+    }
+
+    /// <summary>
+    /// Whether a 403 carries a rate-limit signal — an exhausted primary budget (<c>X-RateLimit-Remaining: 0</c>)
+    /// or an explicit <c>Retry-After</c> (secondary rate limiting) — so it is treated as RateLimited rather than
+    /// a credentials rejection.
+    /// </summary>
+    private static bool IsRateLimitSignalled(HttpResponseMessage response, TimeSpan? retryAfter)
+    {
+        if (retryAfter.HasValue)
+        {
+            return true;
+        }
+
+        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
+            && long.TryParse(values.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var remaining))
+        {
+            return remaining <= 0;
+        }
+
+        return false;
     }
 
     /// <summary>Parses <c>Retry-After</c> (seconds or HTTP-date) and <c>X-RateLimit-Reset</c> (unix seconds).</summary>

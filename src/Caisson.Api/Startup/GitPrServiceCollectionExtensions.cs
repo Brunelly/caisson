@@ -73,7 +73,7 @@ public static class GitPrServiceCollectionExtensions
 
         services.TryAddSingleton<Ingestion.Observability.GitPullRequestStatusMetrics>();
         services.TryAddScoped<IGitPullRequestStatusSyncService, GitPullRequestStatusSyncService>();
-        services.AddScoped<IPrStatusTransitionService, PrStatusTransitionService>();
+        services.TryAddScoped<IPrStatusTransitionService, PrStatusTransitionService>();
 
         if (options.Enabled)
         {
