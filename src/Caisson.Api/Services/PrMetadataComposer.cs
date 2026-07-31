@@ -27,7 +27,11 @@ public sealed record PrBodyModel(
 /// </summary>
 public static class PrMetadataComposer
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     /// <summary>The PR title, e.g. <c>Rack rack-a: network desired-state update (jdoe)</c>.</summary>
     public static string ComposeTitle(string rackSlug, string operatorSlug)
