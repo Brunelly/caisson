@@ -9,6 +9,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -16,6 +17,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DriftPermissionService } from '../../core/auth/drift-permission.service';
+import { PrStatusStateService } from '../../network-config/pr/pr-status-state.service';
 import { TelemetryService } from '../../core/telemetry/telemetry.service';
 import { LiveConnectionStatusBarComponent } from '../../shared/connection-status/live-connection-status-bar.component';
 import { ToastService } from '../../shared/toast/toast.service';
@@ -52,15 +54,19 @@ const DRIFT_APPLY_PERMISSION_NAME = 'DriftApply';
           <button type="button" (click)="onRefreshClick()">Refresh</button>
         </div>
       } @else if (isApplyable() && !activeJobId()) {
-        <button
-          type="button"
-          class="apply-action__apply"
-          [disabled]="submitting()"
-          (click)="onApplyClick()"
-        >
-          {{ submitting() ? 'Applying…' : 'Apply correction' }}
-          <span class="apply-action__write-indicator">write operation</span>
-        </button>
+        @if (prGate().blocked) {
+          <p class="apply-action__pr-gate" role="status">{{ prGate().message }}</p>
+        } @else {
+          <button
+            type="button"
+            class="apply-action__apply"
+            [disabled]="submitting()"
+            (click)="onApplyClick()"
+          >
+            {{ submitting() ? 'Applying…' : 'Apply correction' }}
+            <span class="apply-action__write-indicator">write operation</span>
+          </button>
+        }
       }
 
       @if (activeJobId(); as jobId) {
@@ -112,6 +118,7 @@ export class ApplyActionComponent {
   private readonly telemetry = inject(TelemetryService);
   private readonly signalR = inject(TopologySignalRService);
   private readonly jobStatus = inject(DriftApplyJobStatusService);
+  private readonly prStatusState = inject(PrStatusStateService);
   /** Reuses the SAME connection-status signal topology-page.component.ts's banner already reads — no
    * second reconnect state machine, just a second render location for it (ADR 0033/story #67 step 5). */
   protected readonly topologyState = inject(TopologyStateService);
@@ -119,6 +126,32 @@ export class ApplyActionComponent {
   protected readonly submitting = signal(false);
   protected readonly stale = signal(false);
   protected readonly activeJobId = signal<string | null>(null);
+
+  /** Story #173 (AC4): the apply action is gated on the rack's PR being merged. A known-but-unmerged (or
+   * absent) PR blocks with explanatory text; an unknown status (not yet fetched) does not block the UI — the
+   * backend gate (409) is the hard enforcement and is mapped to a toast in submit(). */
+  protected readonly prGate = computed<{ blocked: boolean; message: string }>(() => {
+    const status = this.prStatusState.statusFor(this.rackId());
+    if (!status || status.canApply) {
+      return { blocked: false, message: '' };
+    }
+    return {
+      blocked: true,
+      message: status.hasPullRequest
+        ? `This desired state can be applied after pull request #${status.pullRequestNumber} is merged.`
+        : 'A pull request must be created first.',
+    };
+  });
+
+  constructor() {
+    // Register the rack for PR status live updates + fallback polling so the gate reflects current state.
+    effect(() => {
+      const rackId = this.rackId();
+      if (rackId) {
+        this.signalR.trackPrStatus(rackId);
+      }
+    });
+  }
 
   /** Reads DriftApplyJobStatusService only — never a raw hub event or poll response directly (ADR
    * 0033). Updates automatically as TopologySignalRService forwards live events / polled results in. */
@@ -246,6 +279,17 @@ export class ApplyActionComponent {
             'This drift item is stale and can no longer be applied. Refresh to see the latest state.',
           );
           this.telemetry.driftApplyError('apply', 'unprocessable', null);
+          break;
+        case 'prGateBlocked':
+          // Story #173 (AC4): the server rejected because the exact candidate's PR is not merged. Refresh PR
+          // status so the UI gate updates, and explain — no job was created.
+          this.signalR.trackPrStatus(rackId);
+          this.toast.error(
+            result.reasonCode === 'NoPrLinked'
+              ? 'A pull request must be created and merged before this change can be applied.'
+              : 'This change can be applied only after its pull request is merged.',
+          );
+          this.telemetry.driftApplyError('apply', `prGate:${result.reasonCode}`, null);
           break;
         case 'forbidden':
           this.toast.error(`You do not have the ${DRIFT_APPLY_PERMISSION_NAME} permission.`);

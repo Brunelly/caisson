@@ -25,6 +25,12 @@ export function driftApplyJobStreamKey(jobId: string): string {
   return `driftApplyJob:${jobId}`;
 }
 
+// Story #173: PR status events carry a cluster-monotonic per-link seq (TopologyStreams.ForPullRequest),
+// so the client de-dups on the owning PR-link id.
+export function prStatusStreamKey(pullRequestLinkId: string): string {
+  return `prStatus:${pullRequestLinkId}`;
+}
+
 // Finding #2 (client half): mirrors the server-side plausibility check
 // (RedisTopologyEventSubscriber.IsPlausibleAsync) at the same threshold. A forward jump this large is
 // more plausibly a forged/corrupted event than real traffic even after the server's own HMAC/plausibility

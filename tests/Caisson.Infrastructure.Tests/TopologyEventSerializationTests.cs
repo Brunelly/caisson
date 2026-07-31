@@ -27,6 +27,21 @@ public sealed class TopologyEventSerializationTests
     }
 
     [Fact]
+    public void Serialize_then_Deserialize_round_trips_a_git_pr_status_changed_event()
+    {
+        var @event = new GitPullRequestStatusChangedEvent(
+            Guid.NewGuid(), Guid.NewGuid(), "octo", "repo", 42, "https://gh/pr/42", "Merged", "abc123", "Success", 0,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 9, Guid.NewGuid());
+
+        var json = TopologyEventSerialization.Serialize(@event);
+        // The polymorphic discriminator is carried on the wire.
+        json.Should().Contain("git-pr-status-changed");
+        var decoded = TopologyEventSerialization.Deserialize(json);
+
+        decoded.Should().BeEquivalentTo(@event);
+    }
+
+    [Fact]
     public void Deserialize_returns_null_for_a_payload_missing_the_type_discriminator()
     {
         // No "type" property — System.Text.Json's polymorphic deserializer throws NotSupportedException

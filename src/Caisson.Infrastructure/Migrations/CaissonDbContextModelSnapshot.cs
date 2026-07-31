@@ -374,6 +374,11 @@ namespace Caisson.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("author_when_utc");
 
+                    b.Property<string>("CandidateFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("candidate_fingerprint");
+
                     b.Property<string>("CommitSha")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -425,6 +430,9 @@ namespace Caisson.Infrastructure.Migrations
 
                     b.HasIndex("IngestionRunId")
                         .HasDatabaseName("ix_desired_state_version_ingestion_run_id");
+
+                    b.HasIndex("RackSlug", "CandidateFingerprint")
+                        .HasDatabaseName("ix_desired_state_version_rack_slug_candidate_fingerprint");
 
                     b.HasIndex("RackSlug", "CommitSha")
                         .HasDatabaseName("ix_desired_state_version_rack_slug_commit_sha");
@@ -1175,6 +1183,112 @@ namespace Caisson.Infrastructure.Migrations
                         .HasDatabaseName("ix_git_pull_request_link_rack_created");
 
                     b.ToTable("git_pull_request_link", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Git.GitPullRequestStatusRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChecksConclusion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("checks_conclusion");
+
+                    b.Property<string>("ChecksSummary")
+                        .HasMaxLength(16384)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("checks_summary");
+
+                    b.Property<int>("ConsecutivePollFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_poll_failures");
+
+                    b.Property<int?>("FailingChecksCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failing_checks_count");
+
+                    b.Property<string>("HeadSha")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("head_sha");
+
+                    b.Property<DateTime>("LastCheckedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_checked_at_utc");
+
+                    b.Property<string>("LastPollFailureReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_poll_failure_reason");
+
+                    b.Property<DateTime>("NextPollAfterUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_poll_after_utc");
+
+                    b.Property<Guid>("PullRequestLinkId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pull_request_link_id");
+
+                    b.Property<int>("PullRequestNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("pull_request_number");
+
+                    b.Property<string>("PullRequestUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("pull_request_url");
+
+                    b.Property<Guid>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<string>("RepoName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("repo_name");
+
+                    b.Property<string>("RepoOwner")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("repo_owner");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_git_pull_request_status");
+
+                    b.HasIndex("PullRequestLinkId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_git_pull_request_status_link");
+
+                    b.HasIndex("RackId")
+                        .HasDatabaseName("ix_git_pull_request_status_rack");
+
+                    b.HasIndex("NextPollAfterUtc", "LastCheckedAtUtc")
+                        .HasDatabaseName("ix_git_pull_request_status_lease");
+
+                    b.ToTable("git_pull_request_status", (string)null);
                 });
 
             modelBuilder.Entity("Caisson.Domain.NetworkConfig.RackNetworkIntent", b =>
@@ -2139,6 +2253,16 @@ namespace Caisson.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_git_pull_request_link_racks_rack_id");
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Git.GitPullRequestStatusRecord", b =>
+                {
+                    b.HasOne("Caisson.Domain.Git.GitPullRequestLink", null)
+                        .WithMany()
+                        .HasForeignKey("PullRequestLinkId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_git_pull_request_status_git_pull_request_link_pull_request_");
                 });
 
             modelBuilder.Entity("Caisson.Domain.NetworkConfig.RackNetworkIntent", b =>

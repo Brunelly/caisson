@@ -108,6 +108,9 @@ public sealed class CaissonDbContext : DbContext
     /// <summary>Durable idempotency + audit link from a rack candidate fingerprint to its GitHub PR (story #172).</summary>
     public DbSet<GitPullRequestLink> GitPullRequestLinks => Set<GitPullRequestLink>();
 
+    /// <summary>Durable, mutable projection of a published PR's current state + check-run rollup (story #173).</summary>
+    public DbSet<GitPullRequestStatusRecord> GitPullRequestStatuses => Set<GitPullRequestStatusRecord>();
+
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

@@ -2,6 +2,8 @@ using Caisson.Api.Options;
 using Caisson.Api.Services;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Git.GitHub;
+using Caisson.Ingestion.Options;
+using Caisson.Ingestion.Scheduling;
 using Caisson.Ingestion.Security;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -44,7 +46,39 @@ public static class GitPrServiceCollectionExtensions
             services.TryAddSingleton<IDesiredStatePrService, NotYetEnabledDesiredStatePrService>();
         }
 
+        AddPullRequestStatusPoller(services, configuration);
+
         return services;
+    }
+
+    /// <summary>
+    /// Registers the story #173 PR status poller: the read-only GitHub status client (typed HttpClient), the
+    /// scoped sync + transition services (<c>TryAdd</c> so tests can override the GitHub client / transition
+    /// service), the validated options, and — only when enabled — the hosted <see cref="GitPullRequestStatusPoller"/>.
+    /// </summary>
+    private static void AddPullRequestStatusPoller(IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(GitPullRequestStatusOptions.SectionName);
+        services.AddOptions<GitPullRequestStatusOptions>()
+            .Bind(section)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        var options = section.Get<GitPullRequestStatusOptions>() ?? new GitPullRequestStatusOptions();
+
+        // The read-only status client is a separate typed HttpClient from the write client (minimal capability).
+        services.AddHttpClient<IGitHubPullRequestStatusClient, GitHubRestPullRequestStatusClient>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+        });
+
+        services.TryAddSingleton<Ingestion.Observability.GitPullRequestStatusMetrics>();
+        services.TryAddScoped<IGitPullRequestStatusSyncService, GitPullRequestStatusSyncService>();
+        services.TryAddScoped<IPrStatusTransitionService, PrStatusTransitionService>();
+
+        if (options.Enabled)
+        {
+            services.AddHostedService<GitPullRequestStatusPoller>();
+        }
     }
 
     private static void RegisterCredentialProvider(IServiceCollection services, GitHubOptions options)

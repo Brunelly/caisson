@@ -104,3 +104,9 @@
   color: var(--cds-text-secondary);
   margin: 0;
 }
+
+// Story #173 (AC4): the merged-apply gate explanation shown in place of the Apply button.
+.apply-action__pr-gate {
+  @include cds-mixins.cds-banner(info);
+  margin: 0;
+}

@@ -14,6 +14,7 @@ namespace Caisson.Infrastructure.LiveUpdates;
 [JsonDerivedType(typeof(SnapshotUpdatedEvent), "snapshot-updated")]
 [JsonDerivedType(typeof(DiscoveryJobStatusChangedEvent), "discovery-job-status-changed")]
 [JsonDerivedType(typeof(DriftApplyJobStatusChangedEvent), "drift-apply-job-status-changed")]
+[JsonDerivedType(typeof(GitPullRequestStatusChangedEvent), "git-pr-status-changed")]
 [JsonDerivedType(typeof(HeartbeatEvent), "heartbeat")]
 public abstract record TopologyEvent
 {

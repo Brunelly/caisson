@@ -17,4 +17,8 @@ public static class TopologyStreams
     /// <summary>The seq stream carrying drift-apply-job status events for a single job (story #65).</summary>
     public static string ForDriftApplyJob(Guid jobId)
         => "drift-apply-job:" + jobId.ToString("N", CultureInfo.InvariantCulture);
+
+    /// <summary>The seq stream carrying PR status events for a single PR link (story #173).</summary>
+    public static string ForPullRequest(Guid pullRequestLinkId)
+        => "git-pr:" + pullRequestLinkId.ToString("N", CultureInfo.InvariantCulture);
 }

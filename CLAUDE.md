@@ -170,6 +170,20 @@ or logs. Config is the non-secret `Git:GitHub` section (`GitHubOptions`) — `Ke
 This is the first Azure SDK dependency (`Azure.Identity`, `Azure.Security.KeyVault.Secrets`, both MIT). See
 ADRs 0056–0059 and [docs/github-pr-publishing.md](docs/github-pr-publishing.md).
 
+### PR status visibility + merged-apply gate (M1)
+Story #173 is the successor to #172: it polls each open PR's GitHub state + check-runs on a rate-limit-aware
+background service, persists them to a separate 1:1 `git_pull_request_status` table, broadcasts *meaningful*
+transitions over the existing Redis→SignalR pipeline (with a transactional, tamper-evident audit written
+directly to `topology_audit_event`), and enforces a hard **no-apply-until-merged** gate at both the UI and the
+`DriftApplyController`/`DriftApplyJobService` API. The poller uses the codebase's `FOR UPDATE SKIP LOCKED`
+lease (never xmin-CAS) for cross-replica concurrency and a strict ≤2-GitHub-calls-per-PR-per-cycle budget; the
+read-only GitHub client is a SEPARATE capability-limited interface from #172's write client so the write-boundary
+guard is untouched. Credentials still come only from Key Vault/managed identity. The merged-apply gate matches a
+merged PR to the exact ingested candidate via a canonical `DesiredStateVersion.CandidateFingerprint` that ingestion
+stamps with the SAME `CandidateFingerprint` primitive story #172 uses on the PR link (not the raw `ContentHash`),
+so the gate functions in the real ingestion→PR→merge→apply pipeline. See ADRs 0061–0063 and the "PR status polling"
+section of [docs/github-pr-publishing.md](docs/github-pr-publishing.md).
+
 ## Guardrails (M0)
 - **No** remediation/desired-state fields (no `Desired*`, `Target*`, VLAN/port *config intent*).
 - **No** credentials or PII in the observed-state schema (NFR5). A reflection guard test enforces this.

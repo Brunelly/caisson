@@ -27,6 +27,14 @@ public sealed class DesiredStateVersionConfiguration : IEntityTypeConfiguration<
         builder.Property(v => v.IsActive).IsRequired();
         builder.Property(v => v.ContentHash).IsRequired().HasMaxLength(64);
 
+        // Story #173 (ADR 0062): the canonical candidate fingerprint aligned with GitPullRequestLink so the
+        // merged-apply gate can match a merged PR to the exact ingested revision. Nullable — pre-existing rows
+        // and any file the canonical importer cannot round-trip carry null (the gate fails closed on null).
+        builder.Property(v => v.CandidateFingerprint)
+            .HasMaxLength(DesiredStateVersion.CandidateFingerprintHexLength);
+        builder.HasIndex(v => new { v.RackSlug, v.CandidateFingerprint })
+            .HasDatabaseName("ix_desired_state_version_rack_slug_candidate_fingerprint");
+
         // Story #63: the full materialised payload (never selected by the metadata-only history query,
         // NFR3) plus revision provenance. Author fields stay nullable end-to-end (AC1: git may omit them).
         builder.Property(v => v.DesiredStateJson)

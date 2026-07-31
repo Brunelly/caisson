@@ -1,0 +1,232 @@
+@use '../../shared/styles/cds-mixins' as cds;
+
+// PR status panel (story #173, Task #215). Mirrors the PullRequestStatusPanel design previews using only
+// `--cds-*` tokens + the shared mixins, in all three themes. Fixed row heights keep live poll/SignalR updates
+// patching in place with no layout shift.
+:host {
+  display: block;
+}
+
+.pr-panel {
+  @include cds.cds-elevated-card;
+  overflow: hidden;
+}
+
+.pr-panel__head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--cds-border-default);
+
+  @include cds.cds-respond-below(md) {
+    grid-template-columns: 1fr auto;
+    padding: 1.25rem;
+  }
+}
+
+.pr-panel__number {
+  @include cds.cds-identifier-text;
+  font-weight: 600;
+  font-size: var(--cds-fs-sm);
+  color: var(--cds-primary);
+}
+
+.pr-panel__title {
+  margin: 0;
+  font-size: var(--cds-fs-lg);
+  line-height: 1.4;
+}
+
+.pr-panel__title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--cds-radius-sm);
+
+  &:hover {
+    color: var(--cds-primary-hover);
+    text-decoration: underline;
+  }
+
+  @include cds.cds-focus-visible-ring;
+}
+
+.pr-panel__body {
+  padding: 1.5rem;
+
+  @include cds.cds-respond-below(md) {
+    padding: 1.25rem;
+  }
+}
+
+.pr-panel__label {
+  margin: 0 0 0.75rem;
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pr-panel__checks {
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  overflow: hidden;
+}
+
+.pr-panel__check {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 52px; // fixed row height: no layout shift on live updates
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--cds-border-default);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.pr-panel__glyph {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--cds-radius-full);
+  font-weight: 700;
+
+  &--ok {
+    background: var(--cds-success-bg);
+    color: var(--cds-success-fg);
+  }
+
+  &--fail {
+    background: var(--cds-error-bg);
+    color: var(--cds-error-fg);
+  }
+
+  &--running {
+    background: var(--cds-warning-bg);
+    color: var(--cds-warning-fg);
+  }
+
+  &--unknown {
+    background: var(--cds-surface-sunken);
+    color: var(--cds-text-secondary);
+  }
+}
+
+.pr-panel__check-name {
+  font-weight: 500;
+}
+
+.pr-panel__check-duration {
+  @include cds.cds-identifier-text;
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-fs-xs);
+}
+
+.pr-panel__failure {
+  grid-column: 2 / 4;
+  margin-top: -0.125rem;
+  padding: 0.625rem 0.75rem;
+  border-left: 2px solid var(--cds-error-fg);
+  border-radius: 0 var(--cds-radius-sm) var(--cds-radius-sm) 0;
+  background: var(--cds-error-bg);
+  color: var(--cds-error-fg);
+  font-family: var(--cds-font-mono);
+  font-size: var(--cds-fs-xs);
+  line-height: 1.6;
+}
+
+.pr-panel__gate {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1.25rem;
+
+  &--info {
+    @include cds.cds-banner(info);
+    border: 1px solid var(--cds-info-fg);
+  }
+
+  &--success {
+    @include cds.cds-banner(success);
+    border: 1px solid var(--cds-success-fg);
+  }
+}
+
+.pr-panel__gate-title {
+  display: block;
+  font-size: var(--cds-fs-md);
+  font-weight: 600;
+}
+
+.pr-panel__gate-text {
+  font-size: var(--cds-fs-sm);
+}
+
+.pr-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--cds-border-default);
+  color: var(--cds-text-secondary);
+  font-size: var(--cds-fs-xs);
+}
+
+.pr-panel__last-checked {
+  @include cds.cds-identifier-text;
+}
+
+.pr-panel__refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.625rem;
+  border: 1px solid var(--cds-border-default);
+  border-radius: var(--cds-radius-md);
+  background: transparent;
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--cds-primary);
+    color: var(--cds-primary);
+  }
+
+  &:disabled {
+    color: var(--cds-text-disabled);
+    cursor: not-allowed;
+  }
+
+  @include cds.cds-focus-visible-ring;
+}
+
+.pr-panel__external-icon,
+.pr-panel__refresh svg,
+.pr-panel__gate svg {
+  flex: none;
+}
+
+// Visually-hidden live region: announced by screen readers without occupying layout.
+.pr-panel__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

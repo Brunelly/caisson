@@ -5,9 +5,11 @@ using Caisson.Api.Middleware;
 using Caisson.Api.Security;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Enums;
+using Caisson.Domain.Git;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Orchestration.DriftApply;
+using Caisson.Orchestration.Git;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -30,14 +32,17 @@ public sealed class DriftApplyController : DiscoveryControllerBase
     private readonly IDriftApplyJobService _jobs;
     private readonly IAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
+    private readonly IPrMergeGate _prMergeGate;
 
     public DriftApplyController(
-        CaissonDbContext context, IDriftApplyJobService jobs, IAuditEventWriter audit, ICorrelationContext correlation)
+        CaissonDbContext context, IDriftApplyJobService jobs, IAuditEventWriter audit, ICorrelationContext correlation,
+        IPrMergeGate prMergeGate)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
+        _prMergeGate = prMergeGate ?? throw new ArgumentNullException(nameof(prMergeGate));
     }
 
     /// <summary>
@@ -52,6 +57,7 @@ public sealed class DriftApplyController : DiscoveryControllerBase
     [ProducesResponseType(typeof(ApplyDriftCorrectionResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApplyDriftCorrectionResponse>> Apply(
         Guid rackId, [FromBody] ApplyDriftCorrectionRequest? request, CancellationToken cancellationToken)
@@ -80,6 +86,15 @@ public sealed class DriftApplyController : DiscoveryControllerBase
         if (!IsSupported(item))
         {
             return UnsupportedDriftType(item);
+        }
+
+        // Merged-apply gate (story #173, AC4): the exact candidate's PR must be merged. Enforced here BEFORE
+        // RequestApplyAsync so a blocked call creates no job and reaches no driver; DriftApplyJobService
+        // re-checks as defence-in-depth.
+        var gate = await _prMergeGate.EvaluateForDriftItemAsync(item, cancellationToken);
+        if (!gate.Allowed)
+        {
+            return PrGateBlocked(gate.ReasonCode);
         }
 
         var (actorType, actorId) = ResolveActor();
@@ -122,6 +137,20 @@ public sealed class DriftApplyController : DiscoveryControllerBase
             ?? "unknown";
         var actorType = User.IsInRole(CaissonRoles.ServiceAccount) ? ActorType.ServiceAccount : ActorType.User;
         return (actorType, actorId);
+    }
+
+    private ObjectResult PrGateBlocked(string reasonCode)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status409Conflict,
+            Title = "Pull request not merged",
+            Detail = reasonCode == GitPrGateReasonCodes.NoPrLinked
+                ? "No pull request is linked for this candidate; a pull request must be created and merged before applying."
+                : "The linked pull request is not merged yet; apply is blocked until it is merged.",
+        };
+        problem.Extensions["reasonCode"] = reasonCode;
+        return new ObjectResult(problem) { StatusCode = StatusCodes.Status409Conflict };
     }
 
     private ObjectResult ItemNotFound(Guid rackId, Guid driftItemId)

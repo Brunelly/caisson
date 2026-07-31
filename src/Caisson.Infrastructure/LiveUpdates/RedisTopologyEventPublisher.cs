@@ -44,6 +44,10 @@ public sealed class RedisTopologyEventPublisher : ITopologyEventPublisher
         => PublishAsync(@event, @event?.RackId, @event?.JobId, @event?.CorrelationId);
 
     /// <inheritdoc />
+    public Task PublishGitPullRequestStatusChangedAsync(GitPullRequestStatusChangedEvent @event, CancellationToken cancellationToken = default)
+        => PublishAsync(@event, @event?.RackId, jobId: null, @event?.CorrelationId);
+
+    /// <inheritdoc />
     public Task PublishHeartbeatAsync(HeartbeatEvent @event, CancellationToken cancellationToken = default)
         => PublishAsync(@event, rackId: null, jobId: null, correlationId: null);
 

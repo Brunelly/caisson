@@ -20,6 +20,9 @@ import type { DriftApplyJobStatusChangedEvent } from '../../drift/model/drift-co
 import { isTerminalDriftApplyJobStatus } from '../../drift/model/drift-contracts';
 import { DriftApplyJobStatusService } from '../../drift/live/drift-apply-job-status.service';
 import { DriftApplyService } from '../../drift/services/drift-apply.service';
+import type { PrStatusChangedEvent } from '../../network-config/pr/pr-status-contracts';
+import { PrStatusStateService } from '../../network-config/pr/pr-status-state.service';
+import { PrStatusService } from '../../network-config/pr/pr-status.service';
 import { deriveTopologyGraph } from '../model/topology-graph-model';
 import { DiscoveryStatusService } from '../services/discovery-status.service';
 import { TopologySnapshotService } from '../services/topology-snapshot.service';
@@ -29,6 +32,7 @@ import {
   applyIfNewer,
   driftApplyJobStreamKey,
   jobStreamKey,
+  prStatusStreamKey,
   snapshotStreamKey,
 } from './apply-if-newer';
 
@@ -104,6 +108,8 @@ export class TopologySignalRService {
   private readonly telemetry = inject(TelemetryService);
   private readonly driftApplyJobStatus = inject(DriftApplyJobStatusService);
   private readonly driftApply = inject(DriftApplyService);
+  private readonly prStatusState = inject(PrStatusStateService);
+  private readonly prStatus = inject(PrStatusService);
 
   private connection: HubConnection | null = null;
   private currentRackId: string | null = null;
@@ -116,6 +122,10 @@ export class TopologySignalRService {
   // reconcile() on the same degrade cadence while the hub is disconnected/reconnecting; entries are
   // removed once a terminal status is observed (from either a live event or a poll response).
   private readonly trackedJobIds = new Set<string>();
+  // Racks whose PR status the current view cares about (story #173) — populated by the PR status panel via
+  // trackPrStatus(). Reconciled via REST on the same degrade cadence so the panel still refreshes when the
+  // hub is down (AC3's SignalR-down → poll-API fallback).
+  private readonly trackedPrRackIds = new Set<string>();
 
   /** Connects (or, if already connected, switches rack subscription) and subscribes to `rackId`. */
   connect(rackId: string): void {
@@ -153,6 +163,13 @@ export class TopologySignalRService {
     this.trackedJobIds.add(jobId);
   }
 
+  /** Registers a rack's PR status for the polling-fallback path (story #173) and fetches it once now, so the
+   * panel shows current data immediately and keeps refreshing via REST while the hub is disconnected/stale. */
+  trackPrStatus(rackId: string): void {
+    this.trackedPrRackIds.add(rackId);
+    this.reconcilePrStatus(rackId);
+  }
+
   /** Unsubscribes and tears down the connection (page/component destroy). */
   disconnect(): void {
     const rackId = this.currentRackId;
@@ -161,6 +178,7 @@ export class TopologySignalRService {
     this.clearInitialConnectRetry();
     this.currentRackId = null;
     this.trackedJobIds.clear();
+    this.trackedPrRackIds.clear();
 
     if (this.connection?.state === HubConnectionState.Connected && rackId) {
       void this.connection.invoke('UnsubscribeFromRack', rackId).catch(() => undefined);
@@ -187,6 +205,10 @@ export class TopologySignalRService {
     connection.on('DriftApplyJobStatusChanged', (event: DriftApplyJobStatusChangedEvent) =>
       this.onDriftApplyJobStatusChanged(event),
     );
+    // Story #173: PR status rides this SAME connection/rack group — no second connection state machine.
+    connection.on('GitPullRequestStatusChanged', (event: PrStatusChangedEvent) =>
+      this.onGitPullRequestStatusChanged(event),
+    );
     connection.on('Heartbeat', () => this.resetWatchdog());
 
     connection.onreconnecting(() => {
@@ -207,6 +229,7 @@ export class TopologySignalRService {
         void connection.invoke('SubscribeToRack', this.currentRackId).catch(() => undefined);
         this.reconcile(this.currentRackId); // exactly one forced reconcile fetch on reconnect
         this.reconcileTrackedJobs(this.currentRackId); // catch up on anything missed while disconnected
+        this.reconcileTrackedPrStatus(this.currentRackId);
       }
     });
 
@@ -339,6 +362,36 @@ export class TopologySignalRService {
     }
   }
 
+  /** Story #173: applies the event optimistically for a near-instant pill update, then re-fetches the
+   * PERSISTED status via REST (never trusting the event summary as authoritative — the same rule the
+   * snapshot/discovery handlers follow) so the panel reflects exactly what was committed. */
+  private onGitPullRequestStatusChanged(event: PrStatusChangedEvent): void {
+    this.resetWatchdog();
+    if (event.rackId !== this.currentRackId) {
+      return;
+    }
+
+    const accepted = applyIfNewer(this.watermarks, prStatusStreamKey(event.pullRequestLinkId), {
+      seq: event.seq,
+      eventId: `${event.pullRequestLinkId}:${event.seq}`,
+    });
+    if (!accepted) {
+      return;
+    }
+
+    this.prStatusState.applyEvent(event);
+    this.trackedPrRackIds.add(event.rackId);
+    this.reconcilePrStatus(event.rackId);
+  }
+
+  private reconcilePrStatus(rackId: string): void {
+    this.prStatus.getStatus(rackId).subscribe((result) => {
+      if (result.kind === 'ok') {
+        this.prStatusState.applyPolledStatus(rackId, result.value);
+      }
+    });
+  }
+
   /** Never trusts the event summary as authoritative (docs/live-topology-events.md rule 2): always
    * refetches the latest snapshot + graph via REST and patches the (already-bound) derived graph. */
   private reconcile(rackId: string, correlationId: string | null = null): void {
@@ -364,6 +417,7 @@ export class TopologySignalRService {
     this.pollTimer = setInterval(() => {
       this.reconcile(rackId);
       this.reconcileTrackedJobs(rackId);
+      this.reconcileTrackedPrStatus(rackId);
     }, POLL_INTERVAL_MS);
   }
 
@@ -374,6 +428,12 @@ export class TopologySignalRService {
   private reconcileTrackedJobs(rackId: string): void {
     for (const jobId of this.trackedJobIds) {
       this.reconcileJob(rackId, jobId);
+    }
+  }
+
+  private reconcileTrackedPrStatus(rackId: string): void {
+    if (this.trackedPrRackIds.has(rackId)) {
+      this.reconcilePrStatus(rackId);
     }
   }
 

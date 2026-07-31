@@ -13,6 +13,7 @@ using Caisson.Ingestion.Git.ReadOnly;
 using Caisson.Ingestion.Materializer;
 using Caisson.Ingestion.Observability;
 using Caisson.Ingestion.Options;
+using Caisson.Ingestion.RoundTrip;
 using Caisson.Ingestion.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -301,11 +302,12 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         }
 
         var desiredStateJson = DesiredStatePayloadSerializer.Serialize(document);
+        var candidateFingerprint = ComputeCandidateFingerprint(document.RackSlug, desiredStateJson, run.Id, file.Path);
         var createdAtUtc = _time.GetUtcNow().UtcDateTime;
         var version = new DesiredStateVersion(
             _ids.NewId(), document.RackSlug, commit.Sha, run.Id, createdAtUtc, contentHash,
             desiredStateJson, DesiredStateSchema.CurrentSchemaVersion, IngestingServicePrincipal,
-            commit.Author, commit.AuthorEmail, commit.CommitTimeUtc);
+            commit.Author, commit.AuthorEmail, commit.CommitTimeUtc, candidateFingerprint);
         var materialized = DesiredStateMaterializer.Materialize(version.Id, document, _ids.NewId);
 
         var audit = new TopologyAuditEvent(
@@ -482,6 +484,39 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 
     private static string ComputeContentHash(string content)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
+    /// <summary>
+    /// Computes the revision's <em>canonical</em> candidate fingerprint (story #173, ADR 0062) so the
+    /// merged-apply gate can match a merged PR to the exact ingested revision. Projects the just-materialised
+    /// document into the round-trip <see cref="SupportedDesiredStateModel"/> via
+    /// <see cref="BaselineIntentProjection"/> — the SAME projection the impact-preview/PR baseline path uses —
+    /// then hashes it through the SAME <see cref="CandidateFingerprint"/> primitive PR creation stamps on the
+    /// <c>GitPullRequestLink</c>. So a PR whose candidate resolves to this same rack-slug + port-access model
+    /// yields the identical fingerprint here, independently of the raw file's byte framing/formatting.
+    /// <para>
+    /// The M1 ingestion schema carries no VLAN catalogue (ADR 0053), so the projection synthesises one from the
+    /// referenced access-VLAN ids exactly as the baseline projection does; the fingerprint is therefore over
+    /// the rack slug + per-port access-VLAN intents. Returns <c>null</c> (the gate then fails closed) if the
+    /// projection/render cannot produce a model — never aborting an otherwise-valid ingestion (NFR8).
+    /// </para>
+    /// </summary>
+    private string? ComputeCandidateFingerprint(string rackSlug, string desiredStateJson, Guid runId, string filePath)
+    {
+        try
+        {
+            var model = BaselineIntentProjection.Project(rackSlug, desiredStateJson);
+            return CandidateFingerprint.Compute(model);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Never let fingerprinting fail an otherwise-valid ingestion; a null fingerprint is fail-closed
+            // at the gate, and the raw ContentHash idempotency/materialisation path is unaffected.
+            _logger.LogWarning(
+                ex, "Desired-state revision canonical fingerprint computation failed runId={RunId} rackSlug={RackSlug} filePath={FilePath}",
+                runId, rackSlug, filePath);
+            return null;
+        }
+    }
 
     private static string Truncate(string value, int maxLength)
         => value.Length > maxLength ? value[..maxLength] : value;

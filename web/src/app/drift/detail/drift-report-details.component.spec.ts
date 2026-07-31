@@ -49,7 +49,12 @@ describe('DriftReportDetailsComponent', () => {
         // connect() — stub it, mirroring topology-page.component.spec.ts's pattern.
         {
           provide: TopologySignalRService,
-          useValue: { connect: vi.fn(), disconnect: vi.fn(), trackJob: vi.fn() },
+          useValue: {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+            trackJob: vi.fn(),
+            trackPrStatus: vi.fn(),
+          },
         },
       ],
     }).compileComponents();

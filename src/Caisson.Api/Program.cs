@@ -382,6 +382,10 @@ health.AddCheck<Caisson.Api.HealthChecks.GitIngestionHealthCheck>("git-ingestion
 // Healthy/Degraded-only philosophy — a failing/stuck drift computation must not take /health/ready down.
 health.AddCheck<Caisson.Infrastructure.HealthChecks.DriftComputationHealthCheck>("drift-computation", tags: new[] { "ready" });
 
+// Story #173 (NFR3): reports the GitHub PR status poller's dependency health; never makes a live GitHub
+// call and stays Healthy/Degraded (never Unhealthy) so a GitHub outage can never take /health/ready down.
+health.AddCheck<Caisson.Api.HealthChecks.GitPullRequestStatusHealthCheck>("git-pr-status", tags: new[] { "ready" });
+
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>
 {

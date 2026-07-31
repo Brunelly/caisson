@@ -84,7 +84,10 @@ describe('ApplyActionComponent', () => {
         { provide: DriftReportService, useValue: { getItemById } },
         { provide: ToastService, useValue: { success: toastSuccess, error: toastError } },
         { provide: TelemetryService, useValue: new TelemetryService() },
-        { provide: TopologySignalRService, useValue: { trackJob: vi.fn() } },
+        {
+          provide: TopologySignalRService,
+          useValue: { trackJob: vi.fn(), trackPrStatus: vi.fn() },
+        },
         { provide: DriftApplyJobStatusService, useValue: { statusFor: () => null } },
       ],
     });

@@ -21,6 +21,10 @@ public sealed class NoOpTopologyEventPublisher : ITopologyEventPublisher
         => Task.CompletedTask;
 
     /// <inheritdoc />
+    public Task PublishGitPullRequestStatusChangedAsync(GitPullRequestStatusChangedEvent @event, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <inheritdoc />
     public Task PublishHeartbeatAsync(HeartbeatEvent @event, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }
