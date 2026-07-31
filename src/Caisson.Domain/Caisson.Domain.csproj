@@ -9,4 +9,9 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Lets the domain tests drive the dense-matrix and memory-linear (Hirschberg) diff paths directly. -->
+    <InternalsVisibleTo Include="Caisson.Domain.Tests" />
+  </ItemGroup>
+
 </Project>

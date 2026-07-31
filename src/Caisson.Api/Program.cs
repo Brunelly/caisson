@@ -78,6 +78,12 @@ builder.Services.AddSingleton<Caisson.Ingestion.Observability.DesiredStateRoundT
 // histogram for the NFR2 P95 <= 500ms target. A singleton, mirroring DesiredStateRoundTripMetrics.
 builder.Services.AddSingleton<Caisson.Ingestion.Observability.PreflightValidationMetrics>();
 
+// Impact-preview observability + service (story #171, Tasks #196/#202): the compute/cache-hit counter +
+// diff_compute_seconds histogram (a singleton, mirroring PreflightValidationMetrics), and the scoped
+// service that computes/caches the baseline-vs-candidate diff behind the impact-preview endpoints.
+builder.Services.AddSingleton<Caisson.Api.Observability.ImpactPreviewMetrics>();
+builder.Services.AddScoped<Caisson.Api.Services.ImpactPreviewService>();
+
 // Desired-state PR publisher seam (story #170, AC3): the gate + audit path ships now; the real forge/PR
 // pipeline is deferred to #172, so the stubbed, side-effect-free publisher is registered today (ADR 0052).
 builder.Services.AddSingleton<Caisson.Api.Services.IDesiredStatePrService, Caisson.Api.Services.NotYetEnabledDesiredStatePrService>();
@@ -91,6 +97,10 @@ builder.Services.AddCaissonDrift(builder.Configuration);
 // runner. Builds on AddCaissonOrchestration's driver registries; Caisson.Api still names no driver
 // assembly (Api_references_no_driver_assembly stays green).
 builder.Services.AddCaissonDriftApply(builder.Configuration);
+
+// Impact-preview diff cache TTL pruner (story #171, ADR 0054): the background sweep that deletes expired
+// cached previews. The compute/cache pipeline itself lives in the API layer (ImpactPreviewService).
+builder.Services.AddCaissonDesiredStateDiffCache(builder.Configuration);
 
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses

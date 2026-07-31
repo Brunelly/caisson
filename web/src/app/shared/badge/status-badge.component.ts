@@ -22,8 +22,16 @@ export type JobStatusBadgeKind = 'job-pending' | 'job-success' | 'job-error';
 // severity/job-status for the same reason those are namespaced apart from each other (a different axis
 // entirely: "what access-VLAN intent is authored for this port", not a confidence/severity/job outcome).
 export type PortIntentBadgeKind = 'intent-inherit' | 'intent-access';
+// Story #171: the impact-preview change vocabulary — namespaced apart from the others for the same reason
+// (a different axis: "what kind of change is proposed", not a confidence/severity/job/intent outcome).
+export type ImpactChangeBadgeKind = 'change-added' | 'change-removed' | 'change-modified';
 export type BadgeKind =
-  MappingState | ConfidenceBand | SeverityBadgeKind | JobStatusBadgeKind | PortIntentBadgeKind;
+  | MappingState
+  | ConfidenceBand
+  | SeverityBadgeKind
+  | JobStatusBadgeKind
+  | PortIntentBadgeKind
+  | ImpactChangeBadgeKind;
 
 const LABELS: Record<BadgeKind, string> = {
   confirmed: 'Confirmed',
@@ -44,6 +52,9 @@ const LABELS: Record<BadgeKind, string> = {
   // id/name (e.g. "Access VLAN 120 — storage") — these exist only so LABELS stays a total map.
   'intent-inherit': 'Unchanged / Inherit',
   'intent-access': 'Access VLAN',
+  'change-added': 'Added',
+  'change-removed': 'Removed',
+  'change-modified': 'Changed',
 };
 
 // NFR5: status is never colour-only — every kind also carries a glyph. Reuses the exact glyphs
@@ -66,6 +77,9 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
   'intent-access': '✓',
   // 'intent-inherit' deliberately has no icon — it is the neutral "nothing authored" state, not a
   // positive/negative outcome.
+  'change-added': '+',
+  'change-removed': '−',
+  'change-modified': '~',
 };
 
 @Component({
@@ -108,14 +122,16 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
 
       .status-badge--confirmed,
       .status-badge--high,
-      .status-badge--job-success {
+      .status-badge--job-success,
+      .status-badge--change-added {
         background: var(--cds-success-bg);
         color: var(--cds-success-fg);
       }
 
       .status-badge--ambiguous,
       .status-badge--medium,
-      .status-badge--severity-medium {
+      .status-badge--severity-medium,
+      .status-badge--change-modified {
         background: var(--cds-warning-bg);
         color: var(--cds-warning-fg);
       }
@@ -123,7 +139,8 @@ const ICONS: Partial<Record<BadgeKind, string>> = {
       .status-badge--unmapped,
       .status-badge--low,
       .status-badge--severity-high,
-      .status-badge--job-error {
+      .status-badge--job-error,
+      .status-badge--change-removed {
         background: var(--cds-error-bg);
         color: var(--cds-error-fg);
       }

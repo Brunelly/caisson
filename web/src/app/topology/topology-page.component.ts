@@ -9,9 +9,10 @@ import {
   DestroyRef,
   effect,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LiveConnectionStatusBarComponent } from '../shared/connection-status/live-connection-status-bar.component';
 import { TopologyDetailsPanelComponent } from './details/topology-details-panel.component';
@@ -189,6 +190,14 @@ export class TopologyPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly graphRef = viewChild<TopologyGraphComponent>('graph');
 
+  // Deep-link target (story #171, AC3): the impact-preview screen navigates here with `?focus=<nodeId>`,
+  // where nodeId is built with the shared topology-graph-model helpers (vlanNodeId / portNodeId /
+  // switchNodeId) so encoded port names containing '/' round-trip unchanged. Reactive so a focus change is
+  // re-applied once the graph loads.
+  private readonly focusParam = toSignal(this.route.queryParamMap, { initialValue: null });
+  private readonly focusApplied = signal(false);
+  private lastFocusRackId: string | null = null;
+
   constructor() {
     // Subscribed rather than read once from the snapshot: Angular's default route-reuse strategy
     // keeps this component instance alive across a rackId-only navigation on the same route config
@@ -196,12 +205,34 @@ export class TopologyPageComponent {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const rackId = params.get('rackId');
       if (rackId) {
+        // A new rack (re)arms the deep-link so its ?focus= is applied once its graph loads.
+        if (rackId !== this.lastFocusRackId) {
+          this.lastFocusRackId = rackId;
+          this.focusApplied.set(false);
+        }
         this.state.loadRackTopology(rackId);
         this.signalR.connect(rackId);
       }
     });
 
     this.destroyRef.onDestroy(() => this.signalR.disconnect());
+
+    // Apply the ?focus= deep link once the graph is available: select the node and pan/zoom to it. Guards
+    // a null node (belt-and-braces with the server's existsInTopology) and only fires once per focus.
+    effect(() => {
+      const graph = this.state.graph();
+      const focus = this.focusParam()?.get('focus') ?? null;
+      if (!graph || !focus || this.focusApplied()) {
+        return;
+      }
+
+      this.focusApplied.set(true);
+      const node = findNodeById(graph, focus);
+      if (node) {
+        this.state.selectEntity(node);
+      }
+      this.graphRef()?.panZoomToNode(focus);
+    });
 
     // AC6: an unauthorized/forbidden response from the initial load (e.g. a session that lost its
     // rack-level access mid-page) routes to the generic access-denied state, same as the guard.
