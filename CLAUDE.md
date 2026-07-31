@@ -152,6 +152,24 @@ original content-hashed `DriftItemId`, which can only ever say "identical" or "a
 calling the driver; a `RecordDeviceOutcome` checkpoint bounds the job to at most one device write even
 across a crash-resume. See [ADR 0032](docs/adr/0032-drift-apply-orchestration-and-rbac.md).
 
+### GitHub PR publishing for desired-state changes (M1)
+Story #172 turns a gate-passed rack desired-state candidate into a **GitHub pull request**, idempotently,
+with a hard **PR-only guardrail** and credentials from **Azure Key Vault via managed identity**. It fills the
+existing `IDesiredStatePrService`/`DesiredStatePrController` seam (`POST api/racks/{rackId}/desired-state/prs`)
+that story #170 built, rather than adding a parallel `/git/prs` controller — reusing its RBAC
+(`NetworkConfigAuthor`), rate-limiting, server-side re-validation and audit machinery. The idempotency key is
+the SHA-256 of the candidate's canonical `DesiredStateYamlRenderer` output; a filtered partial-unique index on
+`git_pull_request_link(rack_id, candidate_fingerprint) WHERE status='Open'` (insert-then-catch-unique-violation,
+copied from `DriftApplyJobService`) collapses N concurrent identical requests to one PR while letting a closed
+PR's fingerprint be re-used. The GitHub write path is a thin typed `HttpClient` (`GitHubRestPullRequestClient`,
+no Octokit) behind a **structurally merge-less** `IGitHubPullRequestClient` — no merge/force/push-to-default/
+delete method exists, proven by a reflection guard, and `PrOnlyGuardrail` re-checks the branch against the
+metadata-reported default before any write. The PAT is fetched at runtime by `KeyVaultGitCredentialProvider`
+(`DefaultAzureCredential` + short-TTL cache); no secret lives in `appsettings.json`, source, the options POCO,
+or logs. Config is the non-secret `Git:GitHub` section (`GitHubOptions`) — `KeyVaultUri` + `PatSecretName` only.
+This is the first Azure SDK dependency (`Azure.Identity`, `Azure.Security.KeyVault.Secrets`, both MIT). See
+ADRs 0056–0059 and [docs/github-pr-publishing.md](docs/github-pr-publishing.md).
+
 ## Guardrails (M0)
 - **No** remediation/desired-state fields (no `Desired*`, `Target*`, VLAN/port *config intent*).
 - **No** credentials or PII in the observed-state schema (NFR5). A reflection guard test enforces this.
