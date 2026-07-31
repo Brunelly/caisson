@@ -20,19 +20,32 @@ public sealed record DesiredStatePrCreationRequest(
     IReadOnlyList<string> AcknowledgedWarningCodes);
 
 /// <summary>
-/// The outcome of a (stubbed today) PR creation. <see cref="GatePassed"/> is always true here — the
-/// controller only calls the publisher after the gate passes; <see cref="PullRequestUrl"/> is null until
-/// the real forge/PR pipeline lands (#172).
+/// The outcome of a PR creation (stub or real). <see cref="GatePassed"/> is always true here — the
+/// controller only calls the publisher after the gate passes. The story-#170 fields
+/// (<see cref="Status"/>/<see cref="Detail"/>/<see cref="PullRequestUrl"/>) are unchanged; story #172 adds
+/// the real PR metadata additively (nullable/defaulted so the stub publisher stays valid). On the real
+/// create path all fields are populated and <see cref="Reused"/> is false; on the idempotent reuse path the
+/// existing PR's metadata is returned with <see cref="Reused"/> true; on an in-band failure
+/// <see cref="ErrorCode"/> carries a stable <c>GitPrErrorCodes</c> value.
 /// </summary>
 /// <param name="GatePassed">Whether the pre-flight gate passed (always true when the publisher is invoked).</param>
-/// <param name="Status">A stable status string (e.g. <c>gate-passed</c>).</param>
+/// <param name="Status">A stable status string (e.g. <c>gate-passed</c>, <c>pr-created</c>, <c>pr-reused</c>).</param>
 /// <param name="Detail">A human-readable explanation.</param>
-/// <param name="PullRequestUrl">The created PR's URL, or null while the publisher is stubbed (#172).</param>
+/// <param name="PullRequestUrl">The created/reused PR's URL, or null on the stub/failure path.</param>
 public sealed record DesiredStatePrCreationResult(
     bool GatePassed,
     string Status,
     string Detail,
-    string? PullRequestUrl);
+    string? PullRequestUrl,
+    int? PullRequestNumber = null,
+    string? BranchName = null,
+    string? CommitSha = null,
+    string? CandidateFingerprint = null,
+    bool Reused = false,
+    string? RepoOwner = null,
+    string? RepoName = null,
+    string? ErrorCode = null,
+    Contracts.PrChangeSummary? ChangeSummary = null);
 
 /// <summary>
 /// The seam that turns a gate-passed desired-state candidate into a Git pull request (story #170, AC3).
