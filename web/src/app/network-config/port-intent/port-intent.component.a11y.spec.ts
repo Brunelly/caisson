@@ -51,6 +51,8 @@ describe('PortIntentComponent accessibility', () => {
                 : null,
             setPortIntent: () => undefined,
             clearPortIntent: () => undefined,
+            focusTarget: () => null,
+            clearFocusTarget: () => undefined,
           },
         },
         {

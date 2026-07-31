@@ -46,8 +46,17 @@ function createNetworkIntentStateStub(
   });
   const portIntentFor = (switchStableKey: string, portName: string) =>
     byKey.get(`${switchStableKey}|${portName}`) ?? null;
+  const focusTarget = signal<unknown>(null);
+  const clearFocusTarget = vi.fn(() => focusTarget.set(null));
 
-  return { vlanCatalogue, setPortIntent, clearPortIntent, portIntentFor };
+  return {
+    vlanCatalogue,
+    setPortIntent,
+    clearPortIntent,
+    portIntentFor,
+    focusTarget,
+    clearFocusTarget,
+  };
 }
 
 function dialogEl(): HTMLElement | null {
