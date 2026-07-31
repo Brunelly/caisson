@@ -183,6 +183,7 @@ public sealed class DriftApplyJobConcurrencyTests : IClassFixture<PostgresFixtur
             new DriftApplyJobSignal(),
             new NoOpTopologyEventPublisher(),
             new InProcessTopologyEventSequencer(),
+            new AlwaysAllowPrMergeGate(),
             NullLogger<DriftApplyJobService>.Instance);
 
     private async Task ClearJobsAsync()

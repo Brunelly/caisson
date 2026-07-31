@@ -6,6 +6,7 @@ using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Shaping;
+using Caisson.Orchestration.Git;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -28,6 +29,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
     private readonly DriftApplyJobSignal _signal;
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
+    private readonly IPrMergeGate _prMergeGate;
     private readonly ILogger<DriftApplyJobService> _logger;
 
     public DriftApplyJobService(
@@ -37,6 +39,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         DriftApplyJobSignal signal,
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
+        IPrMergeGate prMergeGate,
         ILogger<DriftApplyJobService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -45,6 +48,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         _signal = signal ?? throw new ArgumentNullException(nameof(signal));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
+        _prMergeGate = prMergeGate ?? throw new ArgumentNullException(nameof(prMergeGate));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -54,6 +58,14 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(requestedBy);
+
+        // Defence-in-depth merged-apply gate (story #173, AC4): the controller pre-checks and returns 409, but
+        // any other caller reaching here for an unmerged/unlinked candidate is refused before a job is created.
+        var gate = await _prMergeGate.EvaluateForDriftItemAsync(item, cancellationToken);
+        if (!gate.Allowed)
+        {
+            throw new PrMergeGateBlockedException(gate.Reason);
+        }
 
         var now = _time.GetUtcNow().UtcDateTime;
         var job = new DriftApplyJob(

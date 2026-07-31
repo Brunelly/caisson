@@ -517,6 +517,11 @@ public sealed class DriftApplyApiTests : IAsyncLifetime
                 services.AddScoped<IRackDefinitionProvider, TestRackDefinitionProvider>();
                 services.AddSingleton<ISwitchMutatingDriverFactory>(MutatingDriverFactory);
 
+                // These tests predate (and are orthogonal to) story #173's merge gate — allow apply so the
+                // drift-apply mechanics under test are reached. The gate itself is covered by PrMergeGateApiTests.
+                services.RemoveAll(typeof(Caisson.Orchestration.Git.IPrMergeGate));
+                services.AddScoped<Caisson.Orchestration.Git.IPrMergeGate, AlwaysAllowPrMergeGate>();
+
                 services.Configure<DiscoveryOrchestrationOptions>(options =>
                 {
                     options.RunnerEnabled = false;

@@ -89,6 +89,9 @@ public static class OrchestrationServiceCollectionExtensions
         services.TryAddSingleton<DriftApplyMetrics>();
 
         services.TryAddScoped<IDriftApplyJobStore, CaissonDriftApplyJobStore>();
+        // The internal merged-apply gate (story #173, Task #213), shared by DriftApplyJobService (defence-in-
+        // depth) and the API controller (pre-check) — a future promote endpoint reuses it unchanged.
+        services.TryAddScoped<Git.IPrMergeGate, Git.PrMergeGate>();
         services.TryAddScoped<IDriftApplyJobService, DriftApplyJobService>();
         services.TryAddScoped<IDriftApplyOrchestrator, DriftApplyOrchestrator>();
 
