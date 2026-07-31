@@ -7,6 +7,7 @@ using Caisson.Api.Security;
 using Caisson.Domain.Git;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
+using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,7 +15,6 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using FluentAssertions;
 using Xunit;
 
 namespace Caisson.Api.IntegrationTests;
