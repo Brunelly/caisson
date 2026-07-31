@@ -3,6 +3,7 @@ using Caisson.Api.DependencyInjection;
 using Caisson.Api.Middleware;
 using Caisson.Api.Realtime.Hubs;
 using Caisson.Api.Security;
+using Caisson.Api.Startup;
 using Caisson.Infrastructure.DependencyInjection;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
@@ -84,9 +85,10 @@ builder.Services.AddSingleton<Caisson.Ingestion.Observability.PreflightValidatio
 builder.Services.AddSingleton<Caisson.Api.Observability.ImpactPreviewMetrics>();
 builder.Services.AddScoped<Caisson.Api.Services.ImpactPreviewService>();
 
-// Desired-state PR publisher seam (story #170, AC3): the gate + audit path ships now; the real forge/PR
-// pipeline is deferred to #172, so the stubbed, side-effect-free publisher is registered today (ADR 0052).
-builder.Services.AddSingleton<Caisson.Api.Services.IDesiredStatePrService, Caisson.Api.Services.NotYetEnabledDesiredStatePrService>();
+// Desired-state GitHub PR publisher (story #172, ADR 0056-0059): binds the non-secret Git:GitHub options,
+// selects the Key-Vault-or-env credential provider, registers the capability-limited GitHub write client +
+// idempotency store, and selects the real GitHubDesiredStatePrService when enabled (else the #170 stub).
+builder.Services.AddCaissonGitPr(builder.Configuration);
 
 // Drift computation (story #64, ADR 0030): the compute service, the real event-signal, and the
 // scheduler/event-runner/retention-pruner background services.
@@ -119,6 +121,13 @@ RedisEventAuthenticityStartupGuard.Validate(builder.Environment, builder.Configu
 var gitIngestionOptions = builder.Configuration.GetSection(GitIngestionOptions.SectionName).Get<GitIngestionOptions>()
     ?? new GitIngestionOptions();
 GitIngestionStartupGuard.Validate(builder.Environment, gitIngestionOptions.Enabled, new EnvGitIngestionSecretsResolver());
+
+// Fail-closed Git PR feature validation (story #172, AC4): a deployment with the PR feature enabled and no
+// target repo — or, in Production, no Key Vault credential source — refuses to boot rather than run with a
+// non-existent credential source or fall back to a static/env PAT.
+var gitHubPrOptions = builder.Configuration.GetSection(Caisson.Api.Options.GitHubOptions.SectionName)
+    .Get<Caisson.Api.Options.GitHubOptions>() ?? new Caisson.Api.Options.GitHubOptions();
+Caisson.Api.Startup.GitPrStartupGuard.Validate(builder.Environment, gitHubPrOptions);
 
 // Live topology updates (story #9, ADR 0014): the SignalR hub, Redis backplane + per-instance relay,
 // heartbeat, metrics and Redis health. Degrades to single-instance SignalR when no Redis is configured.
