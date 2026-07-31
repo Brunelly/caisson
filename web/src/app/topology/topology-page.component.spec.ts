@@ -4,9 +4,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TopologyGraphComponent } from './graph/topology-graph.component';
 import { TopologyEntityService } from './services/topology-entity.service';
 import { TopologyStateService } from './state/topology-state.service';
 import { TopologySignalRService } from './live/topology-signalr.service';
@@ -53,12 +54,14 @@ describe('TopologyPageComponent', () => {
   let loadRackTopology: ReturnType<typeof vi.fn>;
   let signalRConnect: ReturnType<typeof vi.fn>;
   let paramMap$: Subject<{ get(key: string): string | null }>;
+  let queryParamMap$: Subject<ReturnType<typeof convertToParamMap>>;
 
   beforeEach(async () => {
     selectEntity = vi.fn();
     loadRackTopology = vi.fn();
     signalRConnect = vi.fn();
     paramMap$ = new Subject();
+    queryParamMap$ = new Subject();
 
     const stateStub = {
       loading: signal(false),
@@ -92,7 +95,13 @@ describe('TopologyPageComponent', () => {
           useValue: { connect: signalRConnect, disconnect: () => undefined },
         },
         { provide: TopologyEntityService, useValue: { getEntity: () => new Subject() } },
-        { provide: ActivatedRoute, useValue: { paramMap: paramMap$.asObservable() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: paramMap$.asObservable(),
+            queryParamMap: queryParamMap$.asObservable(),
+          },
+        },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
       ],
     }).compileComponents();
@@ -132,5 +141,24 @@ describe('TopologyPageComponent', () => {
     expect(selectEntity).toHaveBeenCalledTimes(1);
     const selected = selectEntity.mock.calls[0][0] as TopologyGraphNode;
     expect(selected.id).toBe('nic:srv-1:eth0');
+  });
+
+  it('applies a ?focus= deep link once the graph loads: selects the node and pans/zooms to it (story #171, AC3)', () => {
+    const panZoomToNode = vi
+      .spyOn(TopologyGraphComponent.prototype, 'panZoomToNode')
+      .mockImplementation(() => undefined);
+
+    // Create the graph view first (no ?focus= yet, so the effect returns early).
+    paramMap$.next({ get: () => 'rack-1' });
+    fixture.detectChanges();
+    expect(panZoomToNode).not.toHaveBeenCalled();
+
+    // Now the deep link arrives — the effect selects the focused node and pans/zooms to it.
+    queryParamMap$.next(convertToParamMap({ focus: 'nic:srv-1:eth0' }));
+    fixture.detectChanges();
+
+    expect(selectEntity).toHaveBeenCalledTimes(1);
+    expect((selectEntity.mock.calls[0][0] as TopologyGraphNode).id).toBe('nic:srv-1:eth0');
+    expect(panZoomToNode).toHaveBeenCalledWith('nic:srv-1:eth0');
   });
 });
