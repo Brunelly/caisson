@@ -39,9 +39,11 @@ internal static class CorrelationScoring
 
     /// <summary>
     /// Distinct-MAC count above which a port is treated as a trunk/uplink (an access port normally learns
-    /// only the handful of MACs behind a single attached host).
+    /// only the handful of MACs behind a single attached host). Sourced from the shared
+    /// <see cref="PortRoleClassifier.TrunkMacCountThreshold"/> so the scoring model and the story-#170
+    /// rack-inventory projector share one threshold.
     /// </summary>
-    public const int TrunkMacCountThreshold = 4;
+    public const int TrunkMacCountThreshold = PortRoleClassifier.TrunkMacCountThreshold;
 
     /// <summary>
     /// Maximum distinct MACs on an access port for the <c>MacLearnUnique</c> signal (a clean 1:1 learn).

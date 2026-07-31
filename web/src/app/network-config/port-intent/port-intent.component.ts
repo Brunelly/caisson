@@ -9,6 +9,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   effect,
   inject,
@@ -74,9 +75,28 @@ import { PortIntentEditorComponent } from './port-intent-editor.component';
             </thead>
             <tbody>
               @for (port of switchNode.ports; track port.stableKey) {
-                <tr>
+                <tr
+                  [attr.data-port-name]="port.portName"
+                  [attr.tabindex]="isInvalidPort(switchNode.stableKey, port.portName) ? -1 : null"
+                  [attr.aria-invalid]="
+                    isInvalidPort(switchNode.stableKey, port.portName) ? 'true' : null
+                  "
+                  [attr.aria-describedby]="
+                    isInvalidPort(switchNode.stableKey, port.portName)
+                      ? 'port-invalid-' + port.stableKey
+                      : null
+                  "
+                  [class.port-intent__row--invalid]="
+                    isInvalidPort(switchNode.stableKey, port.portName)
+                  "
+                >
                   <td>
                     <span class="port-intent__identifier">{{ port.portName }}</span>
+                    @if (isInvalidPort(switchNode.stableKey, port.portName)) {
+                      <span [id]="'port-invalid-' + port.stableKey" class="port-intent__sr-only">
+                        {{ invalidMessage() }}
+                      </span>
+                    }
                   </td>
                   <td>
                     @if (vlanIdFor(switchNode.stableKey, port.portName); as vlanId) {
@@ -113,10 +133,16 @@ export class PortIntentComponent {
   protected readonly permission = inject(NetworkConfigPermissionService);
   private readonly route = inject(ActivatedRoute);
   private readonly dialog = inject(Dialog);
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 
   protected readonly switches = computed(() => this.topologyState.switches());
   private readonly _selectedSwitchStableKey = signal<string | null>(null);
   private readonly autoOpenedDeepLink = signal(false);
+
+  // The port a pre-flight issue points at (story #170, AC4): marked aria-invalid + described-by, scrolled
+  // into view and focused when the user clicks the issue in the validation panel.
+  private readonly invalidPort = signal<{ switchStableKey: string; portName: string } | null>(null);
+  protected readonly invalidMessage = signal<string>('');
 
   protected readonly selectedSwitchStableKey = computed(
     () => this._selectedSwitchStableKey() ?? this.switches()[0]?.stableKey ?? '',
@@ -162,6 +188,43 @@ export class PortIntentComponent {
       this._selectedSwitchStableKey.set(switchStableKey);
       this.openEditor(switchStableKey, portName);
     });
+
+    // Story #170, AC4: when the user clicks a port/switch issue in the validation panel, select the
+    // referenced switch and focus/scroll to the offending port row, marking it aria-invalid.
+    effect(() => {
+      const target = this.state.focusTarget();
+      const kind = target?.entityRef.kind;
+      if (!target || (kind !== 'port' && kind !== 'switch') || !target.entityRef.switchStableKey) {
+        return;
+      }
+
+      const switchStableKey = target.entityRef.switchStableKey;
+      const portName = target.entityRef.portName;
+      this._selectedSwitchStableKey.set(switchStableKey);
+      this.invalidMessage.set(target.message);
+      this.invalidPort.set(portName ? { switchStableKey, portName } : null);
+      this.state.clearFocusTarget();
+
+      if (!portName) {
+        return;
+      }
+      queueMicrotask(() => {
+        const row = this.host.nativeElement.querySelector<HTMLElement>(
+          `tr[data-port-name="${portName}"]`,
+        );
+        row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row?.focus();
+      });
+    });
+  }
+
+  protected isInvalidPort(switchStableKey: string, portName: string): boolean {
+    const invalid = this.invalidPort();
+    return (
+      invalid !== null &&
+      invalid.switchStableKey === switchStableKey &&
+      invalid.portName === portName
+    );
   }
 
   protected vlanIdFor(switchStableKey: string, portName: string): number | null {

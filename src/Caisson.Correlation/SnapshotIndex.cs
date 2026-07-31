@@ -178,11 +178,10 @@ internal sealed class SnapshotIndex
         var taggedCount = _ports.TryGetValue(port, out var info) ? (info.TaggedVlans?.Count ?? 0) : 0;
         var macCount = LearnedMacCount(port);
 
-        // LLDP peer-switch is the primary signal; multi-VLAN tagging and a high learned-MAC count are the
-        // fallbacks (see docs/topology-correlation.md and ADR 0010).
-        var isTrunk = peerLldp
-            || taggedCount > 1
-            || macCount > CorrelationScoring.TrunkMacCountThreshold;
+        // The single, shared trunk/uplink rule (LLDP peer-switch primary, multi-VLAN tagging and a high
+        // learned-MAC count as fallbacks) — see docs/topology-correlation.md and ADR 0010. Reused by the
+        // story-#170 rack-inventory projector via the same public classifier, so neither re-derives it.
+        var isTrunk = PortRoleClassifier.IsTrunk(peerLldp, taggedCount, macCount);
 
         var result = new PortClass(isTrunk, peerLldp);
         _classCache[port] = result;
@@ -235,5 +234,5 @@ internal sealed class SnapshotIndex
     }
 
     private static string? Normalize(string? token)
-        => string.IsNullOrWhiteSpace(token) ? null : token.Trim().ToLowerInvariant();
+        => PortRoleClassifier.NormalizeToken(token);
 }

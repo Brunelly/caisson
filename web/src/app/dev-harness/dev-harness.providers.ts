@@ -18,9 +18,15 @@ import type { DriftReportItemFilters } from '../drift/services/drift-report.serv
 import { DriftReportService } from '../drift/services/drift-report.service';
 import { DriftReportStateService } from '../drift/state/drift-report-state.service';
 import { validateNetworkIntent } from '../network-config/model/network-intent-validation';
+import type {
+  PreflightValidationResponse,
+  ValidationIssue,
+} from '../network-config/model/preflight-validation-contracts';
 import { DesiredStateRoundTripService } from '../network-config/services/desired-state-roundtrip.service';
 import { NetworkConfigPermissionService } from '../network-config/services/network-config-permission.service';
 import { NetworkIntentService } from '../network-config/services/network-intent.service';
+import { PreflightValidationService } from '../network-config/services/preflight-validation.service';
+import { PrService } from '../network-config/services/pr.service';
 import { NetworkIntentStateService } from '../network-config/state/network-intent-state.service';
 import {
   HUB_CONNECTION_FACTORY,
@@ -237,6 +243,103 @@ const fakeDesiredStateRoundTripService: Pick<DesiredStateRoundTripService, 'pars
   },
 };
 
+// Story #170: param-driven fakes of the pre-flight validation + gated PR-creation wire so Playwright can
+// drive the real ValidationIssuesPanel (grouped Errors/Warnings/Safety, live regions, focus-to-first-error)
+// and the real Create-PR acknowledgement dialog in a browser without a backend. `?preflight=` selects the
+// scenario (default 'clean'), read at call time exactly like `?roles=`/`?discoveryStatus=` above, and every
+// validate() mints a FRESH validationRunId so the shell's stale-on-edit / warning-acknowledgement gating
+// behaves precisely as it does in production. A small delay() keeps the panel's "Validating…" shimmer and
+// the Create-PR in-flight window observable to a real click sequence.
+const HARNESS_PREFLIGHT_SCENARIOS = ['clean', 'errors', 'warnings', 'mixed'] as const;
+type HarnessPreflightScenario = (typeof HARNESS_PREFLIGHT_SCENARIOS)[number];
+
+let harnessPreflightRunCounter = 0;
+
+function harnessPreflightResponse(rackId: string): PreflightValidationResponse {
+  const raw = new URLSearchParams(window.location.search).get('preflight');
+  if (raw !== null && !(HARNESS_PREFLIGHT_SCENARIOS as readonly string[]).includes(raw)) {
+    throw new Error(
+      `Unknown ?preflight= value "${raw}" — expected one of: ${HARNESS_PREFLIGHT_SCENARIOS.join(', ')}`,
+    );
+  }
+  const scenario: HarnessPreflightScenario = (raw as HarnessPreflightScenario | null) ?? 'clean';
+
+  const duplicateVlanError: ValidationIssue = {
+    severity: 'error',
+    code: 'semantic.vlan.duplicateId',
+    message: 'VLAN ID 10 is defined more than once in this rack.',
+    fieldPath: '/vlanCatalogue/1/id',
+    uiPath: 'vlanCatalogue[1].id',
+    entityRef: { kind: 'vlan', rackId, switchStableKey: null, portName: null, vlanId: 10 },
+    helpUrl: null,
+    details: null,
+  };
+  const descriptionWarning: ValidationIssue = {
+    severity: 'warning',
+    code: 'style.vlan.missingDescription',
+    message: 'VLAN 20 (storage) has no description.',
+    fieldPath: '/vlanCatalogue/1/description',
+    uiPath: 'vlanCatalogue[1].description',
+    entityRef: { kind: 'vlan', rackId, switchStableKey: null, portName: null, vlanId: 20 },
+    helpUrl: null,
+    details: null,
+  };
+  const uplinkSafetyWarning: ValidationIssue = {
+    severity: 'warning',
+    code: 'safety.uplinkPort',
+    message: 'Port SW-1/ether1 is classified as an uplink; changing it risks isolating the rack.',
+    fieldPath: '/portIntents/0/accessVlanId',
+    uiPath: 'ports["SW-1|sw1/ether1"].accessVlanId',
+    entityRef: {
+      kind: 'port',
+      rackId,
+      switchStableKey: 'SW-1|sw1',
+      portName: 'ether1',
+      vlanId: null,
+    },
+    helpUrl: null,
+    details: { reason: 'heuristic:lldp-uplink-neighbor' },
+  };
+
+  const errors: ValidationIssue[] =
+    scenario === 'errors' || scenario === 'mixed' ? [duplicateVlanError] : [];
+  const warnings: ValidationIssue[] =
+    scenario === 'warnings'
+      ? [uplinkSafetyWarning]
+      : scenario === 'mixed'
+        ? [descriptionWarning, uplinkSafetyWarning]
+        : [];
+
+  harnessPreflightRunCounter += 1;
+  return {
+    validationRunId: `harness-run-${harnessPreflightRunCounter}`,
+    isValid: errors.length === 0,
+    canCreatePr: errors.length === 0,
+    errors,
+    warnings,
+    validatedAtUtc: harnessSnapshotMeta().createdAt,
+    topologySnapshotId: 'harness-topology-snapshot',
+  };
+}
+
+const fakePreflightValidationService: Pick<PreflightValidationService, 'validate'> = {
+  validate: (rackId) =>
+    of({ kind: 'ok' as const, value: harnessPreflightResponse(rackId) }).pipe(delay(250)),
+};
+
+const fakePrService: Pick<PrService, 'createPullRequest'> = {
+  createPullRequest: (_rackId, validationRunId) =>
+    of({
+      kind: 'ok' as const,
+      value: {
+        validationRunId,
+        status: 'accepted',
+        detail: 'Pull request queued for creation.',
+        pullRequestUrl: null,
+      },
+    }).pipe(delay(250)),
+};
+
 const fakeAuditService: Pick<AuditService, 'getAudit'> = {
   getAudit: () =>
     of({
@@ -295,6 +398,8 @@ export const DEV_HARNESS_PROVIDERS: Provider[] = [
   { provide: AuditService, useValue: fakeAuditService },
   { provide: NetworkIntentService, useValue: fakeNetworkIntentService },
   { provide: DesiredStateRoundTripService, useValue: fakeDesiredStateRoundTripService },
+  { provide: PreflightValidationService, useValue: fakePreflightValidationService },
+  { provide: PrService, useValue: fakePrService },
   // Re-provided with useClass (not left to resolve from root) so their own inject() calls above pick up
   // the fakes registered in this same route-scoped environment injector.
   { provide: TopologyStateService, useClass: TopologyStateService },

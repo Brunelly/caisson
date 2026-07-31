@@ -6,7 +6,15 @@
 // NetworkConfigAuthor permission, matching apply-action.component.ts's gating style; the grid itself
 // stays visible and read-only for a Read Only user.
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { isVlanReferencedByPortIntent } from '../model/network-intent-validation';
 import type { VlanCatalogueEntryDto } from '../model/network-intent-contracts';
 import { NetworkConfigPermissionService } from '../services/network-config-permission.service';
@@ -62,9 +70,22 @@ import { VlanFormDialogComponent } from './vlan-form-dialog.component';
             </thead>
             <tbody>
               @for (entry of state.vlanCatalogue(); track entry.id) {
-                <tr>
+                <tr
+                  [attr.data-vlan-id]="entry.id"
+                  [attr.tabindex]="invalidVlanId() === entry.id ? -1 : null"
+                  [attr.aria-invalid]="invalidVlanId() === entry.id ? 'true' : null"
+                  [attr.aria-describedby]="
+                    invalidVlanId() === entry.id ? 'vlan-invalid-' + entry.id : null
+                  "
+                  [class.vlan-catalogue__row--invalid]="invalidVlanId() === entry.id"
+                >
                   <td>
                     <span class="vlan-catalogue__identifier">{{ entry.id }}</span>
+                    @if (invalidVlanId() === entry.id) {
+                      <span [id]="'vlan-invalid-' + entry.id" class="vlan-catalogue__sr-only">
+                        {{ invalidMessage() }}
+                      </span>
+                    }
                   </td>
                   <td>{{ entry.name }}</td>
                   <td>{{ entry.description ?? '—' }}</td>
@@ -93,12 +114,40 @@ export class VlanCatalogueComponent {
   protected readonly state = inject(NetworkIntentStateService);
   protected readonly permission = inject(NetworkConfigPermissionService);
   private readonly dialog = inject(Dialog);
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 
   protected readonly retireBlockedId = signal<number | null>(null);
+
+  // The VLAN row a pre-flight issue points at (story #170, AC4): marked aria-invalid + described-by, then
+  // scrolled into view and focused when the user clicks the issue in the validation panel.
+  protected readonly invalidVlanId = signal<number | null>(null);
+  protected readonly invalidMessage = signal<string>('');
 
   protected readonly serverErrors = computed(() =>
     this.state.fieldErrors().filter((error) => error.field.startsWith('vlanCatalogue')),
   );
+
+  constructor() {
+    effect(() => {
+      const target = this.state.focusTarget();
+      if (target === null || target.entityRef.kind !== 'vlan' || target.entityRef.vlanId === null) {
+        return;
+      }
+
+      const vlanId = target.entityRef.vlanId;
+      this.invalidVlanId.set(vlanId);
+      this.invalidMessage.set(target.message);
+      this.state.clearFocusTarget();
+
+      queueMicrotask(() => {
+        const row = this.host.nativeElement.querySelector<HTMLElement>(
+          `tr[data-vlan-id="${vlanId}"]`,
+        );
+        row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row?.focus();
+      });
+    });
+  }
 
   protected onAddClick(): void {
     const ref = this.dialog.open<VlanFormDialogResult, VlanFormDialogData>(

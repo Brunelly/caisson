@@ -74,6 +74,14 @@ builder.Services.AddCaissonGitIngestion(builder.Configuration);
 // the DesiredStateRoundTripController records against. A singleton, mirroring GitIngestionMetrics.
 builder.Services.AddSingleton<Caisson.Ingestion.Observability.DesiredStateRoundTripMetrics>();
 
+// Pre-flight validation observability (story #170): the preflight-validate / PR-gate counter + duration
+// histogram for the NFR2 P95 <= 500ms target. A singleton, mirroring DesiredStateRoundTripMetrics.
+builder.Services.AddSingleton<Caisson.Ingestion.Observability.PreflightValidationMetrics>();
+
+// Desired-state PR publisher seam (story #170, AC3): the gate + audit path ships now; the real forge/PR
+// pipeline is deferred to #172, so the stubbed, side-effect-free publisher is registered today (ADR 0052).
+builder.Services.AddSingleton<Caisson.Api.Services.IDesiredStatePrService, Caisson.Api.Services.NotYetEnabledDesiredStatePrService>();
+
 // Drift computation (story #64, ADR 0030): the compute service, the real event-signal, and the
 // scheduler/event-runner/retention-pruner background services.
 builder.Services.AddCaissonDrift(builder.Configuration);

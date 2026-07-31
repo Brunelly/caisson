@@ -37,6 +37,9 @@ function createStateStub(
     vlanCatalogue.update((list) => list.filter((v) => v.id !== id)),
   );
 
+  const focusTarget = signal<unknown>(null);
+  const clearFocusTarget = vi.fn(() => focusTarget.set(null));
+
   return {
     vlanCatalogue,
     portIntents,
@@ -46,6 +49,8 @@ function createStateStub(
     addVlan,
     updateVlan,
     retireVlan,
+    focusTarget,
+    clearFocusTarget,
   };
 }
 

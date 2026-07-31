@@ -36,6 +36,8 @@ describe('VlanCatalogueComponent accessibility', () => {
             loading: signal(false),
             loadError: signal(null),
             fieldErrors: signal([]),
+            focusTarget: signal(null),
+            clearFocusTarget: () => undefined,
           },
         },
         {
