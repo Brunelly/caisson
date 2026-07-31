@@ -18,6 +18,9 @@ public interface ITopologyClient
     /// <summary>A drift-apply job for a subscribed rack changed status (story #65, AC7).</summary>
     Task DriftApplyJobStatusChanged(DriftApplyJobStatusChangedEvent @event);
 
+    /// <summary>A pull request for a subscribed rack changed status/checks (story #173, Task #212).</summary>
+    Task GitPullRequestStatusChanged(GitPullRequestStatusChangedEvent @event);
+
     /// <summary>A liveness heartbeat (every 10s) so clients can detect staleness.</summary>
     Task Heartbeat(HeartbeatEvent @event);
 }

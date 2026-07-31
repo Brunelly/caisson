@@ -27,6 +27,8 @@ public sealed class LiveUpdatesContractGuardTests
         typeof(SnapshotUpdatedEvent),
         typeof(SnapshotSummary),
         typeof(DiscoveryJobStatusChangedEvent),
+        typeof(DriftApplyJobStatusChangedEvent),
+        typeof(GitPullRequestStatusChangedEvent),
         typeof(HeartbeatEvent),
     };
 
@@ -59,8 +61,11 @@ public sealed class LiveUpdatesContractGuardTests
         var status = new DiscoveryJobStatusChangedEvent(
             Guid.NewGuid(), Guid.NewGuid(), "Failed", "InProgress", null, "SWITCH_DISCOVERY_FAILED",
             DateTimeOffset.UnixEpoch, 3, Guid.NewGuid());
+        var prStatus = new GitPullRequestStatusChangedEvent(
+            Guid.NewGuid(), "octo", "repo", 7, "https://gh/pr/7", "Merged", "abc123", "Success", 0,
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, 5, Guid.NewGuid());
 
-        foreach (var @event in new TopologyEvent[] { snapshot, status, new HeartbeatEvent(DateTimeOffset.UnixEpoch) })
+        foreach (var @event in new TopologyEvent[] { snapshot, status, prStatus, new HeartbeatEvent(DateTimeOffset.UnixEpoch) })
         {
             var json = TopologyEventSerialization.Serialize(@event);
             using var document = JsonDocument.Parse(json);

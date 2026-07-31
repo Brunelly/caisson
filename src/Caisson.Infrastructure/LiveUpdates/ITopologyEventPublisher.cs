@@ -23,6 +23,9 @@ public interface ITopologyEventPublisher
     /// <summary>Publishes a drift-apply-job-status-changed event (story #65, AC7). Never throws (see the type contract).</summary>
     Task PublishDriftApplyJobStatusChangedAsync(DriftApplyJobStatusChangedEvent @event, CancellationToken cancellationToken = default);
 
+    /// <summary>Publishes a git-pr-status-changed event (story #173, Task #212). Never throws (see the type contract).</summary>
+    Task PublishGitPullRequestStatusChangedAsync(GitPullRequestStatusChangedEvent @event, CancellationToken cancellationToken = default);
+
     /// <summary>Publishes a heartbeat event. Never throws (see the type contract).</summary>
     Task PublishHeartbeatAsync(HeartbeatEvent @event, CancellationToken cancellationToken = default);
 }

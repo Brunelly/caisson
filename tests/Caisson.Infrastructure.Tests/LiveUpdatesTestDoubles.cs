@@ -12,6 +12,7 @@ public sealed class RecordingTopologyEventPublisher : ITopologyEventPublisher
     private readonly ConcurrentQueue<SnapshotUpdatedEvent> _snapshots = new();
     private readonly ConcurrentQueue<DiscoveryJobStatusChangedEvent> _statuses = new();
     private readonly ConcurrentQueue<DriftApplyJobStatusChangedEvent> _driftApplyStatuses = new();
+    private readonly ConcurrentQueue<GitPullRequestStatusChangedEvent> _prStatuses = new();
     private readonly ConcurrentQueue<HeartbeatEvent> _heartbeats = new();
 
     public IReadOnlyList<SnapshotUpdatedEvent> Snapshots => _snapshots.ToArray();
@@ -19,6 +20,8 @@ public sealed class RecordingTopologyEventPublisher : ITopologyEventPublisher
     public IReadOnlyList<DiscoveryJobStatusChangedEvent> Statuses => _statuses.ToArray();
 
     public IReadOnlyList<DriftApplyJobStatusChangedEvent> DriftApplyStatuses => _driftApplyStatuses.ToArray();
+
+    public IReadOnlyList<GitPullRequestStatusChangedEvent> GitPullRequestStatuses => _prStatuses.ToArray();
 
     public IReadOnlyList<HeartbeatEvent> Heartbeats => _heartbeats.ToArray();
 
@@ -37,6 +40,12 @@ public sealed class RecordingTopologyEventPublisher : ITopologyEventPublisher
     public Task PublishDriftApplyJobStatusChangedAsync(DriftApplyJobStatusChangedEvent @event, CancellationToken cancellationToken = default)
     {
         _driftApplyStatuses.Enqueue(@event);
+        return Task.CompletedTask;
+    }
+
+    public Task PublishGitPullRequestStatusChangedAsync(GitPullRequestStatusChangedEvent @event, CancellationToken cancellationToken = default)
+    {
+        _prStatuses.Enqueue(@event);
         return Task.CompletedTask;
     }
 
@@ -61,6 +70,9 @@ public sealed class ThrowingTopologyEventPublisher : ITopologyEventPublisher
         => throw new InvalidOperationException("simulated Redis outage");
 
     public Task PublishDriftApplyJobStatusChangedAsync(DriftApplyJobStatusChangedEvent @event, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("simulated Redis outage");
+
+    public Task PublishGitPullRequestStatusChangedAsync(GitPullRequestStatusChangedEvent @event, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("simulated Redis outage");
 
     public Task PublishHeartbeatAsync(HeartbeatEvent @event, CancellationToken cancellationToken = default)
