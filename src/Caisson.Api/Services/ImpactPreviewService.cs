@@ -100,7 +100,8 @@ public sealed class ImpactPreviewService
 
         var candidateModel = new SupportedDesiredStateModel(
             rackSlug, import.Envelope!.SupportedModel.VlanCatalogue, import.Envelope.SupportedModel.PortIntents);
-        var baselineModel = BaselineIntentProjection.Project(rackSlug, baseline.DesiredStateJson);
+        var baselineModel = BaselineIntentProjection.Project(
+            rackSlug, baseline.DesiredStateJson, candidateModel.VlanCatalogue);
 
         var candidateYaml = DesiredStateYamlRenderer.Render(candidateModel).Yaml;
         var baselineYaml = DesiredStateYamlRenderer.Render(baselineModel).Yaml;
@@ -126,7 +127,10 @@ public sealed class ImpactPreviewService
             baseline.CommitSha, semantic.Changes, change => ExistsInTopology(change, inventory, observedVlanIds));
         var summaryJson = ImpactPreviewContractMappers.SerializeSummary(payload);
 
-        var now = _time.GetUtcNow().UtcDateTime;
+        // Truncate to microseconds so the in-memory row we return on a miss is byte-identical to what a
+        // later cache hit reads back from Postgres (whose `timestamp` precision is microseconds) — AC2's
+        // "same createdAt" across repeated requests.
+        var now = TruncateToMicroseconds(_time.GetUtcNow().UtcDateTime);
         var expiresAt = now.AddMinutes(_options.Value.TtlMinutes);
         var row = new DesiredStateCandidateDiffCache(
             Guid.NewGuid(), rackId, baseline.Id, candidateSha, baselineSha, rawDiff, summaryJson, actorId, now, expiresAt);
@@ -159,6 +163,9 @@ public sealed class ImpactPreviewService
 
     private static ImpactPreviewResult MissingBaseline()
         => new(ImpactPreviewStatus.MissingBaseline, null, false, TimeSpan.Zero, null);
+
+    private static DateTime TruncateToMicroseconds(DateTime value)
+        => new(value.Ticks - (value.Ticks % (TimeSpan.TicksPerMillisecond / 1000)), value.Kind);
 
     /// <summary>
     /// The set of VLAN ids observed in the latest topology (union of every port's PVID and tagged VLANs).

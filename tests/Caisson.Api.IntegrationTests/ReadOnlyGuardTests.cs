@@ -38,6 +38,17 @@ public sealed class ReadOnlyGuardTests
         // (POST prs) — both NetworkConfigAuthor-gated; side-effect-free except the audit write.
         nameof(DesiredStatePreflightController),
         nameof(DesiredStatePrController),
+        // Story #171: the impact-preview POST is a read-shaped-but-side-effecting cache write, gated by
+        // TopologyRead so Read Only users can preview (ADR 0055) — allow-listed here and exempted from the
+        // WritePolicies check below (like the HMAC webhook), since it carries a read policy, not a write one.
+        nameof(DesiredStateImpactPreviewController),
+    };
+
+    // Story #171: controllers whose non-GET actions are deliberately gated by a READ policy (TopologyRead)
+    // rather than a write policy — a read-shaped preview that happens to persist a cache row (ADR 0055).
+    private static readonly HashSet<string> ReadGatedPreviewControllers = new(StringComparer.Ordinal)
+    {
+        nameof(DesiredStateImpactPreviewController),
     };
 
     // The policies a non-GET action must be gated by (fail-closed).
@@ -109,6 +120,18 @@ public sealed class ReadOnlyGuardTests
                 {
                     // Authenticated by HMAC signature verification over the raw body, not an
                     // authorization policy — see ADR 0026.
+                    continue;
+                }
+
+                if (ReadGatedPreviewControllers.Contains(controller.Name))
+                {
+                    // A read-shaped preview gated by TopologyRead (ADR 0055): assert it carries the read
+                    // policy rather than a write policy, then skip the write-policy requirement.
+                    var readPolicies = controllerPolicies.Concat(PolicyNames(action.GetCustomAttributes())).ToList();
+                    readPolicies.Should().Contain(
+                        AuthorizationPolicies.TopologyRead,
+                        "the read-shaped preview action {0}.{1} must be gated by TopologyRead",
+                        controller.Name, action.Name);
                     continue;
                 }
 

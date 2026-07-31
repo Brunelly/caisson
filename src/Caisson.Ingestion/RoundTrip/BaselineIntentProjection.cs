@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Caisson.Domain.DesiredState;
@@ -17,20 +18,26 @@ namespace Caisson.Ingestion.RoundTrip;
 /// slug noise).
 /// <para>
 /// Scope note (ADR 0053): the M1 ingestion schema does NOT persist a VLAN catalogue
-/// (<c>spec.vlans</c>) — <c>ValidatedRackDocument</c> carries only <c>rackSlug</c> + <c>switches</c> — so
-/// the projected baseline <see cref="SupportedDesiredStateModel.VlanCatalogue"/> is empty. VLAN catalogue
-/// differences therefore surface as additions against an ingested baseline until ingestion models the
-/// catalogue.
+/// (<c>spec.vlans</c>) — <c>ValidatedRackDocument</c> carries only <c>rackSlug</c> + <c>switches</c>. So the
+/// baseline VLAN catalogue is <b>synthesized</b> from the distinct access-VLAN ids the baseline's ports
+/// reference: this keeps the projected model internally consistent (every port references a catalogue VLAN,
+/// so the shared <c>DesiredStateYamlRenderer</c>/<c>NetworkIntentValidator</c> can render it). Baseline VLAN
+/// names are unknown to ingestion, so they are taken from the candidate's catalogue as a naming hint for the
+/// same id (avoiding a false "name changed" diff for an unchanged VLAN); a VLAN id the candidate does not
+/// carry falls back to a synthetic <c>vlan-{id}</c> name.
 /// </para>
 /// </summary>
 public static class BaselineIntentProjection
 {
     /// <summary>
     /// Projects <paramref name="desiredStateJson"/> (the persisted baseline payload) into a supported model
-    /// keyed on the server-authoritative <paramref name="rackSlug"/>.
+    /// keyed on the server-authoritative <paramref name="rackSlug"/>. <paramref name="candidateVlanHint"/>
+    /// supplies names for baseline VLAN ids the candidate also carries, so an unchanged VLAN does not diff
+    /// as a spurious name change.
     /// </summary>
     /// <exception cref="JsonException">Thrown if the persisted payload is not the expected shape (should never happen).</exception>
-    public static SupportedDesiredStateModel Project(string rackSlug, string desiredStateJson)
+    public static SupportedDesiredStateModel Project(
+        string rackSlug, string desiredStateJson, IReadOnlyList<VlanCatalogueEntry>? candidateVlanHint = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(rackSlug);
         ArgumentException.ThrowIfNullOrEmpty(desiredStateJson);
@@ -38,7 +45,14 @@ public static class BaselineIntentProjection
         var document = JsonSerializer.Deserialize<BaselineDocument>(desiredStateJson, DesiredStatePayloadSerializer.Options)
             ?? throw new JsonException("The persisted baseline desired-state payload deserialized to null.");
 
+        var hintById = new Dictionary<int, VlanCatalogueEntry>();
+        foreach (var vlan in candidateVlanHint ?? Array.Empty<VlanCatalogueEntry>())
+        {
+            hintById.TryAdd(vlan.Id, vlan);
+        }
+
         var portIntents = new List<PortAccessIntent>();
+        var vlanIds = new SortedSet<int>();
         foreach (var @switch in document.Switches ?? Array.Empty<BaselineSwitch>())
         {
             if (string.IsNullOrEmpty(@switch.Name))
@@ -54,10 +68,17 @@ public static class BaselineIntentProjection
                 }
 
                 portIntents.Add(new PortAccessIntent(@switch.Name, port.Name, port.AccessVlan));
+                vlanIds.Add(port.AccessVlan);
             }
         }
 
-        return new SupportedDesiredStateModel(rackSlug, Array.Empty<VlanCatalogueEntry>(), portIntents);
+        var vlanCatalogue = vlanIds
+            .Select(id => hintById.TryGetValue(id, out var hint)
+                ? hint
+                : new VlanCatalogueEntry(id, "vlan-" + id.ToString(CultureInfo.InvariantCulture), null))
+            .ToList();
+
+        return new SupportedDesiredStateModel(rackSlug, vlanCatalogue, portIntents);
     }
 
     private sealed record BaselineDocument(
