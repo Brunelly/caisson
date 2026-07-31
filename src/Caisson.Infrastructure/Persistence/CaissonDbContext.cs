@@ -101,6 +101,9 @@ public sealed class CaissonDbContext : DbContext
     /// <summary>Single saved rack-scoped authored network-intent draft (story #168/#176).</summary>
     public DbSet<RackNetworkIntent> RackNetworkIntents => Set<RackNetworkIntent>();
 
+    /// <summary>Durable, TTL-pruned impact-preview diff cache, keyed per rack + baseline + candidate (story #171).</summary>
+    public DbSet<DesiredStateCandidateDiffCache> DesiredStateCandidateDiffCaches => Set<DesiredStateCandidateDiffCache>();
+
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

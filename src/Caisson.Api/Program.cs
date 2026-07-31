@@ -92,6 +92,10 @@ builder.Services.AddCaissonDrift(builder.Configuration);
 // assembly (Api_references_no_driver_assembly stays green).
 builder.Services.AddCaissonDriftApply(builder.Configuration);
 
+// Impact-preview diff cache TTL pruner (story #171, ADR 0054): the background sweep that deletes expired
+// cached previews. The compute/cache pipeline itself lives in the API layer (ImpactPreviewService).
+builder.Services.AddCaissonDesiredStateDiffCache(builder.Configuration);
+
 // Fail-closed rack-definition validation (finding #33/#8): an invalid/empty CredentialsRef, two devices
 // colliding to the same credential slug, or a TLS_FINGERPRINT paired with a non-TLS switch port refuses
 // to boot rather than run with an ambiguous or silently-ignored security setting.
