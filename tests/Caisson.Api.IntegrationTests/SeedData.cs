@@ -3,6 +3,7 @@ using Caisson.Correlation.Results;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
+using Caisson.Domain.Topology.Diffing;
 using Caisson.Domain.ValueObjects;
 using Caisson.Drivers.Abstractions.Bmc;
 using Caisson.Drivers.Abstractions.Switches;
@@ -35,7 +36,23 @@ public sealed record SeededTopology(
 
     /// <summary>The drift report computed for this rack (story #64).</summary>
     public SeededDrift Drift { get; init; } = null!;
+
+    /// <summary>The rack seeded with a known access port + an uplink port for pre-flight tests (story #170).</summary>
+    public SeededPreflight Preflight { get; init; } = null!;
 }
+
+/// <summary>
+/// The rack seeded for story-#170 pre-flight tests: a two-switch topology where switch A carries a plain
+/// access port and an uplink port (an LLDP neighbour identifying switch B), so port resolution and the
+/// uplink safety warning both have real observed data to run against.
+/// </summary>
+public sealed record SeededPreflight(
+    Guid RackId,
+    string SwitchStableKey,
+    string AccessPortName,
+    string UplinkPortName,
+    int AccessPortPvid,
+    int UplinkPortPvid);
 
 /// <summary>The discovery orchestration fixtures seeded for the story-8 API tests.</summary>
 public sealed record SeededDiscovery(Guid RackId, string ExternalKey, Guid CompletedJobId);
@@ -79,12 +96,75 @@ internal static class SeedData
 
         var discovery = await SeedDiscoveryAsync(harness);
         var drift = await SeedDriftAsync(harness, rackId, "rack-" + rackId.ToString("N"));
+        var preflight = await SeedPreflightAsync(harness);
         return new SeededTopology(rackId, first.SnapshotId, first.Version, second.SnapshotId, second.Version)
         {
             Discovery = discovery,
             Drift = drift,
+            Preflight = preflight,
         };
     }
+
+    /// <summary>
+    /// Seeds a rack with a completed two-switch snapshot: switch A ("sw-a") has an access port ("ether1")
+    /// and an uplink port ("ether2", an LLDP neighbour identifying switch B), so story-#170 pre-flight
+    /// tests can resolve real ports and provoke the uplink safety warning. The stable key is derived the
+    /// same way <see cref="StableKeys.ForSwitch(string, string?, string?)"/> does, so tests can address it.
+    /// </summary>
+    private static async Task<SeededPreflight> SeedPreflightAsync(PostgresHarness harness)
+    {
+        var rackId = Guid.NewGuid();
+        await using (var context = harness.CreateContext())
+        {
+            context.Racks.Add(new Rack(rackId, "seed-preflight-rack", "Preflight Seed Rack", DateTime.UtcNow));
+            await context.SaveChangesAsync();
+        }
+
+        await using (var context = harness.CreateContext())
+        {
+            var service = new TopologySnapshotIngestionService(
+                context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
+                new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+                NullLogger<TopologySnapshotIngestionService>.Instance);
+            await service.IngestAsync(
+                Request(rackId, PreflightObserved(), EmptyCorrelation(), V1At));
+        }
+
+        var switchKey = StableKeys.ForSwitch("sw-a", "SER-A", "10.9.0.1");
+        return new SeededPreflight(rackId, switchKey, "ether1", "ether2", AccessPortPvid: 10, UplinkPortPvid: 20);
+    }
+
+    private static TopologyCorrelationInput PreflightObserved()
+    {
+        var switchA = new SwitchTopologySnapshot(
+            "sw-a",
+            new SwitchDeviceInfo("10.9.0.1", "SER-A", "CRS354", "7.15"),
+            new List<SwitchPortInfo>
+            {
+                new("ether1", true, 10, Array.Empty<int>()),
+                new("ether2", true, 20, Array.Empty<int>()),
+            },
+            new List<LldpNeighbourInfo> { new("ether2", "sw-b", "ether1", "SWITCH-B") },
+            new List<BridgeHostEntry>(),
+            new List<VlanInfo> { new(10, "data"), new(20, "uplink") });
+
+        var switchB = new SwitchTopologySnapshot(
+            "sw-b",
+            new SwitchDeviceInfo("10.9.0.2", "SER-B", "CRS354", "7.15"),
+            new List<SwitchPortInfo> { new("ether1", true, 1, Array.Empty<int>()) },
+            new List<LldpNeighbourInfo> { new("ether1", "sw-a", "ether2", "SWITCH-A") },
+            new List<BridgeHostEntry>(),
+            new List<VlanInfo>());
+
+        return new TopologyCorrelationInput(new[] { switchA, switchB }, Array.Empty<ServerNicSnapshot>());
+    }
+
+    private static TopologyCorrelationResult EmptyCorrelation()
+        => new(
+            Array.Empty<NicPortMapping>(),
+            Array.Empty<AmbiguousNicMapping>(),
+            Array.Empty<UnmappedNic>(),
+            Array.Empty<UnmappedPort>());
 
     /// <summary>
     /// Seeds a desired-state revision for the already-snapshotted rack — with a deliberate access-VLAN

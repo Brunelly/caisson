@@ -159,6 +159,12 @@ public sealed class DomainGuardTests
         "PortAccessIntentDto.SwitchStableKey",
         "SwitchInventoryDto.StableKey",
         "SwitchPortInventoryDto.StableKey",
+        // Story #170: pre-flight rack-inventory + issue entity references — the same discovered switch/port
+        // stable-identifier rationale as the topology *.StableKey entries above, not authentication secrets.
+        "InventorySwitch.StableKey",
+        "InventoryPort.StableKey",
+        "EntityRef.SwitchStableKey",
+        "EntityRefDto.SwitchStableKey",
     };
 
     public static IEnumerable<object[]> ObservedProperties()

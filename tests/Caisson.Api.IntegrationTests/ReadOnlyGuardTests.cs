@@ -34,6 +34,10 @@ public sealed class ReadOnlyGuardTests
         nameof(NetworkIntentController),
         // Story #169: desired-state YAML round-trip (POST parse, POST render) — both NetworkConfigAuthor-gated.
         nameof(DesiredStateRoundTripController),
+        // Story #170: pre-flight validation (POST preflight-validate) and the gated PR-creation endpoint
+        // (POST prs) — both NetworkConfigAuthor-gated; side-effect-free except the audit write.
+        nameof(DesiredStatePreflightController),
+        nameof(DesiredStatePrController),
     };
 
     // The policies a non-GET action must be gated by (fail-closed).
