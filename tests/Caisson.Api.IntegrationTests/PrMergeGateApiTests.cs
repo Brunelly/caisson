@@ -8,12 +8,14 @@ using Caisson.Domain.DesiredState;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Git;
+using Caisson.Domain.NetworkConfig;
 using Caisson.Domain.Topology;
 using Caisson.Drivers.Abstractions.Switches;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
 using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
+using Caisson.Ingestion.RoundTrip;
 using Caisson.Orchestration.Options;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -59,8 +61,8 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
     public async Task Open_pr_blocks_apply_with_409_pr_not_merged()
     {
         Skip.IfNot(_postgres.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
-        var (rackId, itemId, contentHash) = await SeedDriftAsync(desiredVlan: 151, observedVlan: 10);
-        await SeedPrLinkAsync(rackId, contentHash, GitPullRequestStatus.Open);
+        var (rackId, itemId, fingerprint) = await SeedDriftAsync(desiredVlan: 151, observedVlan: 10);
+        await SeedPrLinkAsync(rackId, fingerprint, GitPullRequestStatus.Open);
         await using var host = NewHost();
 
         var response = await PostApplyAsync(host, rackId, itemId);
@@ -90,8 +92,8 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
     public async Task Merged_exact_candidate_allows_apply()
     {
         Skip.IfNot(_postgres.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
-        var (rackId, itemId, contentHash) = await SeedDriftAsync(desiredVlan: 153, observedVlan: 10);
-        await SeedPrLinkAsync(rackId, contentHash, GitPullRequestStatus.Merged);
+        var (rackId, itemId, fingerprint) = await SeedDriftAsync(desiredVlan: 153, observedVlan: 10);
+        await SeedPrLinkAsync(rackId, fingerprint, GitPullRequestStatus.Merged);
         await using var host = NewHost();
 
         var response = await PostApplyAsync(host, rackId, itemId);
@@ -139,8 +141,14 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
         await context.SaveChangesAsync();
     }
 
-    /// <summary>Seeds a rack with one AccessVlanMismatch drift item and returns the item's desired-revision ContentHash.</summary>
-    private async Task<(Guid RackId, Guid DriftItemId, string ContentHash)> SeedDriftAsync(int desiredVlan, int observedVlan)
+    /// <summary>
+    /// Seeds a rack with one AccessVlanMismatch drift item and returns the item's desired-revision canonical
+    /// <see cref="DesiredStateVersion.CandidateFingerprint"/>. That fingerprint is the value a merged PR link
+    /// must carry for the gate to allow apply, so the caller seeds the link with it verbatim — but it is
+    /// produced by the real <see cref="CandidateFingerprint.Compute"/> primitive (never the raw ContentHash),
+    /// so the test would fail if the gate compared the wrong hash (guarding against the story #173 divergence).
+    /// </summary>
+    private async Task<(Guid RackId, Guid DriftItemId, string Fingerprint)> SeedDriftAsync(int desiredVlan, int observedVlan)
     {
         var rackId = Guid.NewGuid();
         var rackSlug = "rack-" + rackId.ToString("N");
@@ -157,8 +165,10 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
         await using var verify = _postgres.CreateContext();
         var report = await verify.DriftReports.OrderByDescending(r => r.ComputedAtUtc).FirstAsync(r => r.RackId == rackId);
         var item = await verify.DriftItems.FirstAsync(i => i.DriftReportId == report.Id && i.DriftType == DriftType.AccessVlanMismatch);
-        var contentHash = await verify.DesiredStateVersions.Where(v => v.Id == report.DesiredRevisionId).Select(v => v.ContentHash).FirstAsync();
-        return (rackId, item.DriftItemId, contentHash);
+        var fingerprint = await verify.DesiredStateVersions
+            .Where(v => v.Id == report.DesiredRevisionId).Select(v => v.CandidateFingerprint).FirstAsync();
+        fingerprint.Should().NotBeNullOrEmpty("the ingested revision must carry a canonical candidate fingerprint");
+        return (rackId, item.DriftItemId, fingerprint!);
     }
 
     private async Task IngestSnapshotAsync(Guid rackId, int observedVlan)
@@ -192,9 +202,22 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
         run.Succeed(DateTime.UtcNow);
         context.DesiredStateIngestionRuns.Add(run);
 
+        // Compute the version's canonical fingerprint the SAME way ingestion does (importer → canonical render →
+        // CandidateFingerprint) so the gate matches a merged PR link stamped with the same primitive. The raw
+        // ContentHash is derived from the canonical YAML too (unframed SHA-256), matching the production shape.
+        var model = new SupportedDesiredStateModel(
+            rackSlug,
+            new[] { new VlanCatalogueEntry(desiredVlan, "data", null) },
+            new[] { new PortAccessIntent("sw1", "ether1", desiredVlan) });
+        var (candidateYaml, candidateFingerprint) = CandidateFingerprint.Render(model);
+        var contentHash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(candidateYaml)))
+            .ToLowerInvariant();
+
         var version = new DesiredStateVersion(
             Guid.NewGuid(), rackSlug, "a".PadLeft(40, '0'), run.Id, DateTime.UtcNow,
-            "hash-" + Guid.NewGuid().ToString("N"), "{}", 1, "desired-state-ingestion");
+            contentHash, "{}", 1, "desired-state-ingestion",
+            candidateFingerprint: candidateFingerprint);
         var rackIntent = new DesiredRackIntent(Guid.NewGuid(), version.Id, rackSlug, "rack-key");
         var switchIntent = new DesiredSwitchIntent(Guid.NewGuid(), rackIntent.Id, "sw1", "switch-key");
         var port = new DesiredPortIntent(Guid.NewGuid(), switchIntent.Id, "ether1", "port-key", accessVlan: desiredVlan);

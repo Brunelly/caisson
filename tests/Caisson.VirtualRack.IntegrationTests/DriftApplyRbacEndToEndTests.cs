@@ -125,6 +125,10 @@ public sealed class DriftApplyRbacEndToEndTests : IAsyncLifetime
             .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject
             .GetProperty("driftItemId").GetGuid();
 
+        // Story #173 gate (AC4): apply is blocked until the exact candidate's PR is merged. Simulate that
+        // merge for the ingested revision's canonical fingerprint so both concurrent applies clear the gate.
+        await MergedPrLinkTestSeeder.SeedMergedPrForLatestRevisionAsync(_factory.Services, rackId);
+
         var firstCall = Send(HttpMethod.Post, $"/api/racks/{rackId}/drift/apply", "op1", "DriftApply", new { driftItemId });
         var secondCall = Send(HttpMethod.Post, $"/api/racks/{rackId}/drift/apply", "op2", "DriftApply", new { driftItemId });
         var responses = await Task.WhenAll(firstCall, secondCall);

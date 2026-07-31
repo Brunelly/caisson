@@ -12,13 +12,16 @@ namespace Caisson.Orchestration.Git;
 /// story #172 established) and allows apply only when a persisted <c>Merged</c> status backs that exact link.
 /// Fail-closed everywhere: an unresolved candidate, a missing link, or a missing/unmerged status all block.
 /// <para>
-/// Assumption (see ADR 0062): the desired revision the drift was computed against carries the SAME candidate
-/// fingerprint story #172 recorded on the PR link. The gate compares
-/// <c>DesiredStateVersion.ContentHash</c> to <c>GitPullRequestLink.CandidateFingerprint</c> directly; keeping
-/// those two values aligned across the ingestion↔PR-creation boundary is the story-172 linkage this story
-/// depends on ([Unvalidated] assumption). The gate deliberately depends on <b>merged</b> state only — branch
-/// protection governs whether GitHub permits the merge; Caisson's hard boundary is that a merge actually
-/// occurred.
+/// Alignment (see ADR 0062): the desired revision the drift was computed against carries the SAME candidate
+/// fingerprint story #172 recorded on the PR link, because ingestion stamps
+/// <c>DesiredStateVersion.CandidateFingerprint</c> using the identical canonical
+/// <c>CandidateFingerprint.Compute</c> primitive (project the materialised document via
+/// <c>BaselineIntentProjection</c> → canonical render → length-framed SHA-256) that PR creation stamps on
+/// <c>GitPullRequestLink.CandidateFingerprint</c>. The gate compares those two canonically-aligned values
+/// directly, so a merged PR unlocks apply for its exact ingested candidate in the real pipeline. The gate
+/// deliberately depends on <b>merged</b> state only — branch protection governs whether GitHub permits the
+/// merge; Caisson's hard boundary is that a merge actually occurred. A revision with a <c>null</c> fingerprint
+/// (pre-alignment rows, or a document the projection cannot render) fails closed as <c>NoPrLinked</c>.
 /// </para>
 /// </summary>
 public sealed class PrMergeGate : IPrMergeGate
@@ -68,18 +71,18 @@ public sealed class PrMergeGate : IPrMergeGate
             return new PrMergeGateResult(PrMergeGateReason.NoPrLinked);
         }
 
-        var contentHash = await _context.DesiredStateVersions
+        var candidateFingerprint = await _context.DesiredStateVersions
             .AsNoTracking()
             .Where(v => v.Id == report.DesiredRevisionId)
-            .Select(v => v.ContentHash)
+            .Select(v => v.CandidateFingerprint)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (string.IsNullOrEmpty(contentHash))
+        if (string.IsNullOrEmpty(candidateFingerprint))
         {
             return new PrMergeGateResult(PrMergeGateReason.NoPrLinked);
         }
 
-        return await EvaluateAsync(item.RackId, contentHash, cancellationToken);
+        return await EvaluateAsync(item.RackId, candidateFingerprint, cancellationToken);
     }
 }
 

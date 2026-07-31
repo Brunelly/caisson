@@ -27,6 +27,7 @@ public sealed class PrMergeGateTests : IClassFixture<PostgresFixture>
         var result = await new PrMergeGate(ctx).EvaluateAsync(rackId, Hex(), default);
 
         result.Reason.Should().Be(PrMergeGateReason.NoPrLinked);
+        result.Allowed.Should().BeFalse();
     }
 
     [Fact]
@@ -74,6 +75,7 @@ public sealed class PrMergeGateTests : IClassFixture<PostgresFixture>
         var result = await new PrMergeGate(ctx).EvaluateAsync(rackId, candidateFingerprint, default);
 
         result.Reason.Should().Be(PrMergeGateReason.NoPrLinked);
+        result.Allowed.Should().BeFalse();
     }
 
     private async Task<Guid> SeedRackAsync()

@@ -29,6 +29,9 @@ public sealed class DesiredStateVersion : IAppendOnly
         IngestedBy = null!;
     }
 
+    /// <summary>Length of a lowercase SHA-256 hex digest (the canonical candidate fingerprint).</summary>
+    public const int CandidateFingerprintHexLength = 64;
+
     /// <summary>
     /// Creates a new revision row (story #63, AC1). Author fields are tolerated as <c>null</c> — a git
     /// commit that omits committer identity (e.g. a synthetic/anonymised source) must still ingest
@@ -48,7 +51,8 @@ public sealed class DesiredStateVersion : IAppendOnly
         string ingestedBy,
         string? authorName = null,
         string? authorEmail = null,
-        DateTime? authorWhenUtc = null)
+        DateTime? authorWhenUtc = null,
+        string? candidateFingerprint = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(rackSlug);
         ArgumentException.ThrowIfNullOrEmpty(commitSha);
@@ -93,6 +97,13 @@ public sealed class DesiredStateVersion : IAppendOnly
                 nameof(authorEmail));
         }
 
+        if (candidateFingerprint is { Length: > 0 } && candidateFingerprint.Length != CandidateFingerprintHexLength)
+        {
+            throw new ArgumentException(
+                $"The candidate fingerprint must be a {CandidateFingerprintHexLength}-character lowercase SHA-256 hex digest.",
+                nameof(candidateFingerprint));
+        }
+
         Id = id;
         RackSlug = rackSlug;
         CommitSha = commitSha;
@@ -105,6 +116,7 @@ public sealed class DesiredStateVersion : IAppendOnly
         AuthorName = authorName;
         AuthorEmail = authorEmail;
         AuthorWhenUtc = authorWhenUtc;
+        CandidateFingerprint = string.IsNullOrEmpty(candidateFingerprint) ? null : candidateFingerprint;
         IsActive = true;
     }
 
@@ -134,6 +146,17 @@ public sealed class DesiredStateVersion : IAppendOnly
     /// rack file on a commit that only touched other racks.
     /// </summary>
     public string ContentHash { get; private set; }
+
+    /// <summary>
+    /// The <em>canonical</em> candidate fingerprint of this revision — the SHA-256 of the candidate's canonical
+    /// rendered YAML, computed via the SAME <c>CandidateFingerprint</c> primitive story #172 stamps on a
+    /// <c>GitPullRequestLink</c> (story #173, ADR 0062). This is what the merged-apply gate matches against a
+    /// merged PR link, so it must be aligned across the ingestion↔PR-creation boundary — hence a distinct value
+    /// from <see cref="ContentHash"/> (which is the raw, unframed hash of the ingested file bytes). Nullable:
+    /// revisions ingested before this column existed, or a file the canonical importer cannot round-trip, carry
+    /// <c>null</c>, which the gate treats as "no aligned fingerprint" (fail-closed).
+    /// </summary>
+    public string? CandidateFingerprint { get; private set; }
 
     /// <summary>
     /// The deterministic, canonically-serialized desired-state payload materialised from this commit's

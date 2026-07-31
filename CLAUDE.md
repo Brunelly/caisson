@@ -178,8 +178,11 @@ directly to `topology_audit_event`), and enforces a hard **no-apply-until-merged
 `DriftApplyController`/`DriftApplyJobService` API. The poller uses the codebase's `FOR UPDATE SKIP LOCKED`
 lease (never xmin-CAS) for cross-replica concurrency and a strict ≤2-GitHub-calls-per-PR-per-cycle budget; the
 read-only GitHub client is a SEPARATE capability-limited interface from #172's write client so the write-boundary
-guard is untouched. Credentials still come only from Key Vault/managed identity. See ADRs 0061–0063 and the
-"PR status polling" section of [docs/github-pr-publishing.md](docs/github-pr-publishing.md).
+guard is untouched. Credentials still come only from Key Vault/managed identity. The merged-apply gate matches a
+merged PR to the exact ingested candidate via a canonical `DesiredStateVersion.CandidateFingerprint` that ingestion
+stamps with the SAME `CandidateFingerprint` primitive story #172 uses on the PR link (not the raw `ContentHash`),
+so the gate functions in the real ingestion→PR→merge→apply pipeline. See ADRs 0061–0063 and the "PR status polling"
+section of [docs/github-pr-publishing.md](docs/github-pr-publishing.md).
 
 ## Guardrails (M0)
 - **No** remediation/desired-state fields (no `Desired*`, `Target*`, VLAN/port *config intent*).
