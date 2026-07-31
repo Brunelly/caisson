@@ -59,9 +59,13 @@ interface Hunk {
           <div class="diff-viewer__pane-head"><span>desired-state.yaml · CURRENT</span></div>
           <div class="diff-viewer__pane-head"><span>desired-state.yaml · PROPOSED</span></div>
           @for (hunk of hunks(); track $index) {
+            <!-- The split pane is aria-hidden (the unified <pre> below is the AT-facing rendering), so its
+                 hunk toggles must stay out of the tab order too — otherwise keyboard focus lands on a
+                 control assistive tech can't see (axe: aria-hidden-focus). Mouse toggling still works. -->
             <button
               type="button"
               class="diff-viewer__hunk diff-viewer__hunk--split"
+              tabindex="-1"
               (click)="toggleHunk($index)"
               [attr.aria-expanded]="!isCollapsed($index)"
             >

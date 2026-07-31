@@ -22,7 +22,12 @@ import type {
   PreflightValidationResponse,
   ValidationIssue,
 } from '../network-config/model/preflight-validation-contracts';
+import type {
+  ImpactChange,
+  ImpactPreviewResponse,
+} from '../network-config/model/impact-preview-contracts';
 import { DesiredStateRoundTripService } from '../network-config/services/desired-state-roundtrip.service';
+import { ImpactPreviewService } from '../network-config/services/impact-preview.service';
 import { NetworkConfigPermissionService } from '../network-config/services/network-config-permission.service';
 import { NetworkIntentService } from '../network-config/services/network-intent.service';
 import { PreflightValidationService } from '../network-config/services/preflight-validation.service';
@@ -365,6 +370,146 @@ const fakeAuditService: Pick<AuditService, 'getAudit'> = {
     }),
 };
 
+// Story #171: a wire-only fake of the server-computed impact preview so Playwright can drive the real
+// ImpactPreviewComponent + DesiredStateDiffViewerComponent (structured VLAN/port summary with topology
+// deep links, the "not found in topology" badge, chip filtering, and the collapsible raw unified-diff
+// viewer) in a real browser without a backend. preview() mints a fresh candidateId per call (so the
+// component's applyPreview()/previewFresh() gating behaves as in production) and returns a fixed structured
+// summary chosen to cover every branch: a VLAN added (deep-linkable), a VLAN removed (deep-linkable), a
+// VLAN modified whose entity is absent from observed topology (renders the non-blocking "not found" badge,
+// AC3), plus two access-port re-assignments (one deep-linkable, one not-found). rackId is threaded into
+// each EntityRef from the call so the deep links resolve to the harness rack.
+const HARNESS_IMPACT_DIFF = [
+  '@@ -1,6 +1,7 @@',
+  ' apiVersion: caisson.dev/v1alpha1',
+  ' kind: RackDesiredState',
+  ' spec:',
+  '   vlans:',
+  '-    - vlanId: 30',
+  '-      name: legacy',
+  '+    - vlanId: 20',
+  '+      name: prod',
+  '+    - vlanId: 100',
+  '+      name: storage',
+  '@@ -12,3 +13,3 @@',
+  '   ports:',
+  '     - switch: sw1',
+  '-      accessVlan: 10',
+  '+      accessVlan: 20',
+].join('\n');
+
+let harnessImpactCounter = 0;
+
+function harnessImpactChanges(
+  rackId: string,
+): Pick<ImpactPreviewResponse, 'vlanChanges' | 'portChanges'> {
+  const vlanRef = (vlanId: number): ImpactChange['entityRef'] => ({
+    kind: 'vlan',
+    rackId,
+    switchStableKey: null,
+    portName: null,
+    vlanId,
+  });
+  const portRef = (switchStableKey: string, portName: string): ImpactChange['entityRef'] => ({
+    kind: 'port',
+    rackId,
+    switchStableKey,
+    portName,
+    vlanId: null,
+  });
+  return {
+    vlanChanges: [
+      {
+        kind: 'Added',
+        category: 'Vlan',
+        changeId: 'vlan-100-added',
+        summary: 'VLAN 100 (storage) added',
+        entityRef: vlanRef(100),
+        existsInTopology: true,
+        before: [],
+        after: [{ field: 'name', value: 'storage' }],
+      },
+      {
+        kind: 'Removed',
+        category: 'Vlan',
+        changeId: 'vlan-30-removed',
+        summary: 'VLAN 30 (legacy) removed',
+        entityRef: vlanRef(30),
+        existsInTopology: true,
+        before: [{ field: 'name', value: 'legacy' }],
+        after: [],
+      },
+      {
+        kind: 'Modified',
+        category: 'Vlan',
+        changeId: 'vlan-20-modified',
+        summary: "VLAN 20 name changed 'corp'→'prod'",
+        entityRef: vlanRef(20),
+        existsInTopology: false,
+        before: [{ field: 'name', value: 'corp' }],
+        after: [{ field: 'name', value: 'prod' }],
+      },
+    ],
+    portChanges: [
+      {
+        kind: 'Modified',
+        category: 'Port',
+        changeId: 'sw1-ether3-modified',
+        summary: 'Switch sw1 Port ether3 accessVlan changed 10→20',
+        entityRef: portRef('SW-1|sw1', 'ether3'),
+        existsInTopology: true,
+        before: [{ field: 'accessVlan', value: '10' }],
+        after: [{ field: 'accessVlan', value: '20' }],
+      },
+      {
+        kind: 'Modified',
+        category: 'Port',
+        changeId: 'sw2-ether5-modified',
+        summary: 'Switch sw2 Port ether5 accessVlan changed 40→50',
+        entityRef: portRef('SW-2|sw2', 'ether5'),
+        existsInTopology: false,
+        before: [{ field: 'accessVlan', value: '40' }],
+        after: [{ field: 'accessVlan', value: '50' }],
+      },
+    ],
+  };
+}
+
+const fakeImpactPreviewService: Pick<ImpactPreviewService, 'preview' | 'getByCandidate'> = {
+  preview: (rackId) => {
+    harnessImpactCounter += 1;
+    return of({
+      kind: 'ok' as const,
+      value: {
+        candidateId: `harness-candidate-${harnessImpactCounter}`,
+        candidateSha256: `harness-candidate-sha-${harnessImpactCounter}`,
+        baselineSha256: 'harness-baseline-sha',
+        baselineRevisionId: 'harness-baseline-revision',
+        baselineCommitSha: 'harnesscommit',
+        cacheHit: false,
+        createdAtUtc: harnessSnapshotMeta().createdAt,
+        rawUnifiedDiff: HARNESS_IMPACT_DIFF,
+        ...harnessImpactChanges(rackId),
+      },
+    }).pipe(delay(200));
+  },
+  getByCandidate: (rackId) =>
+    of({
+      kind: 'ok' as const,
+      value: {
+        candidateId: 'harness-candidate-latest',
+        candidateSha256: 'harness-candidate-sha-latest',
+        baselineSha256: 'harness-baseline-sha',
+        baselineRevisionId: 'harness-baseline-revision',
+        baselineCommitSha: 'harnesscommit',
+        cacheHit: true,
+        createdAtUtc: harnessSnapshotMeta().createdAt,
+        rawUnifiedDiff: HARNESS_IMPACT_DIFF,
+        ...harnessImpactChanges(rackId),
+      },
+    }),
+};
+
 // Exposed so Playwright can drive the real SignalR reconnect/reconcile state machine, bump the
 // fixture's snapshot version to simulate a live snapshot-updated event, and (story #67) drive the
 // drift-apply job status forward — see web/e2e/topology-harness.spec.ts and web/e2e/drift-harness.spec.ts.
@@ -398,6 +543,7 @@ export const DEV_HARNESS_PROVIDERS: Provider[] = [
   { provide: AuditService, useValue: fakeAuditService },
   { provide: NetworkIntentService, useValue: fakeNetworkIntentService },
   { provide: DesiredStateRoundTripService, useValue: fakeDesiredStateRoundTripService },
+  { provide: ImpactPreviewService, useValue: fakeImpactPreviewService },
   { provide: PreflightValidationService, useValue: fakePreflightValidationService },
   { provide: PrService, useValue: fakePrService },
   // Re-provided with useClass (not left to resolve from root) so their own inject() calls above pick up

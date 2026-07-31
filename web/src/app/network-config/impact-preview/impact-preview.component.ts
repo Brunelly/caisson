@@ -39,7 +39,7 @@ type ChangeFilter = 'all' | 'vlan-added' | 'vlan-removed' | 'vlan-modified' | 'p
   imports: [StatusBadgeComponent, DesiredStateDiffViewerComponent],
   styleUrl: './impact-preview.component.scss',
   template: `
-    <section class="impact-preview" aria-labelledby="impact-preview-title">
+    <section class="impact-preview" role="main" aria-labelledby="impact-preview-title">
       <header class="impact-preview__header">
         <div>
           <h2 id="impact-preview-title" class="impact-preview__title">Impact preview</h2>
