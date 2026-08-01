@@ -2,6 +2,7 @@ using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Shaping;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,7 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
     private readonly DiscoveryCancellationRegistry _cancellation;
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ILogger<DiscoveryJobService> _logger;
 
     public DiscoveryJobService(
@@ -37,6 +39,7 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         DiscoveryCancellationRegistry cancellation,
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
+        IMandatoryAuditOutbox auditOutbox,
         ILogger<DiscoveryJobService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -46,6 +49,7 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         _cancellation = cancellation ?? throw new ArgumentNullException(nameof(cancellation));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -77,6 +81,16 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         job.SeedSteps(_ids.NewId);
         _context.DiscoveryJobs.Add(job);
 
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as the job
+        // insert. Neither conflict path below (an existing active job, or an idempotent replay) is a
+        // mutation, so both detach this row on the way out rather than let it be emitted.
+        var auditOutboxId = _auditOutbox.Add(
+            _context,
+            new AuditEventEnvelope(
+                actorType, triggeredBy, "discovery.job.triggered", "discovery-job", job.Id.ToString(),
+                correlationId, EnqueueDisposition.Created.ToString(), RackId: rackId),
+            now);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -85,6 +99,7 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
             && pg.SqlState == PostgresErrorCodes.UniqueViolation)
         {
             Detach(job);
+            DetachAuditOutboxMessage(auditOutboxId);
 
             if (string.Equals(pg.ConstraintName, IdempotencyConstraint, StringComparison.Ordinal)
                 && !string.IsNullOrEmpty(idempotencyKey))
@@ -138,6 +153,16 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         }
 
         job.RequestCancellation();
+
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): the CancellationRequested transition, staged
+        // in the SAME transaction as the job update.
+        _auditOutbox.Add(
+            _context,
+            new AuditEventEnvelope(
+                job.ActorType, job.TriggeredBy, "discovery.job.cancel", "discovery-job", job.Id.ToString(),
+                job.CorrelationId, "requested", RackId: job.RackId),
+            _time.GetUtcNow().UtcDateTime);
+
         await _context.SaveChangesAsync(cancellationToken);
 
         _cancellation.Signal(jobId);
@@ -236,6 +261,22 @@ public sealed class DiscoveryJobService : IDiscoveryJobService
         }
 
         _context.Entry(job).State = EntityState.Detached;
+    }
+
+    /// <summary>
+    /// Detaches the staged-but-never-committed Tier 1 outbox row on a conflict path: the failed
+    /// <c>SaveChangesAsync</c> rolled back the whole transaction, but the entity stays tracked as
+    /// <c>Added</c> until detached — left tracked, a later unrelated save on this context could otherwise
+    /// resurrect an audit row claiming a job creation that never happened.
+    /// </summary>
+    private void DetachAuditOutboxMessage(Guid auditOutboxId)
+    {
+        var entry = _context.ChangeTracker.Entries<Caisson.Domain.Auditing.AuditOutboxMessage>()
+            .FirstOrDefault(e => e.Entity.Id == auditOutboxId);
+        if (entry is not null)
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     internal static bool IsTerminal(DiscoveryJobStatus status)

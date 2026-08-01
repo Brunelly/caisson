@@ -60,6 +60,7 @@ public sealed class DiscoveryJobDetailController : DiscoveryControllerBase
             case CancelDisposition.NotFound:
                 return JobNotFound(jobId);
             case CancelDisposition.AlreadyTerminal:
+                // Not a mutation (story #308, ADR 0064) — an explicit Tier 3 best-effort observation only.
                 await _audit.WriteActionAsync(
                     User, null, "discovery.job.cancel", "discovery-job", jobId.ToString(),
                     "already-terminal", cancellationToken);
@@ -68,9 +69,9 @@ public sealed class DiscoveryJobDetailController : DiscoveryControllerBase
                     title: "Job already terminal",
                     detail: $"Job '{jobId}' has already completed and cannot be canceled.");
             default:
-                await _audit.WriteActionAsync(
-                    User, null, "discovery.job.cancel", "discovery-job", jobId.ToString(),
-                    "requested", cancellationToken);
+                // Tier 1 (mandatory-durable) audit for the successful cancellation-request transition is
+                // staged by DiscoveryJobService.RequestCancellationAsync itself, in the same transaction as
+                // the job update (story #308, ADR 0064).
                 return Accepted();
         }
     }

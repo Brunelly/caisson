@@ -79,13 +79,12 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
         }
 
         var (actorType, actorId) = ResolveActor();
+        // Tier 1 (mandatory-durable) audit for the Created disposition is staged by
+        // DiscoveryJobService.EnqueueAsync itself, in the same transaction as the job insert (story #308,
+        // ADR 0064) — a Conflict/IdempotentReplay disposition is not a mutation and emits no audit event.
         var result = await _jobs.EnqueueAsync(
             rackId, mode, actorId, actorType, _correlation.CorrelationId,
             request.IdempotencyKey, request.DryRun, cancellationToken);
-
-        await _audit.WriteActionAsync(
-            User, rackId, "discovery.job.triggered", "discovery-job", result.JobId.ToString(),
-            result.Disposition.ToString(), cancellationToken);
 
         var body = new TriggerDiscoveryResponse(result.JobId);
         return result.Disposition switch

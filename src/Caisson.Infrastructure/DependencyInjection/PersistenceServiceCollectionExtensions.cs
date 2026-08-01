@@ -1,4 +1,5 @@
 using Caisson.Infrastructure.LiveUpdates;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,12 @@ public static class PersistenceServiceCollectionExtensions
 
         services.TryAddSingleton<ITopologyIdGenerator, GuidTopologyIdGenerator>();
         services.TryAddScoped<ITopologySnapshotIngestionService, TopologySnapshotIngestionService>();
+
+        // Story #308 (ADR 0064): the Tier 1 (mandatory-durable) audit seam TopologySnapshotIngestionService
+        // depends on. TryAdd so Caisson.Api's own registration (AddCaissonAuditDurability) — or a test's —
+        // wins if it runs first; the stateless default here just keeps every OTHER composition root (e.g.
+        // the VirtualRack Seeder) working without needing to know about audit durability specifically.
+        services.TryAddSingleton<IMandatoryAuditOutbox, MandatoryAuditOutbox>();
 
         // Live-updates seam (story #9, ADR 0014): a no-op publisher + in-process sequencer are the
         // fail-open defaults so ingestion/orchestration never hard-depend on Redis. AddCaissonLiveUpdates

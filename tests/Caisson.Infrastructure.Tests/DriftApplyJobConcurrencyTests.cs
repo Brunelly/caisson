@@ -4,6 +4,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.DriftApply;
 using Caisson.Orchestration.Runner;
@@ -184,6 +185,7 @@ public sealed class DriftApplyJobConcurrencyTests : IClassFixture<PostgresFixtur
             new NoOpTopologyEventPublisher(),
             new InProcessTopologyEventSequencer(),
             new AlwaysAllowPrMergeGate(),
+            new MandatoryAuditOutbox(),
             NullLogger<DriftApplyJobService>.Instance);
 
     private async Task ClearJobsAsync()

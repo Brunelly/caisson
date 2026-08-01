@@ -3,6 +3,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
 using Caisson.Orchestration.Options;
@@ -143,6 +144,7 @@ public sealed class DiscoveryJobEventPublishingTests : IClassFixture<PostgresFix
             HeartbeatStalenessSeconds = 5,
             RetryBaseDelayMs = 0,
         }));
+        services.AddSingleton<IMandatoryAuditOutbox, MandatoryAuditOutbox>();
         services.AddScoped<IDiscoveryJobService, DiscoveryJobService>();
         services.AddScoped<IDiscoveryOrchestrator>(_ => new FakeOrchestrator(outcome));
         return services.BuildServiceProvider();

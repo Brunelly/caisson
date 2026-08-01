@@ -132,8 +132,9 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
         active.IngestedBy.Should().NotBeNullOrEmpty();
         active.AuthorName.Should().Be("author");
 
-        // Story #63, AC5: the ingestion audit event is written in the same atomic save as the version.
-        var audit = await verify.AuditEvents.SingleAsync(a => a.TargetId == active.Id.ToString());
+        // Story #63, AC5; story #308 ADR 0064: the Tier 1 audit outbox row is staged in the same atomic
+        // save as the version (dispatch to topology_audit_event is exercised by the dispatcher's own tests).
+        var audit = await verify.AuditOutboxMessages.SingleAsync(a => a.TargetId == active.Id.ToString());
         audit.Action.Should().Be("desired-state.revision.ingested");
         audit.TargetType.Should().Be("desired-state-version");
         audit.CorrelationId.Should().Be(run.CorrelationId);
@@ -265,7 +266,7 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
         (await finalVerify.DesiredStateVersions.CountAsync(v => v.RackSlug == rackSlug)).Should().Be(1);
 
         // Story #63, AC5: an unchanged-content replay must not double-write the ingestion audit event.
-        (await finalVerify.AuditEvents.CountAsync(
+        (await finalVerify.AuditOutboxMessages.CountAsync(
             a => a.Action == "desired-state.revision.ingested" && a.TargetId == firstVersionId.ToString())).Should().Be(1);
     }
 
@@ -377,5 +378,6 @@ public sealed class DesiredStateIngestionServiceConcurrencyTests : IClassFixture
             Options.Create(new GitIngestionOptions { Enabled = true, RepoUrl = RepoUrl }),
             new GitIngestionMetrics(),
             driftSignal ?? new NoOpDriftRecomputeSignal(),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DesiredStateIngestionService>.Instance);
 }

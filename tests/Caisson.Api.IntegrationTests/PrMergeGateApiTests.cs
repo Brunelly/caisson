@@ -189,7 +189,8 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
         await using var context = _postgres.CreateContext();
         var service = new TopologySnapshotIngestionService(
             context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
-            new NoOpDriftRecomputeSignal(), NullLogger<TopologySnapshotIngestionService>.Instance);
+            new NoOpDriftRecomputeSignal(), new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
+            NullLogger<TopologySnapshotIngestionService>.Instance);
         await service.IngestAsync(request);
     }
 
@@ -235,6 +236,7 @@ public sealed class PrMergeGateApiTests : IAsyncLifetime
         var service = new DriftComputationService(
             context, new GuidTopologyIdGenerator(), TimeProvider.System,
             Microsoft.Extensions.Options.Options.Create(new Caisson.Drift.DriftComputationOptions()),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DriftComputationService>.Instance);
         await service.ComputeAndPersistAsync(rackId, Guid.NewGuid());
     }

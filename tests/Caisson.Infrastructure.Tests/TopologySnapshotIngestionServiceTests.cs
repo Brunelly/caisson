@@ -52,7 +52,7 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
 
             (await context.EntityDiffs.CountAsync(d => d.SnapshotId == outcome.SnapshotId))
                 .Should().Be(outcome.DiffCount).And.BeGreaterThan(0);
-            (await context.AuditEvents.CountAsync(
+            (await context.AuditOutboxMessages.CountAsync(
                 a => a.SnapshotId == outcome.SnapshotId && a.Action == "discovery.persisted"))
                 .Should().Be(1);
         }
@@ -169,7 +169,7 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
         {
             (await context.Snapshots.CountAsync(s => s.RackId == missingRackId)).Should().Be(0);
             (await context.EntityDiffs.CountAsync(d => d.RackId == missingRackId)).Should().Be(0);
-            (await context.AuditEvents.CountAsync(a => a.RackId == missingRackId)).Should().Be(0);
+            (await context.AuditOutboxMessages.CountAsync(a => a.RackId == missingRackId)).Should().Be(0);
         }
     }
 
@@ -247,6 +247,7 @@ public sealed class TopologySnapshotIngestionServiceTests : IClassFixture<Postgr
         var service = new TopologySnapshotIngestionService(
             context, new GuidTopologyIdGenerator(), publisher ?? new LiveUpdates.NoOpTopologyEventPublisher(),
             new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TopologySnapshotIngestionService>.Instance);
         var request = new TopologyIngestionRequest(
             rackId, input, result, TriggerType.OnDemand, "svc-discovery", ActorType.ServiceAccount,

@@ -50,7 +50,9 @@ public sealed class DriftComputationServiceTests : IClassFixture<PostgresFixture
         report.TotalItems.Should().Be(1);
 
         (await verify.DriftItems.CountAsync(i => i.DriftReportId == report.Id)).Should().Be(1);
-        (await verify.AuditEvents.CountAsync(a => a.Action == "drift.report.computed" && a.RackId == rackId))
+        // Story #308 ADR 0064: the Tier 1 outbox row is staged in the same transaction as the report;
+        // dispatch to topology_audit_event is exercised by the dispatcher's own tests.
+        (await verify.AuditOutboxMessages.CountAsync(a => a.Action == "drift.report.computed" && a.RackId == rackId))
             .Should().Be(1);
     }
 
@@ -207,7 +209,9 @@ public sealed class DriftComputationServiceTests : IClassFixture<PostgresFixture
     private static DriftComputationService Service(CaissonDbContext context, Microsoft.Extensions.Logging.ILogger<DriftComputationService>? logger = null)
         => new(
             context, new GuidTopologyIdGenerator(), TimeProvider.System,
-            Options.Create(new DriftComputationOptions()), logger ?? NullLogger<DriftComputationService>.Instance);
+            Options.Create(new DriftComputationOptions()),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
+            logger ?? NullLogger<DriftComputationService>.Instance);
 
     private async Task<Guid> SeedRackAsync(string externalKey)
     {

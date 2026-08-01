@@ -3,6 +3,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
 using Caisson.Orchestration.Runner;
@@ -261,6 +262,7 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
             new DiscoveryCancellationRegistry(),
             new NoOpTopologyEventPublisher(),
             new InProcessTopologyEventSequencer(),
+            new MandatoryAuditOutbox(),
             NullLogger<DiscoveryJobService>.Instance);
 
     private async Task ClearJobsAsync()
