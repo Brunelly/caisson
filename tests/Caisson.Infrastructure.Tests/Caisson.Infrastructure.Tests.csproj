@@ -18,6 +18,9 @@
     <!-- Story #62 desired-state ingestion concurrency tests exercise the shared idempotent RunAsync
          seam against a real Postgres, mirroring the DiscoveryJobConcurrencyTests pattern above. -->
     <ProjectReference Include="..\..\src\Caisson.Ingestion\Caisson.Ingestion.csproj" />
+    <!-- Story #308: the audit outbox dispatcher/health check live in Caisson.Api (Infrastructure has no
+         Hosting reference); these Postgres-backed tests exercise them directly against a real DB. -->
+    <ProjectReference Include="..\..\src\Caisson.Api\Caisson.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

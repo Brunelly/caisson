@@ -149,8 +149,16 @@ var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteReq
     });
 builder.Services.AddSingleton(auditChannel.Writer);
 builder.Services.AddSingleton(auditChannel.Reader);
-builder.Services.AddScoped<IAuditEventWriter, ChannelAuditEventWriter>();
+// One ChannelAuditEventWriter instance per scope, resolvable through BOTH the legacy IAuditEventWriter
+// (every existing call site) and the explicit Tier 3 IBestEffortAuditEventWriter (story #308, ADR 0064) —
+// never two separate writer instances racing for the same channel slot within one request.
+builder.Services.AddScoped<ChannelAuditEventWriter>();
+builder.Services.AddScoped<IAuditEventWriter>(sp => sp.GetRequiredService<ChannelAuditEventWriter>());
+builder.Services.AddScoped<IBestEffortAuditEventWriter>(sp => sp.GetRequiredService<ChannelAuditEventWriter>());
 builder.Services.AddHostedService<AuditEventBackgroundWriter>();
+
+// Tier 1 (mandatory-durable) audit outbox dispatcher (story #308, ADR 0064).
+builder.Services.AddCaissonAuditDurability(builder.Configuration);
 
 // Per-rack access seam (finding #29): allow-all today — see IRackAccessPolicy's own remarks.
 builder.Services.AddSingleton<IRackAccessPolicy, AllowAllRackAccessPolicy>();
@@ -385,6 +393,11 @@ health.AddCheck<Caisson.Infrastructure.HealthChecks.DriftComputationHealthCheck>
 // Story #173 (NFR3): reports the GitHub PR status poller's dependency health; never makes a live GitHub
 // call and stays Healthy/Degraded (never Unhealthy) so a GitHub outage can never take /health/ready down.
 health.AddCheck<Caisson.Api.HealthChecks.GitPullRequestStatusHealthCheck>("git-pr-status", tags: new[] { "ready" });
+
+// Story #308 (ADR 0064): reports the Tier 1 audit outbox dispatcher's backlog/poison health; a DB-only
+// snapshot that stays Healthy/Degraded (never Unhealthy) so an audit backlog can never take
+// /health/ready down.
+health.AddCheck<Caisson.Api.HealthChecks.AuditOutboxHealthCheck>("audit-outbox", tags: new[] { "ready" });
 
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>
