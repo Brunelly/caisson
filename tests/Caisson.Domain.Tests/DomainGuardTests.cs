@@ -1,4 +1,5 @@
 using System.Reflection;
+using Caisson.Domain.Auditing;
 using Caisson.Domain.Topology;
 using FluentAssertions;
 using Xunit;
@@ -71,6 +72,10 @@ public sealed class DomainGuardTests
     {
         $"{nameof(TopologyAuditEvent)}.{nameof(TopologyAuditEvent.TargetType)}",
         $"{nameof(TopologyAuditEvent)}.{nameof(TopologyAuditEvent.TargetId)}",
+        // Story #308: audit_outbox is a plain projection of the same bounded audit columns, staged for
+        // dispatch — same rationale as TopologyAuditEvent above (an audit subject reference, not intent).
+        $"{nameof(AuditOutboxMessage)}.{nameof(AuditOutboxMessage.TargetType)}",
+        $"{nameof(AuditOutboxMessage)}.{nameof(AuditOutboxMessage.TargetId)}",
     };
 
     /// <summary>

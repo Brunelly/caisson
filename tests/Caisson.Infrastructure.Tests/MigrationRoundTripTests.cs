@@ -19,6 +19,7 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
         "desired_state_ingestion_run", "desired_state_version", "desired_rack_intent",
         "desired_switch_intent", "desired_port_intent", "desired_state_validation_error",
         "drift_apply_job", "drift_apply_job_step",
+        "audit_outbox", "audit_denial_bucket",
     };
 
     private static readonly string[] ExpectedIndexes =
@@ -56,6 +57,9 @@ public sealed class MigrationRoundTripTests : IClassFixture<PostgresFixture>
         "ux_drift_apply_job_drift_item_active",
         "ix_drift_apply_job_rack_id_requested_at",
         "ux_drift_apply_job_step_job_id_step_name",
+        "ix_audit_outbox_status_available_at",
+        "ux_audit_denial_bucket_key",
+        "ix_audit_denial_bucket_window_end_at",
     };
 
     private readonly PostgresFixture _fixture;

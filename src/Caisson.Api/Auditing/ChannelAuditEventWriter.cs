@@ -6,16 +6,21 @@ using Caisson.Domain.Enums;
 namespace Caisson.Api.Auditing;
 
 /// <summary>
-/// The off-request-path <see cref="IAuditEventWriter"/> (finding #5): every read/action audit write is
-/// captured into a plain record and enqueued to <see cref="AuditEventBackgroundWriter"/> instead of
-/// performing a synchronous <c>INSERT</c> on the request path. Actor/correlation resolution still happens
-/// here, synchronously, because both depend on request-scoped state (<see cref="ClaimsPrincipal"/>,
-/// <see cref="ICorrelationContext"/>) that is gone by the time the background writer's own DI scope runs.
-/// Enqueueing never throws or blocks the caller — a full channel drops the write (logged) rather than
-/// risk the read path failing because the audit trail is momentarily backed up (ADR: audit is now
-/// eventually consistent, not synchronously durable, as a deliberate trade-off).
+/// The off-request-path Tier 3 (best-effort) audit writer (finding #5; story #308, ADR 0064): every
+/// read/action audit write is captured into a plain record and enqueued to
+/// <see cref="AuditEventBackgroundWriter"/> instead of performing a synchronous <c>INSERT</c> on the
+/// request path. Actor/correlation resolution still happens here, synchronously, because both depend on
+/// request-scoped state (<see cref="ClaimsPrincipal"/>, <see cref="ICorrelationContext"/>) that is gone by
+/// the time the background writer's own DI scope runs. Enqueueing never throws or blocks the caller — a
+/// full channel drops the write (logged) rather than risk the read path failing because the audit trail
+/// is momentarily backed up.
+/// <para>
+/// Implements both the legacy <see cref="IAuditEventWriter"/> and the explicit <see cref="IBestEffortAuditEventWriter"/>
+/// during the migration to explicit tiers (ADR 0064) — every current call site is on the legacy
+/// interface; new/reclassified call sites resolve <see cref="IBestEffortAuditEventWriter"/> directly.
+/// </para>
 /// </summary>
-public sealed class ChannelAuditEventWriter : IAuditEventWriter
+public sealed class ChannelAuditEventWriter : IAuditEventWriter, IBestEffortAuditEventWriter
 {
     private readonly ChannelWriter<AuditWriteRequest> _writer;
     private readonly ICorrelationContext _correlation;
@@ -47,7 +52,7 @@ public sealed class ChannelAuditEventWriter : IAuditEventWriter
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        var (actorType, actorId) = ResolveActor(user);
+        var (actorType, actorId) = AuditActorResolver.Resolve(user);
         var request = new AuditWriteRequest(
             Guid.NewGuid(), _time.GetUtcNow().UtcDateTime, actorType, actorId, action, targetType,
             _correlation.CorrelationId, result, rackId, targetId, detailsJson);
@@ -55,24 +60,11 @@ public sealed class ChannelAuditEventWriter : IAuditEventWriter
         if (!_writer.TryWrite(request))
         {
             _logger.LogWarning(
-                "Audit event channel is full; dropping event action={Action} correlationId={CorrelationId}.",
+                "Tier3BestEffort audit event channel is full; dropping event action={Action} correlationId={CorrelationId}.",
                 action, request.CorrelationId);
         }
 
         return Task.CompletedTask;
-    }
-
-    private static (ActorType ActorType, string ActorId) ResolveActor(ClaimsPrincipal user)
-    {
-        var actorId =
-            user.FindFirstValue("oid")
-            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? user.FindFirstValue("sub")
-            ?? user.Identity?.Name
-            ?? "unknown";
-
-        var actorType = user.IsInRole(Security.CaissonRoles.ServiceAccount) ? ActorType.ServiceAccount : ActorType.User;
-        return (actorType, actorId);
     }
 }
 

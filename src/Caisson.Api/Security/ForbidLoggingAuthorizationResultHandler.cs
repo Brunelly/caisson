@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text.Json;
 using Caisson.Api.Auditing;
 using Caisson.Api.Middleware;
@@ -42,12 +41,7 @@ public sealed class ForbidLoggingAuthorizationResultHandler : Microsoft.AspNetCo
 
         if (authorizeResult.Forbidden)
         {
-            var subject =
-                context.User.FindFirstValue("oid")
-                ?? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? context.User.FindFirstValue("sub")
-                ?? context.User.Identity?.Name
-                ?? "unknown";
+            var subject = AuditActorResolver.ResolveActorId(context.User);
 
             var correlation = context.RequestServices.GetService<ICorrelationContext>();
 

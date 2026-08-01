@@ -1,17 +1,18 @@
 using System.Security.Claims;
-using Caisson.Api.Middleware;
-using Caisson.Api.Security;
-using Caisson.Domain.Enums;
-using Caisson.Domain.Topology;
-using Caisson.Infrastructure.Persistence;
 
 namespace Caisson.Api.Auditing;
 
-/// <summary>Records an API-access audit event for an auditable read (AC3).</summary>
+/// <summary>
+/// The legacy, not-yet-tier-classified audit seam. Superseded by the three explicit tiers (story #308,
+/// ADR 0064): <see cref="Caisson.Infrastructure.Persistence.Auditing.IMandatoryAuditOutbox"/> (Tier 1),
+/// <see cref="IAuthorizationDenialAuditWriter"/> (Tier 2), and <see cref="IBestEffortAuditEventWriter"/>
+/// (Tier 3). Each remaining call site is being migrated onto its correct tier; once none remain, this
+/// interface and its <see cref="Caisson.Api.Auditing.ChannelAuditEventWriter"/> registration are removed.
+/// </summary>
 public interface IAuditEventWriter
 {
     /// <summary>
-    /// Appends a <see cref="TopologyAuditEvent"/> describing a read the caller performed, stamped with
+    /// Appends a <see cref="Caisson.Domain.Topology.TopologyAuditEvent"/> describing a read the caller performed, stamped with
     /// the request correlation id and the caller's identity.
     /// </summary>
     Task WriteReadAsync(
@@ -19,78 +20,14 @@ public interface IAuditEventWriter
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Appends a <see cref="TopologyAuditEvent"/> for a control-plane write action (e.g. a discovery
-    /// trigger or cancel, story #8) with an explicit result. The audit table remains append-only.
+    /// Appends a <see cref="Caisson.Domain.Topology.TopologyAuditEvent"/> for a control-plane write action with an explicit
+    /// result. The audit table remains append-only.
     /// </summary>
     /// <param name="detailsJson">
-    /// Optional bounded, secret-scrubbed <c>jsonb</c> payload (story #65) — e.g. the permission used, or a
-    /// before/after summary. Additive: existing callers that omit it are unaffected.
+    /// Optional bounded, secret-scrubbed <c>jsonb</c> payload — e.g. the permission used, or a before/after
+    /// summary. Additive: existing callers that omit it are unaffected.
     /// </param>
     Task WriteActionAsync(
         ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
         string result, CancellationToken cancellationToken, string? detailsJson = null);
-}
-
-/// <summary>
-/// Minimal API-access audit writer (AC3, NFR4): a single insert on the indexed, append-only audit
-/// table. It is intentionally small and sits behind <see cref="ICorrelationContext"/> so it can be made
-/// asynchronous/off-request later if the NFR2 P95 &lt; 500 ms budget is threatened.
-/// </summary>
-public sealed class AuditEventWriter : IAuditEventWriter
-{
-    private readonly CaissonDbContext _context;
-    private readonly ICorrelationContext _correlation;
-    private readonly TimeProvider _time;
-
-    public AuditEventWriter(CaissonDbContext context, ICorrelationContext correlation, TimeProvider time)
-    {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
-        _time = time ?? throw new ArgumentNullException(nameof(time));
-    }
-
-    /// <inheritdoc />
-    public Task WriteReadAsync(
-        ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
-        CancellationToken cancellationToken)
-        => WriteActionAsync(user, rackId, action, targetType, targetId, "success", cancellationToken);
-
-    /// <inheritdoc />
-    public async Task WriteActionAsync(
-        ClaimsPrincipal user, Guid? rackId, string action, string targetType, string? targetId,
-        string result, CancellationToken cancellationToken, string? detailsJson = null)
-    {
-        ArgumentNullException.ThrowIfNull(user);
-
-        var (actorType, actorId) = ResolveActor(user);
-        var audit = new TopologyAuditEvent(
-            Guid.NewGuid(),
-            _time.GetUtcNow().UtcDateTime,
-            actorType,
-            actorId,
-            action,
-            targetType,
-            _correlation.CorrelationId,
-            result: result,
-            rackId: rackId,
-            snapshotId: null,
-            targetId: targetId,
-            detailsJson: detailsJson);
-
-        _context.AuditEvents.Add(audit);
-        await _context.SaveChangesAsync(cancellationToken);
-    }
-
-    private static (ActorType ActorType, string ActorId) ResolveActor(ClaimsPrincipal user)
-    {
-        var actorId =
-            user.FindFirstValue("oid")
-            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? user.FindFirstValue("sub")
-            ?? user.Identity?.Name
-            ?? "unknown";
-
-        var actorType = user.IsInRole(CaissonRoles.ServiceAccount) ? ActorType.ServiceAccount : ActorType.User;
-        return (actorType, actorId);
-    }
 }
