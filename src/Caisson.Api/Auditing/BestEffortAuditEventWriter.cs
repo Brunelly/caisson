@@ -13,25 +13,21 @@ namespace Caisson.Api.Auditing;
 /// request-scoped state (<see cref="ClaimsPrincipal"/>, <see cref="ICorrelationContext"/>) that is gone by
 /// the time the background writer's own DI scope runs. Enqueueing never throws or blocks the caller — a
 /// full channel drops the write (logged) rather than risk the read path failing because the audit trail
-/// is momentarily backed up.
-/// <para>
-/// Implements both the legacy <see cref="IAuditEventWriter"/> and the explicit <see cref="IBestEffortAuditEventWriter"/>
-/// during the migration to explicit tiers (ADR 0064) — every current call site is on the legacy
-/// interface; new/reclassified call sites resolve <see cref="IBestEffortAuditEventWriter"/> directly.
-/// </para>
+/// is momentarily backed up. This is the ONLY implementation of <see cref="IBestEffortAuditEventWriter"/>
+/// — the sole seam through which an event may be silently dropped.
 /// </summary>
-public sealed class ChannelAuditEventWriter : IAuditEventWriter, IBestEffortAuditEventWriter
+public sealed class BestEffortAuditEventWriter : IBestEffortAuditEventWriter
 {
     private readonly ChannelWriter<AuditWriteRequest> _writer;
     private readonly ICorrelationContext _correlation;
     private readonly TimeProvider _time;
-    private readonly Microsoft.Extensions.Logging.ILogger<ChannelAuditEventWriter> _logger;
+    private readonly Microsoft.Extensions.Logging.ILogger<BestEffortAuditEventWriter> _logger;
 
-    public ChannelAuditEventWriter(
+    public BestEffortAuditEventWriter(
         ChannelWriter<AuditWriteRequest> writer,
         ICorrelationContext correlation,
         TimeProvider time,
-        Microsoft.Extensions.Logging.ILogger<ChannelAuditEventWriter> logger)
+        Microsoft.Extensions.Logging.ILogger<BestEffortAuditEventWriter> logger)
     {
         _writer = writer ?? throw new ArgumentNullException(nameof(writer));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
