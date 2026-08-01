@@ -63,13 +63,7 @@ public sealed class AuditReadPathTests
     {
         Skip.IfNot(_factory.Available, SkipReason);
 
-        int outboxCountBefore;
-        int bucketCountBefore;
-        await using (var before = _factory.CreateDbContext())
-        {
-            outboxCountBefore = await before.AuditOutboxMessages.CountAsync();
-            bucketCountBefore = await before.AuditDenialBuckets.CountAsync();
-        }
+        var floodActor = "flood-read-actor-" + Guid.NewGuid().ToString("N")[..8];
 
         using var scope = _factory.Services.CreateScope();
         var writer = scope.ServiceProvider.GetRequiredService<ChannelWriter<AuditWriteRequest>>();
@@ -79,13 +73,20 @@ public sealed class AuditReadPathTests
         for (var i = 0; i < 5000; i++)
         {
             writer.TryWrite(new AuditWriteRequest(
-                Guid.NewGuid(), DateTime.UtcNow, ActorType.User, "flood-read-actor", "topology.latest.read",
+                Guid.NewGuid(), DateTime.UtcNow, ActorType.User, floodActor, "topology.latest.read",
                 "snapshot", Guid.NewGuid(), "success", _factory.Seed.RackId, null));
         }
 
+        // A raw before/after total-row-count comparison would be racy: this factory's host keeps its
+        // always-on background schedulers (discovery/drift/etc.) running for the WHOLE shared collection's
+        // lifetime, and those can legitimately add their own unrelated Tier 1 rows between the two
+        // snapshots. Assert the actual invariant instead — that nothing attributable to THIS flood (its
+        // unique actor id) ever reaches Tier 1 or Tier 2 — which is immune to that unrelated churn.
         await using var after = _factory.CreateDbContext();
-        (await after.AuditOutboxMessages.CountAsync()).Should().Be(outboxCountBefore, "Tier 1 outbox rows must be untouched by Tier 3 channel saturation");
-        (await after.AuditDenialBuckets.CountAsync()).Should().Be(bucketCountBefore, "Tier 2 denial buckets must be untouched by Tier 3 channel saturation");
+        (await after.AuditOutboxMessages.AnyAsync(m => m.ActorId == floodActor)).Should().BeFalse(
+            "Tier 1 outbox rows must be untouched by Tier 3 channel saturation");
+        (await after.AuditDenialBuckets.AnyAsync(b => b.ActorId == floodActor)).Should().BeFalse(
+            "Tier 2 denial buckets must be untouched by Tier 3 channel saturation");
     }
 
     private const string SkipReason = "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.";
