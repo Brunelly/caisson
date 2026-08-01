@@ -17,9 +17,9 @@ public sealed class RacksController : ReadOnlyControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IRackAccessPolicy _rackAccess;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public RacksController(CaissonDbContext context, IRackAccessPolicy rackAccess, IAuditEventWriter audit)
+    public RacksController(CaissonDbContext context, IRackAccessPolicy rackAccess, IBestEffortAuditEventWriter audit)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _rackAccess = rackAccess ?? throw new ArgumentNullException(nameof(rackAccess));

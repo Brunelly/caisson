@@ -89,6 +89,7 @@ public sealed class ForbidLoggingAuthorizationResultHandler : Microsoft.AspNetCo
         {
             ["endpoint"] = ResolveEndpoint(context),
             ["driftItemId"] = driftItemId,
+            ["correlationId"] = correlationId,
         });
 
         await writer.RecordDenialAsync(

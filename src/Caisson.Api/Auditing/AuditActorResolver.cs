@@ -7,7 +7,7 @@ namespace Caisson.Api.Auditing;
 /// <summary>
 /// The single shared actor-resolution rule for every audit writer/handler (story #308), extracted from
 /// what used to be three verbatim copies (<c>AuditEventWriter.ResolveActor</c>,
-/// <c>ChannelAuditEventWriter.ResolveActor</c>, and <see cref="Caisson.Api.Security.ForbidLoggingAuthorizationResultHandler"/>'s
+/// <c>BestEffortAuditEventWriter.ResolveActor</c>, and <see cref="Caisson.Api.Security.ForbidLoggingAuthorizationResultHandler"/>'s
 /// inline subject lookup).
 /// </summary>
 public static class AuditActorResolver

@@ -22,9 +22,9 @@ namespace Caisson.Api.Controllers;
 public sealed class AuditController : ReadOnlyControllerBase
 {
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public AuditController(CaissonDbContext context, IAuditEventWriter audit)
+    public AuditController(CaissonDbContext context, IBestEffortAuditEventWriter audit)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

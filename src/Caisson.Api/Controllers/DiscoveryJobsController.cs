@@ -26,13 +26,13 @@ public sealed class DiscoveryJobsController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IDiscoveryJobService _jobs;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
 
     public DiscoveryJobsController(
         CaissonDbContext context,
         IDiscoveryJobService jobs,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));

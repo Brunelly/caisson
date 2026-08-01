@@ -137,10 +137,12 @@ builder.Services.AddCaissonRealtime(builder.Configuration);
 builder.Services.AddScoped<CorrelationContext>();
 builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<CorrelationContext>());
 
-// Off-request-path audit writer (finding #5): a bounded Channel<AuditWriteRequest> decouples the
-// synchronous per-request INSERT from the request path; AuditEventBackgroundWriter drains and batches
-// it. FullMode=DropWrite (never blocks the request) — a saturated channel drops the newest event with a
-// logged warning rather than let the audit trail apply backpressure to reads.
+// Tier 3 (best-effort, story #308 ADR 0064) off-request-path audit writer (finding #5): a bounded
+// Channel<AuditWriteRequest> decouples the synchronous per-request INSERT from the request path;
+// AuditEventBackgroundWriter drains and batches it. FullMode=DropWrite (never blocks the request) — a
+// saturated channel drops the newest event with a logged warning rather than let the audit trail apply
+// backpressure to reads. This is the ONLY writer reachable through IBestEffortAuditEventWriter — no
+// generic "write an audit event" API exists through which a Tier 1/2 event could land here by accident.
 var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteRequest>(
     new System.Threading.Channels.BoundedChannelOptions(4096)
     {
@@ -149,12 +151,7 @@ var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteReq
     });
 builder.Services.AddSingleton(auditChannel.Writer);
 builder.Services.AddSingleton(auditChannel.Reader);
-// One ChannelAuditEventWriter instance per scope, resolvable through BOTH the legacy IAuditEventWriter
-// (every existing call site) and the explicit Tier 3 IBestEffortAuditEventWriter (story #308, ADR 0064) —
-// never two separate writer instances racing for the same channel slot within one request.
-builder.Services.AddScoped<ChannelAuditEventWriter>();
-builder.Services.AddScoped<IAuditEventWriter>(sp => sp.GetRequiredService<ChannelAuditEventWriter>());
-builder.Services.AddScoped<IBestEffortAuditEventWriter>(sp => sp.GetRequiredService<ChannelAuditEventWriter>());
+builder.Services.AddScoped<IBestEffortAuditEventWriter, BestEffortAuditEventWriter>();
 builder.Services.AddHostedService<AuditEventBackgroundWriter>();
 
 // Tier 1 (mandatory-durable) audit outbox dispatcher (story #308, ADR 0064).

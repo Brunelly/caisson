@@ -74,9 +74,15 @@ public sealed class DriftApplyRbacEndToEndTests : IAsyncLifetime
             .Should().ContainSingle(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch").Subject
             .GetProperty("driftItemId").GetGuid();
 
+        // A unique actor per run (rather than the fixed "op" used elsewhere in this file) guarantees this
+        // request is always first-in-bucket for the Tier 2 durable-first-N denial writer (story #308, ADR
+        // 0064) — a fixed actor would eventually saturate its (actor, endpoint, outcome, window) bucket
+        // across repeated suite runs within the same window and fall through to the overflow aggregate,
+        // which uses a different action literal and drops the correlation id this test asserts on.
+        var forbiddenActor = "rbac-denied-" + Guid.NewGuid().ToString("N")[..8];
         var correlationId = Guid.NewGuid();
         var response = await Send(
-            HttpMethod.Post, $"/api/racks/{rackId}/drift/apply", "op", "Operator",
+            HttpMethod.Post, $"/api/racks/{rackId}/drift/apply", forbiddenActor, "Operator",
             new { driftItemId }, correlationId);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);

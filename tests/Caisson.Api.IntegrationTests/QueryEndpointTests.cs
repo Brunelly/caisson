@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace Caisson.Api.IntegrationTests;
@@ -142,9 +143,43 @@ public sealed class QueryEndpointTests
     {
         Skip.IfNot(_factory.Available, "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.");
 
-        var url = $"/api/racks/{_factory.Seed.RackId}/audit?from=2026-07-01T00:00:00Z&to=2027-01-01T00:00:00Z";
-        using var doc = await GetJson(url);
+        // Story #308 (ADR 0064): the seeded ingestion's audit event is now a Tier 1 outbox row, dispatched
+        // to topology_audit_event asynchronously by the AuditOutboxDispatcher hosted service — poll the
+        // DbContext directly (the established convention for off-request-path audit writes, e.g.
+        // DesiredStateApiTests.PollForAuditEventAsync) rather than assume it is already visible via a single
+        // GET. WebApplicationFactory only builds/starts the actual host (and its hosted BackgroundServices,
+        // including the dispatcher) on first client/server access — CreateDbContext() alone never triggers
+        // that, so force host startup here rather than relying on some earlier test in the shared collection
+        // having already done so.
+        _ = _factory.CreateClient();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            await using (var context = _factory.CreateDbContext())
+            {
+                var dispatched = await context.AuditEvents.AnyAsync(
+                    a => a.RackId == _factory.Seed.RackId && a.Action == "discovery.persisted");
+                if (dispatched)
+                {
+                    break;
+                }
+            }
 
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException("The seeded 'discovery.persisted' audit event was not dispatched within the test budget.");
+            }
+
+            await Task.Delay(100);
+        }
+
+        // The default/max page size (50/200 — RequestPaging) returns only the NEWEST matching rows; by the
+        // time this runs, dozens of other tests have logged far more recent Tier 3 read-audit events against
+        // this same shared seeded rack, which would otherwise paginate the 2026-07-20/07-21 seed events out
+        // of an unbounded-range query. Narrow `to` to just after the seed window so the DB-side range filter
+        // isolates it, rather than relying on pagination.
+        var url = $"/api/racks/{_factory.Seed.RackId}/audit?from=2026-07-01T00:00:00Z&to=2026-07-22T00:00:00Z";
+        using var doc = await GetJson(url);
         var actions = doc.RootElement.GetProperty("items").EnumerateArray()
             .Select(a => a.GetProperty("action").GetString());
         actions.Should().Contain("discovery.persisted");

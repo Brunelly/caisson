@@ -30,7 +30,7 @@ namespace Caisson.Api.Controllers;
 public sealed class DesiredStatePreflightController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly PreflightValidationMetrics _metrics;
     private readonly TimeProvider _time;
@@ -38,7 +38,7 @@ public sealed class DesiredStatePreflightController : DiscoveryControllerBase
 
     public DesiredStatePreflightController(
         CaissonDbContext context,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation,
         PreflightValidationMetrics metrics,
         TimeProvider time,

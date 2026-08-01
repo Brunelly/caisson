@@ -18,9 +18,9 @@ namespace Caisson.Api.Controllers;
 public sealed class DiscoveryJobDetailController : DiscoveryControllerBase
 {
     private readonly IDiscoveryJobService _jobs;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public DiscoveryJobDetailController(IDiscoveryJobService jobs, IAuditEventWriter audit)
+    public DiscoveryJobDetailController(IDiscoveryJobService jobs, IBestEffortAuditEventWriter audit)
     {
         _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

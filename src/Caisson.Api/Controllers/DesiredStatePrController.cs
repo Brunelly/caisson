@@ -37,7 +37,7 @@ public sealed class DesiredStatePrController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IDesiredStatePrService _prService;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly PreflightValidationMetrics _metrics;
     private readonly TimeProvider _time;
@@ -46,7 +46,7 @@ public sealed class DesiredStatePrController : DiscoveryControllerBase
     public DesiredStatePrController(
         CaissonDbContext context,
         IDesiredStatePrService prService,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation,
         PreflightValidationMetrics metrics,
         TimeProvider time,

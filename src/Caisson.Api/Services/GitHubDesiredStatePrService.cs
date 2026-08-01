@@ -35,7 +35,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
     private readonly CaissonDbContext _context;
     private readonly IGitPullRequestLinkStore _links;
     private readonly IGitHubPullRequestClient _github;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ICorrelationContext _correlation;
     private readonly IHttpContextAccessor _httpContext;
@@ -47,7 +47,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         CaissonDbContext context,
         IGitPullRequestLinkStore links,
         IGitHubPullRequestClient github,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         IMandatoryAuditOutbox auditOutbox,
         ICorrelationContext correlation,
         IHttpContextAccessor httpContext,

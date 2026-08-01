@@ -7,12 +7,8 @@ namespace Caisson.Api.Auditing;
 /// off the request path via a bounded, explicitly droppable channel. This is the ONLY writer that may
 /// shed events under load — Tier 1 (<see cref="Caisson.Infrastructure.Persistence.Auditing.IMandatoryAuditOutbox"/>)
 /// and Tier 2 (<see cref="IAuthorizationDenialAuditWriter"/>) are separate, non-droppable seams, so a Tier
-/// 1/2 event can never reach this channel by accident.
-/// <para>
-/// This interface has the same shape as the legacy <see cref="IAuditEventWriter"/> it supersedes (both are
-/// implemented by the same channel-backed writer during the migration to explicit tiers); callers still on
-/// <see cref="IAuditEventWriter"/> are reclassified onto this seam (or Tier 1/2) as each call site is audited.
-/// </para>
+/// 1/2 event can never reach this channel by accident. Every audit call site in the codebase resolves to
+/// exactly one of these three explicitly-named seams — there is no generic "write an audit event" API.
 /// </summary>
 public interface IBestEffortAuditEventWriter
 {

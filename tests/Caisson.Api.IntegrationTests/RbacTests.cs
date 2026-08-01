@@ -263,7 +263,7 @@ public sealed class RbacTests
         throw new TimeoutException($"No authorization.forbidden.overflow aggregate for actorId={actor} appeared within the test budget.");
     }
 
-    /// <summary>Polls for the off-request-path (ChannelAuditEventWriter) audit row, bounded to 10s.</summary>
+    /// <summary>Polls for the off-request-path (BestEffortAuditEventWriter) audit row, bounded to 10s.</summary>
     private async Task<TopologyAuditEvent> PollForAuditEventAsync(string action, Guid correlationId)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
