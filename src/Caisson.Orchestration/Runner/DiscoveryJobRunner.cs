@@ -1,8 +1,8 @@
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Enums;
-using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
 using Caisson.Orchestration.Options;
@@ -29,6 +29,7 @@ public sealed class DiscoveryJobRunner : BackgroundService
     private readonly TimeProvider _time;
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly IOptions<DiscoveryOrchestrationOptions> _options;
     private readonly ILogger<DiscoveryJobRunner> _logger;
 
@@ -39,6 +40,7 @@ public sealed class DiscoveryJobRunner : BackgroundService
         TimeProvider time,
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
+        IMandatoryAuditOutbox auditOutbox,
         IOptions<DiscoveryOrchestrationOptions> options,
         ILogger<DiscoveryJobRunner> logger)
     {
@@ -48,6 +50,7 @@ public sealed class DiscoveryJobRunner : BackgroundService
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -136,42 +139,58 @@ public sealed class DiscoveryJobRunner : BackgroundService
         // Reconcile first: a stale job that has already exhausted its attempts would otherwise sit
         // forever — excluded from the reclaim predicate below, but never itself marked terminal, since
         // nothing else observes it (finding #12).
-        await FailExhaustedStaleJobsAsync(context, now, stale, maxAttempts, cancellationToken);
+        await FailExhaustedStaleJobsAsync(context, _auditOutbox, now, stale, maxAttempts, cancellationToken);
         return await ClaimNextAsync(context, now, stale, maxAttempts, cancellationToken);
     }
 
     /// <summary>
     /// Fails any <c>InProgress</c> job whose heartbeat is stale AND whose <c>attempt_count</c> has already
     /// reached <paramref name="maxAttempts"/> — the reconciliation half of finding #12's claim exclusion:
-    /// once such a job stops being reclaimable it would otherwise never reach a terminal state. Internal
-    /// so concurrency tests can exercise the reconciliation directly.
+    /// once such a job stops being reclaimable it would otherwise never reach a terminal state. Rewritten
+    /// (story #308, ADR 0064) from a bulk raw-SQL <c>UPDATE</c> into a bounded, transaction-scoped
+    /// reconciliation: claims candidate ids via <c>SELECT ... FOR UPDATE SKIP LOCKED</c> (same ordering as
+    /// <see cref="ClaimNextAsync"/>), transitions each job through the domain <c>Fail</c> method, and
+    /// stages one Tier 1 (mandatory-durable) audit event per job — all committed together in ONE
+    /// transaction, so a crash mid-reconciliation leaves every job in this batch non-terminal with no
+    /// orphan audit row. A deterministic outbox id (job id + terminal action) means a concurrent or
+    /// retried reaper sweep can never double-stage the same job's terminal event, though the row lock
+    /// already prevents two reapers from selecting the same job in the first place. Internal so
+    /// concurrency tests can exercise the reconciliation directly.
     /// </summary>
-    internal static Task FailExhaustedStaleJobsAsync(
-        CaissonDbContext context, DateTime now, DateTime stale, int maxAttempts, CancellationToken cancellationToken)
+    internal static async Task FailExhaustedStaleJobsAsync(
+        CaissonDbContext context, IMandatoryAuditOutbox auditOutbox, DateTime now, DateTime stale, int maxAttempts,
+        CancellationToken cancellationToken)
     {
-        const string sql = @"
-UPDATE discovery_job
-SET status = 'Failed',
-    finished_at_utc = {0},
-    last_heartbeat_at_utc = {0},
-    error_code = {2},
-    error_message = {3}
+        const int batchSize = 100;
+        const string selectSql = @"
+SELECT id FROM discovery_job
 WHERE status = 'InProgress'
-  AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1})
-  AND attempt_count >= {4}";
+  AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {0})
+  AND attempt_count >= {1}
+ORDER BY created_at_utc
+FOR UPDATE SKIP LOCKED
+LIMIT {2}";
 
-        // NOTE: ExecuteSqlRawAsync's params-array overload greedily captures a trailing CancellationToken
-        // as if it were another SQL parameter (it boxes to object like everything else) — it must be
-        // passed via the explicit IEnumerable<object> + CancellationToken overload instead, or EF throws
-        // "no store type mapping for CancellationToken" trying to bind it as a query parameter.
-        object[] parameters =
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var ids = await context.Database
+            .SqlQueryRaw<Guid>(selectSql, stale, maxAttempts, batchSize)
+            .ToListAsync(cancellationToken);
+        if (ids.Count == 0)
         {
-            now, stale,
-            DiscoveryErrorCodes.MaxAttemptsExceeded,
-            DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.MaxAttemptsExceeded),
-            maxAttempts,
-        };
-        return context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        var jobs = await context.DiscoveryJobs.Where(j => ids.Contains(j.Id)).ToListAsync(cancellationToken);
+        foreach (var job in jobs)
+        {
+            job.Fail(now, DiscoveryErrorCodes.MaxAttemptsExceeded, DiscoveryErrorCodes.MessageFor(DiscoveryErrorCodes.MaxAttemptsExceeded));
+            CaissonDiscoveryJobStore.StageTerminalAudit(context, auditOutbox, job, now);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     /// <summary>
@@ -213,36 +232,26 @@ RETURNING id AS ""Value""";
             return;
         }
 
-        var now = _time.GetUtcNow().UtcDateTime;
-
+        // The Tier 1 (mandatory-durable) audit event was already staged and committed by the orchestrator's
+        // call to IDiscoveryJobStore.SaveTerminalAsync, in the SAME transaction as the terminal status
+        // itself (story #308, ADR 0064) — this method only handles the schedule bump, logging, and the
+        // fail-open realtime publish that follow.
         if (job.Status == DiscoveryJobStatus.Succeeded && job.Mode == TriggerType.Scheduled)
         {
             var schedule = await context.RackDiscoverySchedules
                 .FirstOrDefaultAsync(s => s.RackId == job.RackId, cancellationToken);
-            schedule?.RecordSuccess(job.FinishedAtUtc ?? now);
+            if (schedule is not null)
+            {
+                schedule.RecordSuccess(job.FinishedAtUtc ?? _time.GetUtcNow().UtcDateTime);
+                await context.SaveChangesAsync(cancellationToken);
+            }
         }
 
-        context.AuditEvents.Add(new TopologyAuditEvent(
-            Guid.NewGuid(),
-            now,
-            job.ActorType,
-            job.TriggeredBy,
-            action: AuditAction(job.Status),
-            targetType: "discovery-job",
-            correlationId: job.CorrelationId,
-            result: job.Status.ToString(),
-            rackId: job.RackId,
-            snapshotId: job.ResultSnapshotId,
-            targetId: job.Id.ToString(),
-            detailsJson: null));
-
-        await context.SaveChangesAsync(cancellationToken);
         _logger.LogInformation(
             "Discovery job finalized jobId={JobId} rackId={RackId} status={Status} correlationId={CorrelationId}",
             job.Id, job.RackId, job.Status, job.CorrelationId);
 
-        // Live update (story #9): the terminal transition, emitted right next to the audit write so events
-        // and audit stay consistent. Carries the operator-safe error code on a failed job.
+        // Live update (story #9): the terminal transition. Carries the operator-safe error code on a failed job.
         await PublishStatusAsync(job, job.Status, previousStatus: DiscoveryJobStatus.InProgress.ToString(), cancellationToken);
     }
 
@@ -272,12 +281,4 @@ RETURNING id AS ""Value""";
             // Shutting down.
         }
     }
-
-    private static string AuditAction(DiscoveryJobStatus status) => status switch
-    {
-        DiscoveryJobStatus.Succeeded => "discovery.job.succeeded",
-        DiscoveryJobStatus.Failed => "discovery.job.failed",
-        DiscoveryJobStatus.Canceled => "discovery.job.canceled",
-        _ => "discovery.job.completed",
-    };
 }

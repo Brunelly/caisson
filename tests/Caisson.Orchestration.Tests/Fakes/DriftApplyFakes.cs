@@ -16,11 +16,19 @@ public sealed class FakeDriftApplyJobStore : IDriftApplyJobStore
 {
     public int SaveCount { get; private set; }
 
+    public int SaveTerminalCount { get; private set; }
+
     public Func<Guid, string, DriftItem?> ItemBehavior { get; set; } = (_, _) => null;
 
     public Task SaveAsync(CancellationToken cancellationToken)
     {
         SaveCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveTerminalAsync(Caisson.Domain.Drift.Apply.DriftApplyJob job, CancellationToken cancellationToken)
+    {
+        SaveTerminalCount++;
         return Task.CompletedTask;
     }
 

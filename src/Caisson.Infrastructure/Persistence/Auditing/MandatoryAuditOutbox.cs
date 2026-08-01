@@ -6,14 +6,14 @@ namespace Caisson.Infrastructure.Persistence.Auditing;
 public sealed class MandatoryAuditOutbox : IMandatoryAuditOutbox
 {
     /// <inheritdoc />
-    public Guid Add(CaissonDbContext context, AuditEventEnvelope envelope, DateTime occurredAtUtc)
+    public Guid Add(CaissonDbContext context, AuditEventEnvelope envelope, DateTime occurredAtUtc, Guid? id = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(envelope);
 
-        var id = Guid.NewGuid();
+        var messageId = id ?? Guid.NewGuid();
         var message = new AuditOutboxMessage(
-            id,
+            messageId,
             occurredAtUtc,
             envelope.ActorType,
             envelope.ActorId,
@@ -30,6 +30,6 @@ public sealed class MandatoryAuditOutbox : IMandatoryAuditOutbox
         // Add only — no SaveChangesAsync. The caller's own single commit (its mutation's SaveChangesAsync)
         // is what makes this row and the mutation atomic (story #308 AC1).
         context.AuditOutboxMessages.Add(message);
-        return id;
+        return messageId;
     }
 }

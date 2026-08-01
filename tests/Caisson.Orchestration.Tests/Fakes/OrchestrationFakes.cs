@@ -43,11 +43,19 @@ public sealed class FakeDiscoveryJobStore : IDiscoveryJobStore
 {
     public int SaveCount { get; private set; }
 
+    public int SaveTerminalCount { get; private set; }
+
     public bool CancellationRequested { get; set; }
 
     public Task SaveAsync(CancellationToken cancellationToken)
     {
         SaveCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveTerminalAsync(Caisson.Domain.Discovery.DiscoveryJob job, CancellationToken cancellationToken)
+    {
+        SaveTerminalCount++;
         return Task.CompletedTask;
     }
 

@@ -168,7 +168,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         });
 
         job.MarkStaleDrift(Now, outcome.ReasonCode!, DriftApplyErrorCodes.MessageFor(outcome.ReasonCode!), details);
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
 
         _logger.LogInformation(
             "Drift-apply job found stale drift, no device call made jobId={JobId} rackId={RackId} reasonCode={ReasonCode} correlationId={CorrelationId}",
@@ -266,7 +266,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         if (reasonCode is SwitchChangeReasonCode.Applied or SwitchChangeReasonCode.NoOpAlreadyDesiredState)
         {
             job.Complete(Now);
-            await _store.SaveAsync(cancellationToken);
+            await _store.SaveTerminalAsync(job, cancellationToken);
 
             // AC: a successful apply must be reflected in the next drift report (closing the loop).
             _driftRecompute.Enqueue(job.RackId);
@@ -276,7 +276,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
         job.Fail(
             Now, DriftApplyErrorCategories.DeviceRejected, job.DeviceReasonCode ?? SwitchChangeReasonCode.Unknown.ToString(),
             "The device change was not applied or could not be confirmed; no further attempt will be made.");
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
     }
 
     private async Task<T> ExecuteStepAsync<T>(
@@ -337,7 +337,7 @@ public sealed class DriftApplyOrchestrator : IDriftApplyOrchestrator
     {
         step.Fail(Now, errorCode, message);
         job.Fail(Now, errorCategory, errorCode, message);
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
         return new JobAbortedException(errorCode);
     }
 

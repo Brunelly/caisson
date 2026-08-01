@@ -16,5 +16,10 @@ public interface IMandatoryAuditOutbox
     /// audit row and a committed mutation can never be missing one. Returns the message id, which is also
     /// the eventual <see cref="Domain.Topology.TopologyAuditEvent"/> id.
     /// </summary>
-    Guid Add(CaissonDbContext context, AuditEventEnvelope envelope, DateTime occurredAtUtc);
+    /// <param name="id">
+    /// An explicit, caller-supplied id (e.g. <see cref="Domain.Auditing.DeterministicAuditId"/> for a
+    /// terminal job transition, so a concurrent/retried reconciliation cannot double-stage the same
+    /// transition) — a fresh random id is minted when omitted.
+    /// </param>
+    Guid Add(CaissonDbContext context, AuditEventEnvelope envelope, DateTime occurredAtUtc, Guid? id = null);
 }

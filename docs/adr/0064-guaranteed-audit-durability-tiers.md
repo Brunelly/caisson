@@ -120,3 +120,16 @@ files were reviewed and introduce no page, component, or visual state for this w
   Tier 1, `IAuthorizationDenialAuditWriter`, or `IBestEffortAuditEventWriter`; a source-level architecture
   test enforces that no mutation path depends on the best-effort writer and that the literal
   `authorization.forbidden` action string appears nowhere outside the Tier 2 implementation and its tests.
+- Job terminal transitions (success/failure/cancellation, including the stale/timeout/exhausted-attempt
+  reapers' bulk reconciliation) are Tier 1 via a new `IDiscoveryJobStore.SaveTerminalAsync`/
+  `IDriftApplyJobStore.SaveTerminalAsync` seam that stages the audit row in the SAME `SaveChangesAsync`
+  as the terminal status — replacing the prior shape where the runner's `FinalizeAsync` audited the
+  transition in a SEPARATE save after the orchestrator had already committed it. The reapers use the
+  same `FOR UPDATE SKIP LOCKED` claim ordering as the runner's own claim query, reconciling a bounded
+  batch per tick in one transaction; each staged row also carries a deterministic id
+  (`DeterministicAuditId.For(jobId, action)`) as belt-and-braces against a concurrent/retried sweep
+  double-staging the same job's transition.
+- `DiscoveryScheduler`'s per-tick bump of a schedule's own `LastAttemptAtUtc`/`NextRunAtUtc` bookkeeping is
+  explicitly classified as NOT an audit-worthy event in either tier (documented at the call site) — the
+  scheduled job creation it triggers is already Tier 1; auditing the bookkeeping bump itself would flood
+  the outbox with routine per-tick noise for every enabled schedule with no security/compliance value.

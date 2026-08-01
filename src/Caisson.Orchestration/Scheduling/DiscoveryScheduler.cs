@@ -95,6 +95,12 @@ public sealed class DiscoveryScheduler : BackgroundService
                 schedule.RackId, TriggerType.Scheduled, "scheduler", ActorType.System,
                 Guid.NewGuid(), idempotencyKey: null, dryRun: false, cancellationToken);
 
+            // Story #308, ADR 0064: explicitly classified as NOT an audit-worthy event, in either tier.
+            // The actual scheduled job creation is already Tier 1 (staged inside EnqueueAsync above);
+            // bumping the schedule's own LastAttemptAtUtc/NextRunAtUtc bookkeeping is routine per-tick
+            // scheduling metadata, not a security-relevant state transition — every enabled schedule
+            // advances this every ~30-60s regardless of outcome, so treating it as Tier 1 would flood the
+            // outbox with system-generated noise for no security/compliance benefit.
             var nextRun = ComputeNextRun(now, schedule, _jitter);
             schedule.RecordAttempt(now, nextRun);
 

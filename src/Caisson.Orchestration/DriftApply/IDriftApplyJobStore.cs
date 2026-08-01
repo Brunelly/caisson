@@ -1,4 +1,5 @@
 using Caisson.Domain.Drift;
+using Caisson.Domain.Drift.Apply;
 using Caisson.Domain.Enums;
 
 namespace Caisson.Orchestration.DriftApply;
@@ -12,6 +13,16 @@ public interface IDriftApplyJobStore
 {
     /// <summary>Persists whatever job/step mutations are currently tracked.</summary>
     Task SaveAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Persists a job's terminal transition (<paramref name="job"/> must already be in a terminal
+    /// <c>DriftApplyJobStatus</c> — the caller calls <c>job.Complete/Fail/MarkStaleDrift</c> first)
+    /// together with its Tier 1 (mandatory-durable) audit event, in the SAME <c>SaveChangesAsync</c>
+    /// (story #308, ADR 0064). Every completion/failure/stale-drift/exhausted-attempt path goes through
+    /// this, never the plain <see cref="SaveAsync"/>, so a terminal status can never commit without its
+    /// audit row.
+    /// </summary>
+    Task SaveTerminalAsync(DriftApplyJob job, CancellationToken cancellationToken);
 
     /// <summary>
     /// Resolves the LATEST computed report's item for a given subject/type, scoped to its rack — the

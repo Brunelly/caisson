@@ -167,13 +167,43 @@ public sealed class DriftApplyJobConcurrencyTests : IClassFixture<PostgresFixtur
 
         await using (var context = _fixture.CreateContext())
         {
-            await DriftApplyJobRunner.FailExhaustedStaleJobsAsync(context, now, now.AddSeconds(-45), maxAttempts: 5, default);
+            await DriftApplyJobRunner.FailExhaustedStaleJobsAsync(
+                context, new MandatoryAuditOutbox(), now, now.AddSeconds(-45), maxAttempts: 5, default);
         }
 
         await using var verify = _fixture.CreateContext();
         var job = await verify.DriftApplyJobs.FirstAsync(j => j.Id == exhaustedId);
         job.Status.Should().Be(DriftApplyJobStatus.Failed);
         job.ErrorCode.Should().Be(DriftApplyErrorCodes.MaxAttemptsExceeded);
+
+        // Story #308, ADR 0064: the reaper's terminal transition stages a Tier 1 audit outbox row too.
+        var audit = await verify.AuditOutboxMessages.SingleAsync(a => a.TargetId == exhaustedId.ToString());
+        audit.Action.Should().Be("drift.apply.job.failed");
+    }
+
+    [Fact]
+    public async Task Two_concurrent_reapers_over_the_same_stale_exhausted_job_produce_one_terminal_transition_and_one_outbox_row()
+    {
+        await _fixture.MigrateAsync();
+        await ClearJobsAsync();
+        var rackId = await SeedRackAsync();
+        var now = DateTime.UtcNow;
+        var stale = now.AddSeconds(-45);
+        var exhaustedId = await InsertJobAsync(rackId, DriftApplyJobStatus.Executing, heartbeatAt: now.AddMinutes(-5), attemptCount: 5);
+
+        async Task ReconcileAsync()
+        {
+            await using var context = _fixture.CreateContext();
+            await DriftApplyJobRunner.FailExhaustedStaleJobsAsync(context, new MandatoryAuditOutbox(), now, stale, maxAttempts: 5, default);
+        }
+
+        await Task.WhenAll(ReconcileAsync(), ReconcileAsync());
+
+        await using var verify = _fixture.CreateContext();
+        var job = await verify.DriftApplyJobs.FirstAsync(j => j.Id == exhaustedId);
+        job.Status.Should().Be(DriftApplyJobStatus.Failed);
+
+        (await verify.AuditOutboxMessages.CountAsync(a => a.TargetId == exhaustedId.ToString())).Should().Be(1);
     }
 
     private static DriftApplyJobService Service(CaissonDbContext context)
