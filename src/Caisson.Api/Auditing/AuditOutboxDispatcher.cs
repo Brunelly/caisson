@@ -23,6 +23,16 @@ namespace Caisson.Api.Auditing;
 /// Dispatch is per-ROW, not per-batch: one poisoned row's permanent failure must never block or falsely
 /// exhaust the attempt budget of the other, healthy rows claimed in the same tick.
 /// </para>
+/// <para>
+/// Because the batch is leased UP FRONT and its rows are then processed sequentially, a later row can be
+/// reached after this instance's lease on it has already expired and another instance has legitimately
+/// re-claimed it. Every mutation below is therefore conditioned on <c>status = 'Pending' AND claimed_by =
+/// {this instance}</c>, and a zero-row result is treated as "another instance owns this now — do nothing":
+/// a stale worker must never wipe the new owner's lease mid-dispatch, never mark a row Poisoned that the
+/// new owner has already dispatched successfully (that is the operator-facing "an audit event was lost"
+/// signal and must not be fabricated), and never inflate attempt counts toward premature poisoning. This
+/// is done with conditional SQL rather than a concurrency token so it needs no schema change.
+/// </para>
 /// Cloned from <c>GitPullRequestStatusPoller</c> for shape: <see cref="PeriodicTimer"/> + injected
 /// <see cref="TimeProvider"/>, options-gated, a fresh <see cref="IServiceScopeFactory.CreateAsyncScope"/>
 /// per tick, per-tick exception isolation so one poisoned row (or a transient DB outage) never crashes the
@@ -114,9 +124,17 @@ public sealed class AuditOutboxDispatcher : BackgroundService
 
             await AuditOutboxQueries.ProjectToAuditEventAsync(context, id, cancellationToken);
 
-            var message = await context.AuditOutboxMessages.SingleAsync(m => m.Id == id, cancellationToken);
-            message.MarkDispatched(_time.GetUtcNow().UtcDateTime);
-            await context.SaveChangesAsync(cancellationToken);
+            // Ownership-conditional, and inside the SAME transaction as the projection: if the lease
+            // expired earlier in this batch and another instance re-claimed the row, this updates nothing,
+            // the projection is rolled back with it, and the new owner dispatches the row itself.
+            var updated = await AuditOutboxQueries.MarkDispatchedIfOwnedAsync(
+                context, id, _instanceId, _time.GetUtcNow().UtcDateTime, cancellationToken);
+            if (updated == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                LogNotOwned(id, "dispatch");
+                return;
+            }
 
             await transaction.CommitAsync(cancellationToken);
             _metrics.RecordDispatched();
@@ -125,7 +143,6 @@ public sealed class AuditOutboxDispatcher : BackgroundService
         {
             // Isolate this row's failure from every other row claimed in this tick (never abort the batch,
             // never let one bad row starve the rest of their own attempt budget).
-            context.ChangeTracker.Clear();
             await HandleDispatchFailureAsync(context, id, ex, cancellationToken);
         }
     }
@@ -134,17 +151,31 @@ public sealed class AuditOutboxDispatcher : BackgroundService
         CaissonDbContext context, Guid id, Exception failure, CancellationToken cancellationToken)
     {
         var failureCode = ClassifyFailure(failure);
-        var message = await context.AuditOutboxMessages.SingleOrDefaultAsync(m => m.Id == id, cancellationToken);
+
+        // Read back scoped to OUR claim, not just the id. A row that is no longer Pending-and-ours has
+        // been taken over (or already dispatched) by another instance since this batch was leased, and
+        // this worker's view of its attempt count and failure is stale.
+        var message = await context.AuditOutboxMessages.AsNoTracking()
+            .SingleOrDefaultAsync(
+                m => m.Id == id && m.Status == AuditOutboxStatus.Pending && m.ClaimedBy == _instanceId,
+                cancellationToken);
         if (message is null)
         {
-            // Already dispatched/removed by a concurrent instance since the claim — nothing to reconcile.
+            LogNotOwned(id, "failure handling");
             return;
         }
 
         if (message.AttemptCount >= _options.Value.OutboxMaxAttempts)
         {
-            message.MarkPoisoned(failureCode);
-            await context.SaveChangesAsync(cancellationToken);
+            // Conditional again: ownership can still be lost between the read above and this write, and
+            // poisoning a row the new owner has already dispatched would fabricate an "audit event lost"
+            // alert for an event that was never lost.
+            if (await AuditOutboxQueries.MarkPoisonedIfOwnedAsync(context, id, _instanceId, failureCode, cancellationToken) == 0)
+            {
+                LogNotOwned(id, "poisoning");
+                return;
+            }
+
             _metrics.RecordPoisoned(failureCode);
             _logger.LogError(
                 failure,
@@ -155,14 +186,28 @@ public sealed class AuditOutboxDispatcher : BackgroundService
 
         var now = _time.GetUtcNow().UtcDateTime;
         var backoff = ComputeBackoff(message.AttemptCount, _options.Value);
-        message.ReleaseForRetry(now.Add(backoff));
-        await context.SaveChangesAsync(cancellationToken);
+        if (await AuditOutboxQueries.ReleaseForRetryIfOwnedAsync(context, id, _instanceId, now.Add(backoff), cancellationToken) == 0)
+        {
+            LogNotOwned(id, "retry release");
+            return;
+        }
+
         _metrics.RecordRetried();
         _logger.LogWarning(
             failure,
             "Audit outbox row {Id} dispatch failed (attempt {AttemptCount}), releasing for retry in {BackoffSeconds}s, failureCode={FailureCode}.",
             id, message.AttemptCount, backoff.TotalSeconds, failureCode);
     }
+
+    /// <summary>
+    /// A row leaving this instance's ownership mid-batch is normal, healthy operation (the lease did its
+    /// job and another instance picked the row up), so it is Information, not a warning — but it is worth
+    /// recording, because a steady stream of it means the batch size and lease horizon are mismatched.
+    /// </summary>
+    private void LogNotOwned(Guid id, string stage)
+        => _logger.LogInformation(
+            "Audit outbox row {Id} is no longer claimed by this instance at {Stage}; another instance owns it now, skipping. instanceId={InstanceId}",
+            id, stage, _instanceId);
 
     /// <summary>Exponential backoff by attempt count, bounded by <see cref="AuditDurabilityOptions.OutboxRetryMaxDelaySeconds"/>.</summary>
     private static TimeSpan ComputeBackoff(int attemptCount, AuditDurabilityOptions options)

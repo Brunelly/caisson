@@ -16,6 +16,18 @@ namespace Caisson.Domain.Auditing;
 /// idempotent. Deliberately NOT <see cref="Caisson.Domain.Topology.IAppendOnly"/>: the dispatcher updates
 /// this row in place (lease/attempt/status) until it reaches a terminal <see cref="AuditOutboxStatus"/>.
 /// </para>
+/// <para>
+/// <b>Lifecycle transitions are NOT applied through this entity by the dispatcher.</b> The row is leased
+/// by one instance and can be legitimately re-claimed by another once that lease expires, so every
+/// transition must be conditioned on the writer still owning the row — and this type carries no
+/// concurrency token to express that. The dispatcher therefore drives <see cref="MarkDispatched"/>/
+/// <see cref="ReleaseForRetry"/>/<see cref="MarkPoisoned"/>'s equivalents through ownership-conditional
+/// SQL (<c>AuditOutboxQueries.MarkDispatchedIfOwnedAsync</c> and friends, which match on
+/// <c>status = 'Pending' AND claimed_by = {instance}</c>). The methods below remain the single definition
+/// of what each transition MEANS, and enforce the same invariants for any non-dispatcher caller — but
+/// applying one of them to a tracked entity and saving it would overwrite the row unconditionally, which
+/// is exactly the stale-worker clobber the conditional SQL exists to prevent.
+/// </para>
 /// </summary>
 public sealed class AuditOutboxMessage
 {

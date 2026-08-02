@@ -73,6 +73,43 @@ internal sealed class ManualTimeProvider : TimeProvider
     public void Advance(TimeSpan delta) => _now += delta;
 }
 
+/// <summary>
+/// A <see cref="ManualTimeProvider"/> that also runs a callback on its <paramref name="fireOnCall"/>-th
+/// <see cref="GetUtcNow"/> call. The clock is the one collaborator a background service consults at
+/// well-defined points in its own flow, which makes it the deterministic seam for injecting "something
+/// else changed this row while you were working on it" — no threads, no sleeps, no flakiness.
+/// </summary>
+internal sealed class HookingTimeProvider : TimeProvider
+{
+    private readonly int _fireOnCall;
+    private readonly Action _onFire;
+    private DateTimeOffset _now;
+    private int _calls;
+
+    public HookingTimeProvider(DateTimeOffset start, int fireOnCall, Action onFire)
+    {
+        _now = start;
+        _fireOnCall = fireOnCall;
+        _onFire = onFire;
+    }
+
+    /// <summary>Whether the callback actually ran — asserted so a test can never silently stop reproducing.</summary>
+    public bool Fired { get; private set; }
+
+    public override DateTimeOffset GetUtcNow()
+    {
+        if (Interlocked.Increment(ref _calls) == _fireOnCall)
+        {
+            Fired = true;
+            _onFire();
+        }
+
+        return _now;
+    }
+
+    public void Advance(TimeSpan delta) => _now += delta;
+}
+
 /// <summary>Builds an <see cref="AuditOutboxDispatcher"/> wired to a <see cref="FakeScopeFactory"/> for deterministic tests.</summary>
 internal static class AuditOutboxDispatcherTestFactory
 {
