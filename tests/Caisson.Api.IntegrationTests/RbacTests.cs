@@ -180,7 +180,7 @@ public sealed class RbacTests
         }
 
         // The overflow is flushed asynchronously (bounded by the sped-up DenialFlushIntervalSeconds).
-        var aggregateCount = await PollForOverflowCountAsync(actor);
+        var aggregateCount = await PollForOverflowCountAsync(actor, burstSize - expectedFirstN);
         aggregateCount.Should().Be(burstSize - expectedFirstN);
     }
 
@@ -239,28 +239,53 @@ public sealed class RbacTests
         return client.SendAsync(request);
     }
 
-    private async Task<long> PollForOverflowCountAsync(string actor)
+    /// <summary>
+    /// Sums the overflow aggregates for <paramref name="actor"/>, polling until the total reaches
+    /// <paramref name="expectedTotal"/> (or the budget runs out, returning whatever it last saw so the
+    /// caller's assertion reports the real number).
+    /// <para>
+    /// It must NOT stop at the first aggregate row it sees. The flush interval is deliberately sped up to
+    /// one second here, so a flush can easily land part-way through a burst and split the overflow across
+    /// several aggregate rows — that is normal, correct behaviour (each row carries its own batch id), but
+    /// returning on the first row would read a partial total and fail intermittently for no real reason.
+    /// </para>
+    /// </summary>
+    private async Task<long> PollForOverflowCountAsync(string actor, long expectedTotal)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        long total = 0;
+        var sawAny = false;
+
         while (DateTime.UtcNow < deadline)
         {
-            await using var context = _factory.CreateDbContext();
-            var aggregates = await context.AuditEvents
-                .Where(a => a.Action == "authorization.forbidden.overflow" && a.ActorId == actor)
-                .ToListAsync();
-            if (aggregates.Count > 0)
+            await using (var context = _factory.CreateDbContext())
             {
-                return aggregates.Sum(a =>
+                var aggregates = await context.AuditEvents
+                    .Where(a => a.Action == "authorization.forbidden.overflow" && a.ActorId == actor)
+                    .ToListAsync();
+
+                if (aggregates.Count > 0)
                 {
-                    using var details = JsonDocument.Parse(a.DetailsJson!);
-                    return details.RootElement.GetProperty("count").GetInt64();
-                });
+                    sawAny = true;
+                    total = aggregates.Sum(a =>
+                    {
+                        using var details = JsonDocument.Parse(a.DetailsJson!);
+                        return details.RootElement.GetProperty("count").GetInt64();
+                    });
+
+                    if (total >= expectedTotal)
+                    {
+                        return total;
+                    }
+                }
             }
 
             await Task.Delay(200);
         }
 
-        throw new TimeoutException($"No authorization.forbidden.overflow aggregate for actorId={actor} appeared within the test budget.");
+        return sawAny
+            ? total
+            : throw new TimeoutException($"No authorization.forbidden.overflow aggregate for actorId={actor} appeared within the test budget.");
     }
 
     /// <summary>Polls for the off-request-path (BestEffortAuditEventWriter) audit row, bounded to 10s.</summary>
