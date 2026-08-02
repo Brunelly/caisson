@@ -15,10 +15,24 @@ namespace Caisson.Infrastructure.Tests.Auditing;
 internal sealed class FakeScopeFactory : IServiceScopeFactory
 {
     private readonly PostgresFixture _fixture;
+    private readonly Action? _onScopeCreated;
 
-    public FakeScopeFactory(PostgresFixture fixture) => _fixture = fixture;
+    public FakeScopeFactory(PostgresFixture fixture, Action? onScopeCreated = null)
+    {
+        _fixture = fixture;
+        _onScopeCreated = onScopeCreated;
+    }
 
-    public IServiceScope CreateScope() => new FakeScope(_fixture.CreateContext());
+    /// <summary>
+    /// Creating the per-tick scope is the one deterministic point a test can act on that sits AFTER a
+    /// service has taken its in-memory snapshot of the work to do and BEFORE it touches the database —
+    /// which is exactly where a concurrent request lands in the interleavings these tests reproduce.
+    /// </summary>
+    public IServiceScope CreateScope()
+    {
+        _onScopeCreated?.Invoke();
+        return new FakeScope(_fixture.CreateContext());
+    }
 
     private sealed class FakeScope : IServiceScope, IAsyncDisposable
     {

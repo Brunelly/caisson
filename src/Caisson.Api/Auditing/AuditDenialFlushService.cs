@@ -88,33 +88,114 @@ public sealed class AuditDenialFlushService : BackgroundService
             return;
         }
 
+        // Deduplicate BEFORE any database work. The same bucket key can legitimately be in this batch
+        // twice: EvictOldest removes a key from the active generation and queues it for urgent flush, and
+        // a later MarkSaturated re-adds that same key — so DrainUrgentFlush() and DetachGeneration() can
+        // each yield it, with two distinct Entry objects. Folding them here keeps one durable aggregate
+        // per bucket AND keeps the failure path's own key-indexed bookkeeping safe to build.
+        var toFlush = Coalesce(urgent, generation);
+
         await using var scope = _scopeFactory.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<CaissonDbContext>();
 
-        var toFlush = new List<KeyValuePair<DenialBucketKey, DenialOverflowAccumulator.Entry>>(urgent.Count + generation.Count);
-        toFlush.AddRange(urgent);
-        toFlush.AddRange(generation);
+        var now = _time.GetUtcNow().UtcDateTime;
+        var uncommitted = new Dictionary<DenialBucketKey, DenialOverflowAccumulator.Entry>(toFlush.Count);
+        var committedCount = 0;
+        Exception? failure = null;
 
-        try
+        // Each INSERT autocommits on its own, so this batch can end up half-persisted. Track exactly which
+        // entries did NOT commit: merging an already-committed entry back would replay its count, and
+        // ON CONFLICT (id) DO NOTHING cannot dedupe that replay if a denial arriving after
+        // DetachGeneration has meanwhile put a NEW Entry (with a NEW batch id) in the active generation —
+        // MergeBack folds the old count into it and the committed total is written a second time under an
+        // id the database has never seen. That is silent over-counting of a security signal.
+        foreach (var (key, entry) in toFlush)
         {
-            var now = _time.GetUtcNow().UtcDateTime;
-            foreach (var (key, entry) in toFlush)
+            if (failure is not null)
             {
-                var detailsJson = BuildDetailsJson(key, entry);
-                await AuditDenialBucketQueries.InsertOverflowAuditEventAsync(
-                    context, entry.BatchId, now, entry.ActorType, key.ActorId, correlationId: Guid.Empty,
-                    entry.RackId, detailsJson, cancellationToken);
+                // Stop at the first failure (a dead database will not heal mid-batch); everything after it
+                // is untried, therefore uncommitted, and retried next tick with its own batch id intact.
+                uncommitted[key] = entry;
+                continue;
             }
 
-            _logger.LogInformation("Audit denial overflow flushed bucketCount={BucketCount}.", toFlush.Count);
+            try
+            {
+                await AuditDenialBucketQueries.InsertOverflowAuditEventAsync(
+                    context, entry.BatchId, now, entry.ActorType, key.ActorId, correlationId: Guid.Empty,
+                    entry.RackId, BuildDetailsJson(key, entry), cancellationToken);
+                committedCount++;
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                uncommitted[key] = entry;
+            }
         }
-        catch (Exception ex)
+
+        if (failure is null)
         {
-            // Merge everything back (urgent + the detached generation) so a transient DB fault loses
-            // nothing — the next tick retries with the SAME stable batch ids (idempotent via ON CONFLICT).
-            _logger.LogError(ex, "Audit denial overflow flush failed; merging {Count} bucket(s) back for retry.", toFlush.Count);
-            _accumulator.MergeBack(toFlush.ToDictionary(kv => kv.Key, kv => kv.Value));
+            _logger.LogInformation("Audit denial overflow flushed bucketCount={BucketCount}.", committedCount);
+            return;
         }
+
+        // The recovery path must never throw. An exception escaping here is swallowed by ExecuteAsync as a
+        // generic "tick failed", and the WHOLE batch — every principal's counts, including the ones that
+        // never even got a chance — is gone, which is the opposite of what recovery is for.
+        try
+        {
+            _logger.LogError(
+                failure,
+                "Audit denial overflow flush failed after {CommittedCount} bucket(s); merging {RetryCount} uncommitted bucket(s) back for retry.",
+                committedCount, uncommitted.Count);
+            _accumulator.MergeBack(uncommitted);
+        }
+        catch (Exception recoveryFailure)
+        {
+            _logger.LogCritical(
+                recoveryFailure,
+                "Audit denial overflow flush recovery failed; {LostCount} bucket(s) of overflow counts were lost.",
+                uncommitted.Count);
+        }
+    }
+
+    /// <summary>
+    /// Merges the urgently-evicted buckets and the detached generation into ONE entry per bucket key,
+    /// preserving encounter order (urgent first) so the flush order stays deterministic. Where a key
+    /// appears twice, the counts are folded into the FIRST entry seen — so exactly one batch id survives
+    /// per bucket and a retry of this batch stays idempotent under <c>ON CONFLICT (id) DO NOTHING</c>.
+    /// </summary>
+    private static List<KeyValuePair<DenialBucketKey, DenialOverflowAccumulator.Entry>> Coalesce(
+        List<KeyValuePair<DenialBucketKey, DenialOverflowAccumulator.Entry>> urgent,
+        IReadOnlyDictionary<DenialBucketKey, DenialOverflowAccumulator.Entry> generation)
+    {
+        var capacity = urgent.Count + generation.Count;
+        var ordered = new List<KeyValuePair<DenialBucketKey, DenialOverflowAccumulator.Entry>>(capacity);
+        var seen = new Dictionary<DenialBucketKey, DenialOverflowAccumulator.Entry>(capacity);
+
+        void Fold(DenialBucketKey key, DenialOverflowAccumulator.Entry entry)
+        {
+            if (seen.TryGetValue(key, out var existing))
+            {
+                existing.MergeFrom(entry);
+                return;
+            }
+
+            seen.Add(key, entry);
+            ordered.Add(new KeyValuePair<DenialBucketKey, DenialOverflowAccumulator.Entry>(key, entry));
+        }
+
+        foreach (var (key, entry) in urgent)
+        {
+            Fold(key, entry);
+        }
+
+        foreach (var (key, entry) in generation)
+        {
+            Fold(key, entry);
+        }
+
+        return ordered;
     }
 
     private static string BuildDetailsJson(DenialBucketKey key, DenialOverflowAccumulator.Entry entry)
