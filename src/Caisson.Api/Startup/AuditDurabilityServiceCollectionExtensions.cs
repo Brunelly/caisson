@@ -34,6 +34,7 @@ public static class AuditDurabilityServiceCollectionExtensions
         // its own remarks), the writer is scoped (needs the per-request CaissonDbContext), and the flush
         // service periodically persists the accumulator's tallies.
         services.TryAddSingleton<DenialOverflowAccumulator>();
+        services.TryAddSingleton<AuthorizationDenialAuditMetrics>();
         services.TryAddScoped<IAuthorizationDenialAuditWriter, AuthorizationDenialAuditWriter>();
         services.AddHostedService<AuditDenialFlushService>();
 

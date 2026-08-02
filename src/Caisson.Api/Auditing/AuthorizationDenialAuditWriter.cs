@@ -19,6 +19,7 @@ public sealed class AuthorizationDenialAuditWriter : IAuthorizationDenialAuditWr
     private readonly DenialOverflowAccumulator _accumulator;
     private readonly TimeProvider _time;
     private readonly IOptions<AuditDurabilityOptions> _options;
+    private readonly AuthorizationDenialAuditMetrics _metrics;
     private readonly ILogger<AuthorizationDenialAuditWriter> _logger;
 
     public AuthorizationDenialAuditWriter(
@@ -26,12 +27,14 @@ public sealed class AuthorizationDenialAuditWriter : IAuthorizationDenialAuditWr
         DenialOverflowAccumulator accumulator,
         TimeProvider time,
         IOptions<AuditDurabilityOptions> options,
+        AuthorizationDenialAuditMetrics metrics,
         ILogger<AuthorizationDenialAuditWriter> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _accumulator = accumulator ?? throw new ArgumentNullException(nameof(accumulator));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -96,10 +99,16 @@ public sealed class AuthorizationDenialAuditWriter : IAuthorizationDenialAuditWr
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Best-effort overall (mirrors the pre-existing ForbidLoggingAuthorizationResultHandler
-            // contract): a denial-persistence failure must never turn a 403 into a 500.
-            _logger.LogWarning(
-                ex, "Authorization denial audit failed (best-effort) actorId={ActorId} endpoint={Endpoint} correlationId={CorrelationId}",
+            // The swallow is deliberate and must stay (it mirrors the pre-existing
+            // ForbidLoggingAuthorizationResultHandler contract): a denial-persistence failure must never
+            // turn a 403 into a 500. But this IS the guaranteed path, so the record is now GONE — Tier 2's
+            // first-N durability is contingent on the database being available (ADR 0064). Deliberately NOT
+            // spilled to the Tier 1 outbox: that is the same database, so it cannot help when the database
+            // is the thing that failed. Instead the loss is surfaced loudly — Error, plus a counter to
+            // alert on — so it can never be a silent gap in the audit trail.
+            _metrics.RecordPersistenceFailure();
+            _logger.LogError(
+                ex, "Authorization denial audit LOST (durable first-N write failed) actorId={ActorId} endpoint={Endpoint} correlationId={CorrelationId}",
                 actorId, endpoint, correlationId);
         }
     }

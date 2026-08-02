@@ -71,6 +71,19 @@ Tier 3 channel:
    COUNT (seconds) — it can never lose a first-N verbatim record, and it can never affect Tier 1. This is
    deliberate: a denial counter is a security signal, not a financial ledger, and the alternative (bounded
    writes AND zero loss AND no in-memory state) is not achievable simultaneously.
+   **SECOND ACCEPTED, DOCUMENTED LOSS — first-N durability is contingent on database availability.** The
+   first-N verbatim write is synchronous and durable, but it is still a database write on the request path
+   of a request that has ALREADY been denied. If that write fails (the database is down, the connection
+   pool is exhausted, a command times out), the record is lost: the failure is swallowed, because a
+   denial-audit failure must never turn a 403 into a 500, and it is deliberately NOT spilled to the Tier 1
+   outbox — the outbox is the SAME database, so it cannot help when the database is what failed. This is
+   NOT a silent drop: every such loss is logged at **Error** and increments
+   `caisson.authorization_denial_audit.persistence_failures` (`AuthorizationDenialAuditMetrics`), which
+   operators alert on at any non-zero rate. Tier 2's guarantee is therefore "durable first-N whenever the
+   database is available, and a loud, counted, alertable failure when it is not" — never a quiet warning.
+   Relatedly, the first-N write is issued with a cancellation token the DENIED CALLER cannot influence
+   (never the request-aborted token): the subject of the record must not be able to suppress it by dropping
+   the connection on their own 403.
 3. **Tier 3 — best-effort** (high-volume read auditing). Unchanged from ADR 0022: the bounded
    `Channel<AuditWriteRequest>` (`DropWrite` on saturation) drained by `AuditEventBackgroundWriter`, now
    behind the explicit `IBestEffortAuditEventWriter` seam (`ChannelAuditEventWriter` renamed
@@ -116,6 +129,11 @@ files were reviewed and introduce no page, component, or visual state for this w
 - The Tier 2 overflow-count loss window is a deliberate, documented trade — reviewers must not reopen it as
   a defect; the first-N verbatim records and everything in Tier 1 remain loss-free across an ungraceful
   restart.
+- A Tier 2 first-N write that FAILS (database unavailable) is a second, distinct and equally deliberate
+  loss window: the 403 still succeeds, and the lost record surfaces as an Error log plus a non-zero
+  `caisson.authorization_denial_audit.persistence_failures` counter rather than as a dropped request or a
+  silent gap. Operators must alert on that counter — it is the only signal that Tier 2's durability
+  guarantee is currently not being met.
 - `IAuditEventWriter` (the pre-tier interface) is retired only once every call site is reclassified onto
   Tier 1, `IAuthorizationDenialAuditWriter`, or `IBestEffortAuditEventWriter`; a source-level architecture
   test enforces that no mutation path depends on the best-effort writer and that the literal

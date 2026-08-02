@@ -60,7 +60,8 @@ public sealed class ForbidLoggingAuthorizationResultHandler : Microsoft.AspNetCo
 
     /// <summary>
     /// Never throws (delegates to <see cref="IAuthorizationDenialAuditWriter"/>'s own best-effort
-    /// contract). Resolves the rack id from route values (present for every rack-scoped policy check),
+    /// contract) and never lets the denied caller cancel their own denial record (see the call below).
+    /// Resolves the rack id from route values (present for every rack-scoped policy check),
     /// the STABLE <c>"{method} {routeTemplate}"</c> bucket key — never the raw path or query string, or an
     /// unauthorized caller could control bucket cardinality (story #308, ADR 0064) — and, ONLY for the
     /// <see cref="AuthorizationPolicies.DriftApply"/> policy AND only when a JSON body is present, peeks
@@ -92,9 +93,13 @@ public sealed class ForbidLoggingAuthorizationResultHandler : Microsoft.AspNetCo
             ["correlationId"] = correlationId,
         });
 
+        // NOT context.RequestAborted (story #308, ADR 0064). The 403 is already decided by the time this
+        // runs, and the subject of this audit record is the DENIED caller — handing them a token that
+        // aborts the write would let them suppress the evidence of their own denial simply by dropping the
+        // connection on the 403. The write is bounded by the command timeout, not by the caller.
         await writer.RecordDenialAsync(
             actorType, actorId, ResolveEndpoint(context), "403", rackId,
-            correlationId ?? Guid.Empty, detailsJson, context.RequestAborted);
+            correlationId ?? Guid.Empty, detailsJson, CancellationToken.None);
     }
 
     /// <summary>
