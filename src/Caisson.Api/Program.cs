@@ -137,10 +137,12 @@ builder.Services.AddCaissonRealtime(builder.Configuration);
 builder.Services.AddScoped<CorrelationContext>();
 builder.Services.AddScoped<ICorrelationContext>(sp => sp.GetRequiredService<CorrelationContext>());
 
-// Off-request-path audit writer (finding #5): a bounded Channel<AuditWriteRequest> decouples the
-// synchronous per-request INSERT from the request path; AuditEventBackgroundWriter drains and batches
-// it. FullMode=DropWrite (never blocks the request) — a saturated channel drops the newest event with a
-// logged warning rather than let the audit trail apply backpressure to reads.
+// Tier 3 (best-effort, story #308 ADR 0064) off-request-path audit writer (finding #5): a bounded
+// Channel<AuditWriteRequest> decouples the synchronous per-request INSERT from the request path;
+// AuditEventBackgroundWriter drains and batches it. FullMode=DropWrite (never blocks the request) — a
+// saturated channel drops the newest event with a logged warning rather than let the audit trail apply
+// backpressure to reads. This is the ONLY writer reachable through IBestEffortAuditEventWriter — no
+// generic "write an audit event" API exists through which a Tier 1/2 event could land here by accident.
 var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteRequest>(
     new System.Threading.Channels.BoundedChannelOptions(4096)
     {
@@ -149,8 +151,11 @@ var auditChannel = System.Threading.Channels.Channel.CreateBounded<AuditWriteReq
     });
 builder.Services.AddSingleton(auditChannel.Writer);
 builder.Services.AddSingleton(auditChannel.Reader);
-builder.Services.AddScoped<IAuditEventWriter, ChannelAuditEventWriter>();
+builder.Services.AddScoped<IBestEffortAuditEventWriter, BestEffortAuditEventWriter>();
 builder.Services.AddHostedService<AuditEventBackgroundWriter>();
+
+// Tier 1 (mandatory-durable) audit outbox dispatcher (story #308, ADR 0064).
+builder.Services.AddCaissonAuditDurability(builder.Configuration);
 
 // Per-rack access seam (finding #29): allow-all today — see IRackAccessPolicy's own remarks.
 builder.Services.AddSingleton<IRackAccessPolicy, AllowAllRackAccessPolicy>();
@@ -385,6 +390,11 @@ health.AddCheck<Caisson.Infrastructure.HealthChecks.DriftComputationHealthCheck>
 // Story #173 (NFR3): reports the GitHub PR status poller's dependency health; never makes a live GitHub
 // call and stays Healthy/Degraded (never Unhealthy) so a GitHub outage can never take /health/ready down.
 health.AddCheck<Caisson.Api.HealthChecks.GitPullRequestStatusHealthCheck>("git-pr-status", tags: new[] { "ready" });
+
+// Story #308 (ADR 0064): reports the Tier 1 audit outbox dispatcher's backlog/poison health; a DB-only
+// snapshot that stays Healthy/Degraded (never Unhealthy) so an audit backlog can never take
+// /health/ready down.
+health.AddCheck<Caisson.Api.HealthChecks.AuditOutboxHealthCheck>("audit-outbox", tags: new[] { "ready" });
 
 // Finding #19: HSTS (non-Development) with a one-year max-age.
 builder.Services.AddHsts(options =>

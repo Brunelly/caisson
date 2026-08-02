@@ -1,6 +1,8 @@
+using Caisson.Domain.Auditing;
 using Caisson.Domain.Git;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Ingestion.Git.GitHub;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -10,10 +12,11 @@ using Xunit;
 namespace Caisson.Infrastructure.Tests;
 
 /// <summary>
-/// Postgres-backed tests for <see cref="PrStatusTransitionService"/> (story #173, Tasks #212/#214): each
-/// meaningful transition writes an append-only audit row (state and/or checks) in the same transaction as the
-/// status upsert, with actor=system/correlationId/previous+new and no secrets, and publishes exactly one
-/// fail-open status-changed event.
+/// Postgres-backed tests for <see cref="PrStatusTransitionService"/> (story #173, Tasks #212/#214; story
+/// #308, ADR 0064): each meaningful transition stages a Tier 1 (mandatory-durable) audit outbox row (state
+/// and/or checks) in the SAME transaction as the status upsert, with actor=system/correlationId/
+/// previous+new and no secrets, and publishes exactly one fail-open status-changed event. Dispatch to
+/// <c>topology_audit_event</c> itself is exercised separately by the outbox dispatcher's own tests.
 /// </summary>
 public sealed class PrStatusTransitionServiceTests : IClassFixture<PostgresFixture>
 {
@@ -40,9 +43,10 @@ public sealed class PrStatusTransitionServiceTests : IClassFixture<PostgresFixtu
         }
 
         await using var verify = _fixture.CreateContext();
-        var audits = await verify.AuditEvents.Where(a => a.CorrelationId == correlationId).ToListAsync();
+        var audits = await verify.AuditOutboxMessages.Where(a => a.CorrelationId == correlationId).ToListAsync();
         audits.Should().ContainSingle();
         var audit = audits[0];
+        audit.Status.Should().Be(AuditOutboxStatus.Pending);
         audit.Action.Should().Be(GitPrStatusAuditActions.StatusChanged);
         audit.ActorType.Should().Be(Caisson.Domain.Enums.ActorType.System);
         audit.ActorId.Should().Be("system");
@@ -74,7 +78,7 @@ public sealed class PrStatusTransitionServiceTests : IClassFixture<PostgresFixtu
         }
 
         await using var verify = _fixture.CreateContext();
-        var audits = await verify.AuditEvents.Where(a => a.CorrelationId == correlationId).ToListAsync();
+        var audits = await verify.AuditOutboxMessages.Where(a => a.CorrelationId == correlationId).ToListAsync();
         audits.Should().HaveCount(2);
         audits.Select(a => a.Action).Should().BeEquivalentTo(new[]
         {
@@ -83,7 +87,9 @@ public sealed class PrStatusTransitionServiceTests : IClassFixture<PostgresFixtu
     }
 
     private PrStatusTransitionService NewService(RecordingTopologyEventPublisher publisher)
-        => new(publisher, new FakeSequencer(), TimeProvider.System, NullLogger<PrStatusTransitionService>.Instance);
+        => new(
+            new MandatoryAuditOutbox(), publisher, new FakeSequencer(), TimeProvider.System,
+            NullLogger<PrStatusTransitionService>.Instance);
 
     private async Task<(Guid RackId, Guid LinkId)> SeedAsync()
     {

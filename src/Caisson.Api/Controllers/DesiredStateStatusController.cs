@@ -23,9 +23,9 @@ public sealed class DesiredStateStatusController : DesiredStateControllerBase
     private const string NeverRun = "NeverRun";
 
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public DesiredStateStatusController(CaissonDbContext context, IAuditEventWriter audit)
+    public DesiredStateStatusController(CaissonDbContext context, IBestEffortAuditEventWriter audit)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

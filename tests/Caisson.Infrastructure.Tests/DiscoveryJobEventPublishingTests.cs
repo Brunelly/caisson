@@ -3,6 +3,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
 using Caisson.Orchestration.Options;
@@ -89,6 +90,7 @@ public sealed class DiscoveryJobEventPublishingTests : IClassFixture<PostgresFix
             TimeProvider.System,
             provider.GetRequiredService<ITopologyEventPublisher>(),
             provider.GetRequiredService<ITopologyEventSequencer>(),
+            provider.GetRequiredService<IMandatoryAuditOutbox>(),
             provider.GetRequiredService<IOptions<DiscoveryOrchestrationOptions>>(),
             NullLogger<DiscoveryJobRunner>.Instance);
 
@@ -143,8 +145,10 @@ public sealed class DiscoveryJobEventPublishingTests : IClassFixture<PostgresFix
             HeartbeatStalenessSeconds = 5,
             RetryBaseDelayMs = 0,
         }));
+        services.AddSingleton<IMandatoryAuditOutbox, MandatoryAuditOutbox>();
         services.AddScoped<IDiscoveryJobService, DiscoveryJobService>();
-        services.AddScoped<IDiscoveryOrchestrator>(_ => new FakeOrchestrator(outcome));
+        services.AddScoped<IDiscoveryJobStore, CaissonDiscoveryJobStore>();
+        services.AddScoped<IDiscoveryOrchestrator>(sp => new FakeOrchestrator(outcome, sp.GetRequiredService<IDiscoveryJobStore>()));
         return services.BuildServiceProvider();
     }
 
@@ -170,10 +174,15 @@ public sealed class DiscoveryJobEventPublishingTests : IClassFixture<PostgresFix
         public const string FailureCode = "SWITCH_DISCOVERY_FAILED";
 
         private readonly TerminalOutcome _outcome;
+        private readonly IDiscoveryJobStore _store;
 
-        public FakeOrchestrator(TerminalOutcome outcome) => _outcome = outcome;
+        public FakeOrchestrator(TerminalOutcome outcome, IDiscoveryJobStore store)
+        {
+            _outcome = outcome;
+            _store = store;
+        }
 
-        public Task RunAsync(DiscoveryJob job, CancellationToken cancellationToken)
+        public async Task RunAsync(DiscoveryJob job, CancellationToken cancellationToken)
         {
             var now = DateTime.UtcNow;
             if (_outcome == TerminalOutcome.Fail)
@@ -185,7 +194,10 @@ public sealed class DiscoveryJobEventPublishingTests : IClassFixture<PostgresFix
                 job.Succeed(now);
             }
 
-            return Task.CompletedTask;
+            // Story #308, ADR 0064: a real orchestrator persists the terminal transition (and its Tier 1
+            // audit event) itself via SaveTerminalAsync — this fake mirrors that so the runner's
+            // FinalizeAsync (which no longer performs any job save) sees the transition actually committed.
+            await _store.SaveTerminalAsync(job, cancellationToken);
         }
     }
 }

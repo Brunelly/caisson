@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text.Json;
 using Caisson.Api.Auditing;
 using Caisson.Api.Contracts;
@@ -6,6 +5,7 @@ using Caisson.Api.Middleware;
 using Caisson.Api.Security;
 using Caisson.Domain.NetworkConfig;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,15 +29,15 @@ namespace Caisson.Api.Controllers;
 public sealed class NetworkIntentController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ICorrelationContext _correlation;
     private readonly TimeProvider _time;
 
     public NetworkIntentController(
-        CaissonDbContext context, IAuditEventWriter audit, ICorrelationContext correlation, TimeProvider time)
+        CaissonDbContext context, IMandatoryAuditOutbox auditOutbox, ICorrelationContext correlation, TimeProvider time)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
         _time = time ?? throw new ArgumentNullException(nameof(time));
     }
@@ -79,8 +79,10 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
     /// GET/Validate, so a caller without rack access gets 404 rather than paying for validation of a rack
     /// it can't see), then validates (400 on any field error, DB untouched), then upserts under an
     /// xmin-based optimistic-concurrency check (409 with an actionable "reload and reapply" detail on a
-    /// stale <c>If-Match</c> token), then writes a bounded audit event (rackId, actor, timestamp,
-    /// VLAN/port-intent counts, correlationId — never the full payload, NFR3).
+    /// stale <c>If-Match</c> token). A Tier 1 (mandatory-durable) <c>network-intent.saved</c> audit event
+    /// (rackId, actor, timestamp, VLAN/port-intent counts, correlationId — never the full payload, NFR3)
+    /// is staged onto the SAME transaction as the upsert (story #308, ADR 0064): a stale-xmin conflict
+    /// leaves neither the intent nor the audit row.
     /// </summary>
     [HttpPut]
     [Authorize(Policy = AuthorizationPolicies.NetworkConfigAuthor)]
@@ -114,7 +116,7 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
 
         var entity = await _context.RackNetworkIntents.FirstOrDefaultAsync(x => x.RackId == rackId, cancellationToken);
         var nowUtc = _time.GetUtcNow().UtcDateTime;
-        var actorId = ResolveActorId();
+        var (actorType, actorId) = AuditActorResolver.Resolve(User);
         var intentJson = NetworkIntentContractMappers.ToIntentJson(vlanCatalogue, portIntents);
 
         if (entity is null)
@@ -138,6 +140,18 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
             entity.Update(intentJson, actorId, nowUtc);
         }
 
+        var detailsJson = JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["permission"] = AuthorizationPolicies.NetworkConfigAuthor,
+            ["correlationId"] = _correlation.CorrelationId,
+            ["vlanCount"] = vlanCatalogue.Count,
+            ["portIntentCount"] = portIntents.Count,
+        });
+        var envelope = new AuditEventEnvelope(
+            actorType, actorId, "network-intent.saved", "rack-network-intent", entity.Id.ToString(),
+            _correlation.CorrelationId, "success", RackId: rackId, DetailsJson: detailsJson);
+        _auditOutbox.Add(_context, envelope, nowUtc);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -146,17 +160,6 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
         {
             return StaleIntentConflict(rackId);
         }
-
-        var detailsJson = JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["permission"] = AuthorizationPolicies.NetworkConfigAuthor,
-            ["correlationId"] = _correlation.CorrelationId,
-            ["vlanCount"] = vlanCatalogue.Count,
-            ["portIntentCount"] = portIntents.Count,
-        });
-        await _audit.WriteActionAsync(
-            User, rackId, "network-intent.saved", "rack-network-intent", entity.Id.ToString(),
-            "success", cancellationToken, detailsJson);
 
         SetIntentETag(entity);
         return Ok(NetworkIntentContractMappers.ToDto(entity));
@@ -232,13 +235,6 @@ public sealed class NetworkIntentController : DiscoveryControllerBase
 
     private uint GetXmin(RackNetworkIntent entity)
         => (uint)_context.Entry(entity).Property("xmin").CurrentValue!;
-
-    private string ResolveActorId()
-        => User.FindFirst("oid")?.Value
-            ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value
-            ?? User.Identity?.Name
-            ?? "unknown";
 
     private ObjectResult StaleIntentConflict(Guid rackId)
     {

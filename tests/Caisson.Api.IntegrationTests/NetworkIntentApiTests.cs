@@ -192,7 +192,7 @@ public sealed class NetworkIntentApiTests
         var response = await PutAsync(rackId, "NetworkConfigAuthor", ValidRequest(), ifMatch: null);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // ChannelAuditEventWriter is off-request-path (finding #5): the row appears once the background
+        // BestEffortAuditEventWriter is off-request-path (finding #5): the row appears once the background
         // writer's next flush (<=500ms) runs, not synchronously on response — mirrors DriftApplyApiTests.
         var audit = await PollForAuditEventAsync("network-intent.saved", rackId);
         audit.DetailsJson.Should().Contain("NetworkConfigAuthor").And.Contain("vlanCount").And.Contain("correlationId");

@@ -155,7 +155,7 @@ public sealed class DesiredStatePrApiTests
         link.Should().NotBeNull();
         link!.PullRequestUrl.Should().Be(body.PullRequestUrl);
 
-        var audit = await PollForAuditEventAsync("git.pr.created", Preflight.RackId);
+        var audit = await PollForAuditEventAsync("git.pr.created", Preflight.RackId, body.CandidateFingerprint!);
         audit.DetailsJson.Should().Contain(body.CandidateFingerprint!).And.Contain("prUrl");
         audit.DetailsJson.Should().NotContain("fake-pat-token");
         audit.DetailsJson.Should().NotContain("vlanCatalogue");
@@ -195,7 +195,7 @@ public sealed class DesiredStatePrApiTests
         _factory.Credentials.Calls.Should().Be(credentialCallsAfterCreate);
 
         (await CountLinksAsync(Preflight.RackId, first.CandidateFingerprint!)).Should().Be(1);
-        await PollForAuditEventAsync("git.pr.reused", Preflight.RackId);
+        await PollForAuditEventAsync("git.pr.reused", Preflight.RackId, first.CandidateFingerprint!);
     }
 
     [SkippableFact]
@@ -316,7 +316,7 @@ public sealed class DesiredStatePrApiTests
             _factory.GitHub.CreateBranchCalls.Should().Be(0);
             _factory.GitHub.OpenPullRequestCalls.Should().Be(0);
 
-            var audit = await PollForAuditEventAsync("git.pr.refused_pr_only", Preflight.RackId);
+            var audit = await PollForAuditEventAsync("git.pr.refused_pr_only", Preflight.RackId, fingerprint);
             audit.DetailsJson.Should().Contain(GitPrErrorCodes.PrOnlyGuardrailViolation);
         }
         finally
@@ -339,6 +339,7 @@ public sealed class DesiredStatePrApiTests
         try
         {
             var candidate = ValidRequest("ghfail-" + Suffix());
+            var fingerprint = ComputeFingerprint(candidate);
             var runId = await ValidateForRunIdAsync(Preflight.RackId, candidate);
             var response = await PostAsync(Preflight.RackId, "NetworkConfigAuthor",
                 new CreatePrRequest(runId, Array.Empty<string>(), candidate.VlanCatalogue!, candidate.PortIntents!));
@@ -346,7 +347,7 @@ public sealed class DesiredStatePrApiTests
             response.StatusCode.Should().Be(HttpStatusCode.BadGateway);
             (await ErrorCodeAsync(response)).Should().Be(GitPrErrorCodes.GitHubApiFailed);
 
-            var audit = await PollForAuditEventAsync("git.pr.failed", Preflight.RackId);
+            var audit = await PollForAuditEventAsync("git.pr.failed", Preflight.RackId, fingerprint);
             audit.DetailsJson.Should().Contain(GitPrErrorCodes.GitHubApiFailed);
             audit.DetailsJson.Should().NotContain("fake-pat-token");
             audit.DetailsJson.Should().NotContain("vlanCatalogue");
@@ -506,16 +507,27 @@ public sealed class DesiredStatePrApiTests
         await context.SaveChangesAsync();
     }
 
-    private async Task<Caisson.Domain.Topology.TopologyAuditEvent> PollForAuditEventAsync(string action, Guid rackId)
+    /// <summary>
+    /// Polls for the Tier 1 outbox row's dispatched <c>topology_audit_event</c> (story #308, ADR 0064:
+    /// dispatch is now asynchronous, at-least-once). <paramref name="detailsFragment"/> (e.g. the
+    /// candidate fingerprint) is REQUIRED to disambiguate: <see cref="Preflight.RackId"/> is a single
+    /// shared rack reused by every test in this collection, so "newest by timestamp" alone is not a
+    /// reliable match once dispatch is batched/asynchronous across many concurrently-queued events.
+    /// </summary>
+    private async Task<Caisson.Domain.Topology.TopologyAuditEvent> PollForAuditEventAsync(
+        string action, Guid rackId, string detailsFragment)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
             await using var context = _factory.CreateDbContext();
-            var audit = await context.AuditEvents
-                .Where(a => a.Action == action && a.RackId == rackId)
-                .OrderByDescending(a => a.OccurredAtUtc)
-                .FirstOrDefaultAsync();
+            // Client-side Contains: DetailsJson is a jsonb column, which Postgres has no LIKE/~~ operator
+            // for — EF would otherwise try (and fail) to translate string.Contains to a server-side LIKE.
+            var audit = (await context.AuditEvents
+                    .Where(a => a.Action == action && a.RackId == rackId)
+                    .OrderByDescending(a => a.OccurredAtUtc)
+                    .ToListAsync())
+                .FirstOrDefault(a => a.DetailsJson!.Contains(detailsFragment, StringComparison.Ordinal));
             if (audit is not null)
             {
                 return audit;
@@ -524,7 +536,8 @@ public sealed class DesiredStatePrApiTests
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         }
 
-        throw new TimeoutException($"No audit event action={action} rackId={rackId} appeared within the test budget.");
+        throw new TimeoutException(
+            $"No audit event action={action} rackId={rackId} containing '{detailsFragment}' appeared within the test budget.");
     }
 
     private static string Path(Guid rackId) => $"/api/racks/{rackId}/desired-state/prs";

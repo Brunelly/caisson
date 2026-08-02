@@ -81,6 +81,7 @@ internal static class SeedData
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
                 new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+                new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             first = await service.IngestAsync(Request(rackId, Observed("node-1"), Correlation(), V1At));
         }
@@ -90,6 +91,7 @@ internal static class SeedData
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
                 new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+                new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             second = await service.IngestAsync(Request(rackId, Observed("node-1-renamed"), Correlation(), V2At));
         }
@@ -125,6 +127,7 @@ internal static class SeedData
             var service = new TopologySnapshotIngestionService(
                 context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
                 new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+                new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
                 NullLogger<TopologySnapshotIngestionService>.Instance);
             await service.IngestAsync(
                 Request(rackId, PreflightObserved(), EmptyCorrelation(), V1At));
@@ -200,6 +203,7 @@ internal static class SeedData
         var service = new Caisson.Infrastructure.Persistence.Drift.DriftComputationService(
             computeContext, new GuidTopologyIdGenerator(), TimeProvider.System,
             Microsoft.Extensions.Options.Options.Create(new Caisson.Drift.DriftComputationOptions()),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<Caisson.Infrastructure.Persistence.Drift.DriftComputationService>.Instance);
         await service.ComputeAndPersistAsync(rackId, Guid.NewGuid());
 

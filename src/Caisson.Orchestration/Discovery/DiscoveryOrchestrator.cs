@@ -122,7 +122,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
             await PersistAsync(job, input, correlation, status, startedAtUtc, cancellationToken);
 
             job.Succeed(Now);
-            await _store.SaveAsync(cancellationToken);
+            await _store.SaveTerminalAsync(job, cancellationToken);
             _logger.LogInformation(
                 "Discovery job succeeded jobId={JobId} rackId={RackId} correlationId={CorrelationId} " +
                 "snapshotId={SnapshotId} status={Status}",
@@ -346,7 +346,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
         step.Fail(Now, errorCode, message);
         SkipRemaining(job);
         job.Fail(Now, errorCode, message);
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
         return new JobAbortedException(errorCode);
     }
 
@@ -354,7 +354,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
     {
         SkipRemaining(job);
         job.Fail(Now, errorCode, message);
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
         _logger.LogWarning(
             "Discovery job failed before execution jobId={JobId} rackId={RackId} correlationId={CorrelationId} errorCode={ErrorCode}",
             job.Id, job.RackId, job.CorrelationId, errorCode);
@@ -386,7 +386,7 @@ public sealed class DiscoveryOrchestrator : IDiscoveryOrchestrator
         }
 
         job.Cancel(Now);
-        await _store.SaveAsync(cancellationToken);
+        await _store.SaveTerminalAsync(job, cancellationToken);
         _logger.LogInformation(
             "Discovery job canceled jobId={JobId} rackId={RackId} correlationId={CorrelationId}",
             job.Id, job.RackId, job.CorrelationId);

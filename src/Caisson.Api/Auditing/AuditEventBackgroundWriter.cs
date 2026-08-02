@@ -8,8 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace Caisson.Api.Auditing;
 
 /// <summary>
-/// Drains <see cref="AuditWriteRequest"/>s queued by <see cref="ChannelAuditEventWriter"/> and batches
-/// them into the append-only audit table (finding #5), off the request path. Flushes every
+/// Drains <see cref="AuditWriteRequest"/>s queued by <see cref="BestEffortAuditEventWriter"/> (Tier 3,
+/// story #308, ADR 0064) and batches them into the append-only audit table (finding #5), off the request
+/// path. Flushes every
 /// <see cref="FlushInterval"/> (or once <see cref="MaxBatchSize"/> is reached), coalescing repeated
 /// identical reads from the same principal+correlation id within one flush window, and drains any
 /// remaining queued events on graceful shutdown so a host restart never silently loses them.
@@ -105,7 +106,7 @@ public sealed class AuditEventBackgroundWriter : BackgroundService
         {
             // The audit trail must never be able to bring down the writer loop or (transitively) the
             // request path that enqueued it — log and move on to the next batch.
-            _logger.LogError(ex, "Failed to flush {Count} audit event(s); they are lost (eventually-consistent audit).", batch.Count);
+            _logger.LogError(ex, "Failed to flush {Count} Tier3BestEffort audit event(s); they are lost (eventually-consistent audit).", batch.Count);
         }
     }
 

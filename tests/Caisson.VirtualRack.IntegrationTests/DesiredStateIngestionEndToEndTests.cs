@@ -90,8 +90,9 @@ public sealed class DesiredStateIngestionEndToEndTests : IAsyncLifetime
         tree.Version.SchemaVersion.Should().Be(DesiredStateSchema.CurrentSchemaVersion);
         tree.Version.IngestedBy.Should().NotBeNullOrWhiteSpace();
 
-        // Story #63, AC5: the ingestion audit event is persisted alongside the version.
-        var audit = await context.AuditEvents.SingleAsync(a => a.TargetId == tree.Version.Id.ToString());
+        // Story #63, AC5; story #308 ADR 0064: the Tier 1 audit outbox row is staged alongside the version
+        // in the same transaction (dispatch to topology_audit_event is exercised by the dispatcher's own tests).
+        var audit = await context.AuditOutboxMessages.SingleAsync(a => a.TargetId == tree.Version.Id.ToString());
         audit.Action.Should().Be("desired-state.revision.ingested");
     }
 
@@ -149,6 +150,7 @@ public sealed class DesiredStateIngestionEndToEndTests : IAsyncLifetime
         var service = new DesiredStateIngestionService(
             context, git, new GuidTopologyIdGenerator(), TimeProvider.System, options, new GitIngestionMetrics(),
             new Caisson.Infrastructure.Persistence.Drift.NoOpDriftRecomputeSignal(),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DesiredStateIngestionService>.Instance);
 
         return await service.RunAsync(IngestionTriggerType.Poll, webhookDeliveryId: null, Guid.NewGuid(), default);

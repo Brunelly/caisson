@@ -2,6 +2,7 @@ using Caisson.Domain.Drift.Apply;
 using Caisson.Domain.Enums;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Orchestration.DriftApply;
 using Caisson.Orchestration.Options;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,7 @@ public sealed class DriftApplyJobRunner : BackgroundService
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
     private readonly DriftApplyMetrics _metrics;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly IOptions<DriftApplyOrchestrationOptions> _options;
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private readonly ILogger<DriftApplyJobRunner> _logger;
@@ -39,6 +41,7 @@ public sealed class DriftApplyJobRunner : BackgroundService
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
         DriftApplyMetrics metrics,
+        IMandatoryAuditOutbox auditOutbox,
         IOptions<DriftApplyOrchestrationOptions> options,
         ILogger<DriftApplyJobRunner> logger)
     {
@@ -48,6 +51,7 @@ public sealed class DriftApplyJobRunner : BackgroundService
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -130,37 +134,54 @@ public sealed class DriftApplyJobRunner : BackgroundService
         var stale = now.AddSeconds(-_options.Value.HeartbeatStalenessSeconds);
         var maxAttempts = _options.Value.MaxJobAttempts;
 
-        await FailExhaustedStaleJobsAsync(context, now, stale, maxAttempts, cancellationToken);
+        await FailExhaustedStaleJobsAsync(context, _auditOutbox, now, stale, maxAttempts, cancellationToken);
         return await ClaimNextAsync(context, now, stale, maxAttempts, _instanceId, cancellationToken);
     }
 
     /// <summary>
     /// Fails any non-terminal job whose heartbeat is stale AND whose <c>attempt_count</c> has already
-    /// reached <paramref name="maxAttempts"/>. Internal so concurrency tests can exercise it directly.
+    /// reached <paramref name="maxAttempts"/>. Rewritten (story #308, ADR 0064) from a bulk raw-SQL
+    /// <c>UPDATE</c> into a bounded, transaction-scoped reconciliation — see
+    /// <c>DiscoveryJobRunner.FailExhaustedStaleJobsAsync</c>'s remarks for the full rationale (claim via
+    /// <c>FOR UPDATE SKIP LOCKED</c>, domain <c>Fail</c> transition, deterministic outbox id, one
+    /// transaction). Internal so concurrency tests can exercise it directly.
     /// </summary>
-    internal static Task FailExhaustedStaleJobsAsync(
-        CaissonDbContext context, DateTime now, DateTime stale, int maxAttempts, CancellationToken cancellationToken)
+    internal static async Task FailExhaustedStaleJobsAsync(
+        CaissonDbContext context, IMandatoryAuditOutbox auditOutbox, DateTime now, DateTime stale, int maxAttempts,
+        CancellationToken cancellationToken)
     {
-        const string sql = @"
-UPDATE drift_apply_job
-SET status = 'Failed',
-    finished_at_utc = {0},
-    last_heartbeat_at_utc = {0},
-    error_category = 'Infrastructure',
-    error_code = {2},
-    error_message = {3}
+        const int batchSize = 100;
+        const string selectSql = @"
+SELECT id FROM drift_apply_job
 WHERE status IN ('Pending','Claimed','Revalidating','Executing')
-  AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {1})
-  AND attempt_count >= {4}";
+  AND (last_heartbeat_at_utc IS NULL OR last_heartbeat_at_utc < {0})
+  AND attempt_count >= {1}
+ORDER BY requested_at_utc
+FOR UPDATE SKIP LOCKED
+LIMIT {2}";
 
-        object[] parameters =
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var ids = await context.Database
+            .SqlQueryRaw<Guid>(selectSql, stale, maxAttempts, batchSize)
+            .ToListAsync(cancellationToken);
+        if (ids.Count == 0)
         {
-            now, stale,
-            DriftApplyErrorCodes.MaxAttemptsExceeded,
-            DriftApplyErrorCodes.MessageFor(DriftApplyErrorCodes.MaxAttemptsExceeded),
-            maxAttempts,
-        };
-        return context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return;
+        }
+
+        var jobs = await context.DriftApplyJobs.Where(j => ids.Contains(j.Id)).ToListAsync(cancellationToken);
+        foreach (var job in jobs)
+        {
+            job.Fail(
+                now, DriftApplyErrorCategories.Infrastructure, DriftApplyErrorCodes.MaxAttemptsExceeded,
+                DriftApplyErrorCodes.MessageFor(DriftApplyErrorCodes.MaxAttemptsExceeded));
+            CaissonDriftApplyJobStore.StageTerminalAudit(context, auditOutbox, job, now);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     /// <summary>
@@ -205,9 +226,10 @@ RETURNING id AS ""Value""";
             return;
         }
 
-        context.AuditEvents.Add(BuildTerminalAuditEvent(job, DateTimeUtcNow));
-        await context.SaveChangesAsync(cancellationToken);
-
+        // The Tier 1 (mandatory-durable) audit event was already staged and committed by the orchestrator's
+        // call to IDriftApplyJobStore.SaveTerminalAsync, in the SAME transaction as the terminal status
+        // itself (story #308, ADR 0064) — this method only handles logging, metrics, and the fail-open
+        // realtime publish that follow.
         _logger.LogInformation(
             "Drift-apply job finalized jobId={JobId} rackId={RackId} status={Status} correlationId={CorrelationId}",
             job.Id, job.RackId, job.Status, job.CorrelationId);
@@ -218,44 +240,6 @@ RETURNING id AS ""Value""";
 
         await PublishStatusAsync(job, previousStatus: null, currentStep: null, reasonCode: reasonCode, cancellationToken);
     }
-
-    private static Caisson.Domain.Topology.TopologyAuditEvent BuildTerminalAuditEvent(DriftApplyJob job, DateTime nowUtc)
-        => new(
-            Guid.NewGuid(),
-            nowUtc,
-            job.ActorType,
-            job.RequestedBy,
-            action: AuditAction(job.Status),
-            targetType: "drift-apply-job",
-            correlationId: job.CorrelationId,
-            result: job.Status.ToString(),
-            rackId: job.RackId,
-            snapshotId: null,
-            targetId: job.Id.ToString(),
-            detailsJson: BuildTerminalAuditDetails(job));
-
-    /// <summary>
-    /// Mirrors <c>Caisson.Api.Security.CaissonRoles.DriftApply</c> / <c>AuthorizationPolicies.DriftApply</c>
-    /// (both "DriftApply"). Duplicated as a literal rather than referenced because <c>Caisson.Orchestration</c>
-    /// must not take a project reference on <c>Caisson.Api</c> (layering rule, ADR 0013).
-    /// </summary>
-    private const string DriftApplyPermissionName = "DriftApply";
-
-    private static string? BuildTerminalAuditDetails(DriftApplyJob job)
-        => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["permission"] = DriftApplyPermissionName,
-            ["driftItemId"] = job.DriftItemId,
-            ["switchDeviceKey"] = job.SwitchDeviceKey,
-            ["portName"] = job.PortName,
-            ["desiredVlanId"] = job.DesiredVlanId,
-            ["deviceReasonCode"] = job.DeviceReasonCode,
-            ["deviceConfirmed"] = job.DeviceConfirmed,
-            ["beforeState"] = job.BeforeStateJson,
-            ["afterState"] = job.AfterStateJson,
-            ["errorCategory"] = job.ErrorCategory,
-            ["errorCode"] = job.ErrorCode,
-        });
 
     private Task PublishStatusAsync(
         DriftApplyJob job, string? previousStatus, string? currentStep, string? reasonCode, CancellationToken cancellationToken)
@@ -283,13 +267,4 @@ RETURNING id AS ""Value""";
     }
 
     private DateTime DateTimeUtcNow => _time.GetUtcNow().UtcDateTime;
-
-    private static string AuditAction(DriftApplyJobStatus status) => status switch
-    {
-        DriftApplyJobStatus.Completed => "drift.apply.job.completed",
-        DriftApplyJobStatus.Failed => "drift.apply.job.failed",
-        DriftApplyJobStatus.StaleDrift => "drift.apply.job.stale-drift",
-        DriftApplyJobStatus.Canceled => "drift.apply.job.canceled",
-        _ => "drift.apply.job.completed",
-    };
 }

@@ -1,9 +1,11 @@
 using System.Globalization;
+using System.Text.Json;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Drift.Apply;
 using Caisson.Domain.Enums;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Shaping;
 using Caisson.Orchestration.Git;
@@ -30,6 +32,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
     private readonly ITopologyEventPublisher _events;
     private readonly ITopologyEventSequencer _sequencer;
     private readonly IPrMergeGate _prMergeGate;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ILogger<DriftApplyJobService> _logger;
 
     public DriftApplyJobService(
@@ -40,6 +43,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         ITopologyEventPublisher events,
         ITopologyEventSequencer sequencer,
         IPrMergeGate prMergeGate,
+        IMandatoryAuditOutbox auditOutbox,
         ILogger<DriftApplyJobService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -49,6 +53,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _sequencer = sequencer ?? throw new ArgumentNullException(nameof(sequencer));
         _prMergeGate = prMergeGate ?? throw new ArgumentNullException(nameof(prMergeGate));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -74,6 +79,21 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         job.SeedSteps(_ids.NewId);
         _context.DriftApplyJobs.Add(job);
 
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as the job
+        // insert below. A conflict on the active-job constraint (job never actually created — see catch
+        // below) must leave no orphan audit row, so this is added AFTER the job but BEFORE SaveChangesAsync
+        // succeeds; the catch block's active-job reuse path is NOT a mutation and emits no Tier 1 event.
+        var creationDetails = JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["permission"] = "DriftApply",
+            ["correlationId"] = correlationId,
+            ["driftItemId"] = item.DriftItemId,
+        });
+        var envelope = new AuditEventEnvelope(
+            actorType, requestedBy, "drift.apply.job.created", "drift-apply-job", job.Id.ToString(),
+            correlationId, RequestApplyDisposition.Created.ToString(), RackId: item.RackId, DetailsJson: creationDetails);
+        var auditOutboxId = _auditOutbox.Add(_context, envelope, now);
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -83,6 +103,7 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
             && string.Equals(pg.ConstraintName, ActiveJobConstraint, StringComparison.Ordinal))
         {
             Detach(job);
+            DetachAuditOutboxMessage(auditOutboxId);
 
             var activeId = await FindActiveJobIdAsync(item.RackId, item.DriftItemId, cancellationToken);
             if (activeId is { } active)
@@ -161,6 +182,22 @@ public sealed class DriftApplyJobService : IDriftApplyJobService
         }
 
         _context.Entry(job).State = EntityState.Detached;
+    }
+
+    /// <summary>
+    /// Detaches the staged-but-never-committed Tier 1 outbox row on the active-job-reuse path: the failed
+    /// <c>SaveChangesAsync</c> rolled back the whole transaction, but the entity stays tracked as
+    /// <c>Added</c> until detached — left tracked, a later unrelated save on this context could otherwise
+    /// resurrect an audit row claiming a job creation that never happened.
+    /// </summary>
+    private void DetachAuditOutboxMessage(Guid auditOutboxId)
+    {
+        var entry = _context.ChangeTracker.Entries<Caisson.Domain.Auditing.AuditOutboxMessage>()
+            .FirstOrDefault(e => e.Entity.Id == auditOutboxId);
+        if (entry is not null)
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     private static int? ParseExpectedBeforeVlan(DriftItem item)

@@ -100,7 +100,7 @@ public sealed class DriftApplyApiTests : IAsyncLifetime
         job.RackId.Should().Be(rackId);
         job.DriftItemId.Should().Be(itemId);
 
-        // ChannelAuditEventWriter is off-request-path (finding #5) — the row appears once
+        // BestEffortAuditEventWriter is off-request-path (finding #5) — the row appears once
         // AuditEventBackgroundWriter's next flush (<=500ms) runs, not synchronously on response.
         var audit = await PollForAuditEventAsync("drift.apply.job.created", body.JobId.ToString());
         audit.DetailsJson.Should().Contain("DriftApply").And.Contain("correlationId");
@@ -310,7 +310,7 @@ public sealed class DriftApplyApiTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Polls for an audit event: writes may land via <c>ChannelAuditEventWriter</c>'s off-request-path
+    /// Polls for an audit event: writes may land via <c>BestEffortAuditEventWriter</c>'s off-request-path
     /// flush (finding #5, <c>&lt;=500ms</c>) or a runner's own direct <c>SaveChangesAsync</c> — neither is
     /// guaranteed visible synchronously right after the HTTP response returns.
     /// </summary>
@@ -416,7 +416,8 @@ public sealed class DriftApplyApiTests : IAsyncLifetime
         await using var context = _postgres.CreateContext();
         var service = new TopologySnapshotIngestionService(
             context, new GuidTopologyIdGenerator(), new NoOpTopologyEventPublisher(),
-            new NoOpDriftRecomputeSignal(), NullLogger<TopologySnapshotIngestionService>.Instance);
+            new NoOpDriftRecomputeSignal(), new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
+            NullLogger<TopologySnapshotIngestionService>.Instance);
         await service.IngestAsync(request);
     }
 
@@ -482,6 +483,7 @@ public sealed class DriftApplyApiTests : IAsyncLifetime
         var service = new DriftComputationService(
             context, new GuidTopologyIdGenerator(), TimeProvider.System,
             Microsoft.Extensions.Options.Options.Create(new DriftComputationOptions()),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DriftComputationService>.Instance);
         await service.ComputeAndPersistAsync(rackId, Guid.NewGuid());
     }

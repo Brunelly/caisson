@@ -27,9 +27,9 @@ public sealed class DesiredStateRevisionsController : DesiredStateControllerBase
     private const string RevisionsEndpoint = "desired-state-revisions";
 
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public DesiredStateRevisionsController(CaissonDbContext context, IAuditEventWriter audit)
+    public DesiredStateRevisionsController(CaissonDbContext context, IBestEffortAuditEventWriter audit)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

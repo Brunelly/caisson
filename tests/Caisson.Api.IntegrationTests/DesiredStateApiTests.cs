@@ -265,7 +265,7 @@ public sealed class DesiredStateApiTests
         (await SendAsAsync(HttpMethod.Get, $"/api/desired-state/racks/{rackSlug}/revisions/{versionId}", "ReadOnly"))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Audit is written off the request path (ChannelAuditEventWriter/AuditEventBackgroundWriter,
+        // Audit is written off the request path (BestEffortAuditEventWriter/AuditEventBackgroundWriter,
         // finding #5) and is eventually — not synchronously — consistent, so poll rather than read once.
         var audit = await PollForAuditEventAsync("desired-state.revision.read", versionId.ToString());
         audit.Should().NotBeNull("every desired-state revision read must write an audit event (AC5)");

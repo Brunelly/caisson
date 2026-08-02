@@ -114,7 +114,7 @@ public sealed class DriftApplyEndToEndTests : IAsyncLifetime
             .Should().NotContain(i => i.GetProperty("driftType").GetString() == "AccessVlanMismatch",
                 "the applied port must no longer drift once the next observed snapshot reflects the corrected VLAN");
 
-        // AUDIT COMPLETENESS: ChannelAuditEventWriter is off-request-path (<=500ms background flush), so
+        // AUDIT COMPLETENESS: BestEffortAuditEventWriter is off-request-path (<=500ms background flush), so
         // both the creation and terminal rows are polled rather than asserted synchronously.
         var created = await PollForAuditEventAsync("drift.apply.job.created", jobId.ToString());
         created.RackId.Should().Be(rackId);
@@ -249,6 +249,7 @@ public sealed class DriftApplyEndToEndTests : IAsyncLifetime
         var service = new DesiredStateIngestionService(
             context, git, new GuidTopologyIdGenerator(), TimeProvider.System, options, new GitIngestionMetrics(),
             new NoOpDriftRecomputeSignal(),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DesiredStateIngestionService>.Instance);
 
         return await service.RunAsync(IngestionTriggerType.Poll, webhookDeliveryId: null, Guid.NewGuid(), default);

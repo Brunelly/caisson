@@ -32,7 +32,7 @@ namespace Caisson.Api.Controllers;
 public sealed class DesiredStateRoundTripController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly DesiredStateRoundTripMetrics _metrics;
     private readonly TimeProvider _time;
@@ -40,7 +40,7 @@ public sealed class DesiredStateRoundTripController : DiscoveryControllerBase
 
     public DesiredStateRoundTripController(
         CaissonDbContext context,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation,
         DesiredStateRoundTripMetrics metrics,
         TimeProvider time,

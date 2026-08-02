@@ -4,8 +4,8 @@ using System.Text;
 using System.Text.Json;
 using Caisson.Domain.DesiredState;
 using Caisson.Domain.Enums;
-using Caisson.Domain.Topology;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
@@ -49,6 +49,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
     private readonly IOptions<GitIngestionOptions> _options;
     private readonly GitIngestionMetrics _metrics;
     private readonly IDriftRecomputeSignal _driftSignal;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ILogger<DesiredStateIngestionService> _logger;
 
     public DesiredStateIngestionService(
@@ -59,6 +60,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         IOptions<GitIngestionOptions> options,
         GitIngestionMetrics metrics,
         IDriftRecomputeSignal driftSignal,
+        IMandatoryAuditOutbox auditOutbox,
         ILogger<DesiredStateIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -68,6 +70,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _driftSignal = driftSignal ?? throw new ArgumentNullException(nameof(driftSignal));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -310,25 +313,20 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
             commit.Author, commit.AuthorEmail, commit.CommitTimeUtc, candidateFingerprint);
         var materialized = DesiredStateMaterializer.Materialize(version.Id, document, _ids.NewId);
 
-        var audit = new TopologyAuditEvent(
-            _ids.NewId(),
-            createdAtUtc,
-            ActorType.System,
-            IngestingServicePrincipal,
-            action: "desired-state.revision.ingested",
-            targetType: "desired-state-version",
-            correlationId: run.CorrelationId,
-            result: "success",
-            rackId: null,
-            snapshotId: null,
-            targetId: version.Id.ToString(),
-            detailsJson: BuildIngestionAuditDetails(document.RackSlug, commit.Sha, contentHash));
-
         _context.DesiredStateVersions.Add(version);
         _context.DesiredRackIntents.Add(materialized.Rack);
         _context.DesiredSwitchIntents.AddRange(materialized.Switches);
         _context.DesiredPortIntents.AddRange(materialized.Ports);
-        _context.AuditEvents.Add(audit);
+
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): staged onto the SAME context as the version/
+        // intents above; all committed together (or none) by ProcessCommitAsync's later SaveFinalAsync.
+        _auditOutbox.Add(
+            _context,
+            new AuditEventEnvelope(
+                ActorType.System, IngestingServicePrincipal, "desired-state.revision.ingested",
+                "desired-state-version", version.Id.ToString(), run.CorrelationId, "success",
+                DetailsJson: BuildIngestionAuditDetails(document.RackSlug, commit.Sha, contentHash)),
+            createdAtUtc);
 
         affectedRackSlugs.Add(document.RackSlug);
         return true;
@@ -363,7 +361,7 @@ public sealed class DesiredStateIngestionService : IDesiredStateIngestionService
 
     /// <summary>
     /// The rack slug/commit SHA/content hash the ingestion audit event carries (AC5) — well under
-    /// <see cref="TopologyAuditEvent.MaxDetailsJsonLength"/>, so no truncation logic is needed here
+    /// <see cref="Caisson.Domain.Topology.TopologyAuditEvent.MaxDetailsJsonLength"/>, so no truncation logic is needed here
     /// (contrast <c>TopologySnapshotIngestionService.BuildAuditDetails</c>'s diagnostic-list capping).
     /// </summary>
     private static string BuildIngestionAuditDetails(string rackSlug, string commitSha, string contentHash)

@@ -233,6 +233,7 @@ public sealed class DriftApplyRollbackEndToEndTests : IAsyncLifetime
         var service = new DesiredStateIngestionService(
             context, git, new GuidTopologyIdGenerator(), TimeProvider.System, options, new GitIngestionMetrics(),
             new NoOpDriftRecomputeSignal(),
+            new Caisson.Infrastructure.Persistence.Auditing.MandatoryAuditOutbox(),
             NullLogger<DesiredStateIngestionService>.Instance);
 
         return await service.RunAsync(IngestionTriggerType.Poll, webhookDeliveryId: null, Guid.NewGuid(), default);

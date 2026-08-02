@@ -37,7 +37,7 @@ public sealed class DesiredStateImpactPreviewController : DiscoveryControllerBas
 
     private readonly CaissonDbContext _context;
     private readonly ImpactPreviewService _service;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly ImpactPreviewMetrics _metrics;
     private readonly ILogger<DesiredStateImpactPreviewController> _logger;
@@ -45,7 +45,7 @@ public sealed class DesiredStateImpactPreviewController : DiscoveryControllerBas
     public DesiredStateImpactPreviewController(
         CaissonDbContext context,
         ImpactPreviewService service,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation,
         ImpactPreviewMetrics metrics,
         ILogger<DesiredStateImpactPreviewController> logger)

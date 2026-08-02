@@ -1,3 +1,4 @@
+using Caisson.Domain.Auditing;
 using Caisson.Domain.DesiredState;
 using Caisson.Domain.Discovery;
 using Caisson.Domain.Drift;
@@ -110,6 +111,12 @@ public sealed class CaissonDbContext : DbContext
 
     /// <summary>Durable, mutable projection of a published PR's current state + check-run rollup (story #173).</summary>
     public DbSet<GitPullRequestStatusRecord> GitPullRequestStatuses => Set<GitPullRequestStatusRecord>();
+
+    /// <summary>Tier 1 (mandatory-durable) audit events staged for at-least-once dispatch (story #308, ADR 0064).</summary>
+    public DbSet<AuditOutboxMessage> AuditOutboxMessages => Set<AuditOutboxMessage>();
+
+    /// <summary>Tier 2 durable-first-N + bounded-counter authorization-denial buckets (story #308, ADR 0064).</summary>
+    public DbSet<AuditDenialBucket> AuditDenialBuckets => Set<AuditDenialBucket>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

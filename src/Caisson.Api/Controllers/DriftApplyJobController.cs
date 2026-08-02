@@ -24,9 +24,9 @@ public sealed class DriftApplyJobController : ReadOnlyControllerBase
     private const string SupportedType = "DriftApply";
 
     private readonly IDriftApplyJobService _jobs;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
-    public DriftApplyJobController(IDriftApplyJobService jobs, IAuditEventWriter audit)
+    public DriftApplyJobController(IDriftApplyJobService jobs, IBestEffortAuditEventWriter audit)
     {
         _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

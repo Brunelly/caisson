@@ -7,8 +7,10 @@ using Caisson.Api.Middleware;
 using Caisson.Api.Options;
 using Caisson.Domain.DesiredState;
 using Caisson.Domain.DesiredState.Diffing;
+using Caisson.Domain.Enums;
 using Caisson.Domain.Git;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Queries;
 using Caisson.Ingestion.Git.GitHub;
 using Caisson.Ingestion.RoundTrip;
@@ -33,7 +35,8 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
     private readonly CaissonDbContext _context;
     private readonly IGitPullRequestLinkStore _links;
     private readonly IGitHubPullRequestClient _github;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ICorrelationContext _correlation;
     private readonly IHttpContextAccessor _httpContext;
     private readonly IOptions<GitHubOptions> _options;
@@ -44,7 +47,8 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         CaissonDbContext context,
         IGitPullRequestLinkStore links,
         IGitHubPullRequestClient github,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
+        IMandatoryAuditOutbox auditOutbox,
         ICorrelationContext correlation,
         IHttpContextAccessor httpContext,
         IOptions<GitHubOptions> options,
@@ -55,6 +59,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         _links = links ?? throw new ArgumentNullException(nameof(links));
         _github = github ?? throw new ArgumentNullException(nameof(github));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
         _httpContext = httpContext ?? throw new ArgumentNullException(nameof(httpContext));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -162,9 +167,16 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             var pr = await _github.OpenPullRequestAsync(title, body, branchName, defaultBranch, cancellationToken);
 
             link.MarkPublished(pr.Number, pr.HtmlUrl, commit.Sha, _time.GetUtcNow().UtcDateTime);
+
+            // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as
+            // MarkPublished. NOTE the unavoidable boundary this does NOT cover: PostgreSQL atomically
+            // commits the link's published state plus this audit row together, but NOT the preceding
+            // GitHub API call itself (already durable by the time we reach here) — the reservation's
+            // idempotency (a link only reaches here once) is what makes a retry after a crash between the
+            // GitHub write and this commit safe, not the outbox transaction.
+            StageAuditOutbox(GitPrAuditActions.Created, link, rackSlug, reused: false, errorCode: null, "success");
             await _context.SaveChangesAsync(cancellationToken);
 
-            await AuditLinkAsync(GitPrAuditActions.Created, link, rackSlug, reused: false, errorCode: null, cancellationToken);
             stopwatch.Stop();
             _logger.LogInformation(
                 "Desired-state PR created prNumber={PrNumber} branch={Branch} prUrl={PrUrl} elapsedMs={ElapsedMs}",
@@ -174,32 +186,31 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         }
         catch (PrOnlyGuardrailViolationException)
         {
-            await FailReservationAsync(link, cancellationToken);
-            await AuditRefusalAsync(request.RackId, rackSlug, fingerprint, branchName, cancellationToken);
+            await FailReservationAsync(
+                link, rackSlug, GitPrAuditActions.RefusedPrOnly, "refused", GitPrErrorCodes.PrOnlyGuardrailViolation,
+                cancellationToken);
             throw;
         }
         catch (GitCredentialUnavailableException ex)
         {
             _logger.LogError(ex, "Git credential unavailable while creating a desired-state PR.");
-            await FailReservationAsync(link, cancellationToken);
-            await AuditLinkAsync(GitPrAuditActions.Failed, link, rackSlug, reused: false,
-                GitPrErrorCodes.GitCredentialsUnavailable, cancellationToken);
+            await FailReservationAsync(
+                link, rackSlug, GitPrAuditActions.Failed, "failed", GitPrErrorCodes.GitCredentialsUnavailable,
+                cancellationToken);
             return Failure(GitPrErrorCodes.GitCredentialsUnavailable, fingerprint, branchName);
         }
         catch (GitHubApiException ex)
         {
             _logger.LogError("GitHub API call failed with HTTP {Status} while creating a desired-state PR.", ex.StatusCode);
-            await FailReservationAsync(link, cancellationToken);
-            await AuditLinkAsync(GitPrAuditActions.Failed, link, rackSlug, reused: false,
-                GitPrErrorCodes.GitHubApiFailed, cancellationToken);
+            await FailReservationAsync(
+                link, rackSlug, GitPrAuditActions.Failed, "failed", GitPrErrorCodes.GitHubApiFailed, cancellationToken);
             return Failure(GitPrErrorCodes.GitHubApiFailed, fingerprint, branchName);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Unexpected error while creating a desired-state PR.");
-            await FailReservationAsync(link, cancellationToken);
-            await AuditLinkAsync(GitPrAuditActions.Failed, link, rackSlug, reused: false,
-                GitPrErrorCodes.UnexpectedError, cancellationToken);
+            await FailReservationAsync(
+                link, rackSlug, GitPrAuditActions.Failed, "failed", GitPrErrorCodes.UnexpectedError, cancellationToken);
             return Failure(GitPrErrorCodes.UnexpectedError, fingerprint, branchName);
         }
     }
@@ -293,13 +304,23 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
         return PrMetadataComposer.ToChangeSummary(diff);
     }
 
-    private async Task FailReservationAsync(GitPullRequestLink link, CancellationToken cancellationToken)
+    /// <summary>
+    /// Closes a reservation after a git failure/refusal and stages its Tier 1 (mandatory-durable) audit
+    /// event in the SAME transaction as the status closure (story #308, ADR 0064) — a failed/refused
+    /// reservation is as much a durable, security-relevant state transition as a published one. Best-effort
+    /// overall (never rethrows): a fault here must never turn a git failure into a 500, at the cost of the
+    /// reconciliation note already documented below.
+    /// </summary>
+    private async Task FailReservationAsync(
+        GitPullRequestLink link, string rackSlug, string action, string result, string errorCode,
+        CancellationToken cancellationToken)
     {
         try
         {
             // Close the reservation so a retry can create a fresh PR (the filtered unique index frees the
             // fingerprint). Never force-push; a retry inspects persisted state and opens a new branch/PR.
             link.UpdateStatus(GitPullRequestStatus.Closed, _time.GetUtcNow().UtcDateTime);
+            StageAuditOutbox(action, link, rackSlug, reused: false, errorCode, result);
             await _context.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
@@ -359,13 +380,37 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             CandidateFingerprint: fingerprint,
             ErrorCode: errorCode);
 
+    /// <summary>Tier 3 (best-effort): a PURE reuse mutates nothing (no reservation status change, no new PR).</summary>
     private Task AuditLinkAsync(
         string action, GitPullRequestLink link, string rackSlug, bool reused, string? errorCode,
         CancellationToken cancellationToken)
     {
+        var details = BuildLinkDetails(link, rackSlug, reused, errorCode);
+        return WriteAuditAsync(action, link.RackId, errorCode is null ? "success" : "failed", details, cancellationToken);
+    }
+
+    /// <summary>
+    /// Stages a Tier 1 (mandatory-durable) audit event for a link mutation (publish, or reservation
+    /// closure on failure/refusal) directly onto <see cref="_context"/> — the caller commits it in the
+    /// SAME <c>SaveChangesAsync</c> as the link change itself (story #308, ADR 0064).
+    /// </summary>
+    private void StageAuditOutbox(
+        string action, GitPullRequestLink link, string rackSlug, bool reused, string? errorCode, string result)
+    {
+        var details = BuildLinkDetails(link, rackSlug, reused, errorCode);
+        var (actorType, actorId) = ResolveActor();
+        var envelope = new AuditEventEnvelope(
+            actorType, actorId, action, "git-pull-request", link.RackId.ToString(),
+            _correlation.CorrelationId, result, RackId: link.RackId,
+            DetailsJson: JsonSerializer.Serialize(details));
+        _auditOutbox.Add(_context, envelope, _time.GetUtcNow().UtcDateTime);
+    }
+
+    private static Dictionary<string, object?> BuildLinkDetails(
+        GitPullRequestLink link, string rackSlug, bool reused, string? errorCode)
+    {
         var details = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["correlationId"] = _correlation.CorrelationId,
             ["rackId"] = link.RackId,
             ["rackSlug"] = rackSlug,
             ["fingerprint"] = link.CandidateFingerprint,
@@ -381,7 +426,7 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             details["errorCode"] = errorCode;
         }
 
-        return WriteAuditAsync(action, link.RackId, errorCode is null ? "success" : "failed", details, cancellationToken);
+        return details;
     }
 
     private Task AuditRefusalAsync(
@@ -428,15 +473,10 @@ public sealed class GitHubDesiredStatePrService : IDesiredStatePrService
             result, cancellationToken, JsonSerializer.Serialize(details));
     }
 
-    private string ResolveActorId()
-    {
-        var user = _httpContext.HttpContext?.User;
-        return user?.FindFirst("oid")?.Value
-            ?? user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? user?.FindFirst("sub")?.Value
-            ?? user?.Identity?.Name
-            ?? "unknown";
-    }
+    private string ResolveActorId() => ResolveActor().ActorId;
+
+    private (ActorType ActorType, string ActorId) ResolveActor()
+        => AuditActorResolver.Resolve(_httpContext.HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity()));
 
     private Dictionary<string, object?> LogScope(
         Guid rackId, string rackSlug, string actorId, string fingerprint, GitHubOptions options)

@@ -34,10 +34,10 @@ public sealed class TopologyEntitiesController : ReadOnlyControllerBase
     private static readonly TimeSpan FieldsCacheTtl = TimeSpan.FromSeconds(30);
 
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly IMemoryCache _cache;
 
-    public TopologyEntitiesController(CaissonDbContext context, IAuditEventWriter audit, IMemoryCache cache)
+    public TopologyEntitiesController(CaissonDbContext context, IBestEffortAuditEventWriter audit, IMemoryCache cache)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));

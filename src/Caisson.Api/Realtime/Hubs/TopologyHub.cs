@@ -25,7 +25,7 @@ public sealed class TopologyHub : Hub<ITopologyClient>
     private const string SubscribedRacksItemKey = "caisson.subscribedRacks";
 
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
     private readonly ICorrelationContext _correlation;
     private readonly TopologyMetrics _metrics;
     private readonly IRackAccessPolicy _rackAccess;
@@ -33,7 +33,7 @@ public sealed class TopologyHub : Hub<ITopologyClient>
 
     public TopologyHub(
         CaissonDbContext context,
-        IAuditEventWriter audit,
+        IBestEffortAuditEventWriter audit,
         ICorrelationContext correlation,
         TopologyMetrics metrics,
         IRackAccessPolicy rackAccess,

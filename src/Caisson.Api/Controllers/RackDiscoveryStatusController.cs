@@ -21,10 +21,10 @@ public sealed class RackDiscoveryStatusController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
     private readonly IDiscoveryJobService _jobs;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
 
     public RackDiscoveryStatusController(
-        CaissonDbContext context, IDiscoveryJobService jobs, IAuditEventWriter audit)
+        CaissonDbContext context, IDiscoveryJobService jobs, IBestEffortAuditEventWriter audit)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _jobs = jobs ?? throw new ArgumentNullException(nameof(jobs));

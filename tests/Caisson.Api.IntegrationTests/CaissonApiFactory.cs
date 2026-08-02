@@ -1,3 +1,4 @@
+using Caisson.Api.Options;
 using Caisson.Domain.Topology;
 using Caisson.Drivers.Abstractions.Registry;
 using Caisson.Infrastructure.Persistence;
@@ -109,6 +110,17 @@ public sealed class CaissonApiFactory : WebApplicationFactory<Program>, IAsyncLi
                 options.RunnerPollSeconds = 1;
                 options.RetryBaseDelayMs = 0;
                 options.HeartbeatStalenessSeconds = 5;
+            });
+
+            // Story #308: a fast outbox poll interval so the Tier 1 audit dispatcher's at-least-once
+            // dispatch latency stays well inside the suite's poll-for-audit-event timeouts even under the
+            // concurrent DB/host load of the full suite running many WebApplicationFactory instances at once.
+            // The Tier 2 denial-overflow flush interval is sped up the same way so a burst test doesn't
+            // need to wait out the (much longer) production default.
+            services.Configure<AuditDurabilityOptions>(options =>
+            {
+                options.OutboxPollIntervalSeconds = 1;
+                options.DenialFlushIntervalSeconds = 1;
             });
 
             // Story #62: no real Git repository exists in this suite. The poll scheduler stays disabled

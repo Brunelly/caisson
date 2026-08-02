@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Caisson.Domain.Drift;
 using Caisson.Domain.Enums;
-using Caisson.Domain.Topology;
 using Caisson.Drift;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +36,7 @@ public sealed class DriftComputationService : IDriftComputationService
     private readonly ITopologyIdGenerator _ids;
     private readonly TimeProvider _time;
     private readonly IOptions<DriftComputationOptions> _options;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ILogger<DriftComputationService> _logger;
 
     public DriftComputationService(
@@ -43,12 +44,14 @@ public sealed class DriftComputationService : IDriftComputationService
         ITopologyIdGenerator ids,
         TimeProvider time,
         IOptions<DriftComputationOptions> options,
+        IMandatoryAuditOutbox auditOutbox,
         ILogger<DriftComputationService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _ids = ids ?? throw new ArgumentNullException(nameof(ids));
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -178,19 +181,14 @@ public sealed class DriftComputationService : IDriftComputationService
                 itemResult.ActualValue, itemResult.Why, computedAtUtc, itemResult.DetailsJson));
         }
 
-        _context.AuditEvents.Add(new TopologyAuditEvent(
-            _ids.NewId(),
-            computedAtUtc,
-            ActorType.System,
-            ComputingServicePrincipal,
-            action: "drift.report.computed",
-            targetType: "drift-report",
-            correlationId: correlationId,
-            result: "success",
-            rackId: rackId,
-            snapshotId: observedSnapshotId,
-            targetId: report.Id.ToString(),
-            detailsJson: BuildAuditDetails(desiredRevisionId, observedSnapshotId, report.Id, result)));
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as the report/items.
+        _auditOutbox.Add(
+            _context,
+            new AuditEventEnvelope(
+                ActorType.System, ComputingServicePrincipal, "drift.report.computed", "drift-report",
+                report.Id.ToString(), correlationId, "success", RackId: rackId, SnapshotId: observedSnapshotId,
+                DetailsJson: BuildAuditDetails(desiredRevisionId, observedSnapshotId, report.Id, result)),
+            computedAtUtc);
 
         // Single implicit transaction → all-or-nothing (mirrors TopologySnapshotIngestionService, NFR3).
         await _context.SaveChangesAsync(cancellationToken);
@@ -222,24 +220,20 @@ public sealed class DriftComputationService : IDriftComputationService
                 report.RecordFailure(computedAtUtc, DriftSchema.CurrentComputationVersion, errorSummary);
             }
 
-            _context.AuditEvents.Add(new TopologyAuditEvent(
-                _ids.NewId(),
-                computedAtUtc,
-                ActorType.System,
-                ComputingServicePrincipal,
-                action: "drift.report.computed",
-                targetType: "drift-report",
-                correlationId: correlationId,
-                result: "failure",
-                rackId: rackId,
-                snapshotId: observedSnapshotId,
-                targetId: report.Id.ToString(),
-                detailsJson: JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["desiredRevisionId"] = desiredRevisionId,
-                    ["observedSnapshotId"] = observedSnapshotId,
-                    ["error"] = errorSummary,
-                })));
+            // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as the
+            // Failed report.
+            _auditOutbox.Add(
+                _context,
+                new AuditEventEnvelope(
+                    ActorType.System, ComputingServicePrincipal, "drift.report.computed", "drift-report",
+                    report.Id.ToString(), correlationId, "failure", RackId: rackId, SnapshotId: observedSnapshotId,
+                    DetailsJson: JsonSerializer.Serialize(new Dictionary<string, object?>(StringComparer.Ordinal)
+                    {
+                        ["desiredRevisionId"] = desiredRevisionId,
+                        ["observedSnapshotId"] = observedSnapshotId,
+                        ["error"] = errorSummary,
+                    })),
+                computedAtUtc);
 
             await _context.SaveChangesAsync(cancellationToken);
 

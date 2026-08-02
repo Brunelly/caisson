@@ -3,6 +3,7 @@ using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Ingestion;
 using Caisson.Orchestration.Discovery;
 using Caisson.Orchestration.Runner;
@@ -161,13 +162,44 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
 
         await using (var context = _fixture.CreateContext())
         {
-            await DiscoveryJobRunner.FailExhaustedStaleJobsAsync(context, now, now.AddSeconds(-45), maxAttempts: 5, default);
+            await DiscoveryJobRunner.FailExhaustedStaleJobsAsync(
+                context, new MandatoryAuditOutbox(), now, now.AddSeconds(-45), maxAttempts: 5, default);
         }
 
         await using var verify = _fixture.CreateContext();
         var job = await verify.DiscoveryJobs.FirstAsync(j => j.Id == exhaustedId);
         job.Status.Should().Be(DiscoveryJobStatus.Failed);
         job.ErrorCode.Should().Be(DiscoveryErrorCodes.MaxAttemptsExceeded);
+
+        // Story #308, ADR 0064: the reaper's terminal transition stages a Tier 1 audit outbox row too.
+        var audit = await verify.AuditOutboxMessages.SingleAsync(a => a.TargetId == exhaustedId.ToString());
+        audit.Action.Should().Be("discovery.job.failed");
+    }
+
+    [Fact]
+    public async Task Two_concurrent_reapers_over_the_same_stale_exhausted_job_produce_one_terminal_transition_and_one_outbox_row()
+    {
+        await _fixture.MigrateAsync();
+        await ClearJobsAsync();
+        var rackId = await SeedRackAsync();
+        var now = DateTime.UtcNow;
+        var stale = now.AddSeconds(-45);
+
+        var exhaustedId = await InsertInProgressJobAsync(rackId, heartbeatAt: now.AddMinutes(-5), attemptCount: 5);
+
+        async Task ReconcileAsync()
+        {
+            await using var context = _fixture.CreateContext();
+            await DiscoveryJobRunner.FailExhaustedStaleJobsAsync(context, new MandatoryAuditOutbox(), now, stale, maxAttempts: 5, default);
+        }
+
+        await Task.WhenAll(ReconcileAsync(), ReconcileAsync());
+
+        await using var verify = _fixture.CreateContext();
+        var job = await verify.DiscoveryJobs.FirstAsync(j => j.Id == exhaustedId);
+        job.Status.Should().Be(DiscoveryJobStatus.Failed);
+
+        (await verify.AuditOutboxMessages.CountAsync(a => a.TargetId == exhaustedId.ToString())).Should().Be(1);
     }
 
     [Fact]
@@ -261,6 +293,7 @@ public sealed class DiscoveryJobConcurrencyTests : IClassFixture<PostgresFixture
             new DiscoveryCancellationRegistry(),
             new NoOpTopologyEventPublisher(),
             new InProcessTopologyEventSequencer(),
+            new MandatoryAuditOutbox(),
             NullLogger<DiscoveryJobService>.Instance);
 
     private async Task ClearJobsAsync()

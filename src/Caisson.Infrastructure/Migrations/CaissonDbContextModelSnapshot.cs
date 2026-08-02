@@ -22,6 +22,173 @@ namespace Caisson.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Caisson.Domain.Auditing.AuditDenialBucket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("actor_type");
+
+                    b.Property<int>("DurableCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("durable_count");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<DateTime>("FirstSeenAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at_utc");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at_utc");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<DateTime>("WindowEndAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("window_end_at_utc");
+
+                    b.Property<DateTime>("WindowStartAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("window_start_at_utc");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_denial_bucket");
+
+                    b.HasIndex("WindowEndAtUtc")
+                        .HasDatabaseName("ix_audit_denial_bucket_window_end_at");
+
+                    b.HasIndex("ActorId", "Endpoint", "Outcome", "WindowStartAtUtc")
+                        .IsUnique()
+                        .HasDatabaseName("ux_audit_denial_bucket_key");
+
+                    b.ToTable("audit_denial_bucket", (string)null);
+                });
+
+            modelBuilder.Entity("Caisson.Domain.Auditing.AuditOutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("actor_type");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<DateTime>("AvailableAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("available_at_utc");
+
+                    b.Property<string>("ClaimedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("claimed_by");
+
+                    b.Property<Guid>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(8192)
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details_json");
+
+                    b.Property<DateTime?>("DispatchedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dispatched_at_utc");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("failure_code");
+
+                    b.Property<DateTime?>("LeaseUntilUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until_utc");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<Guid?>("RackId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rack_id");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("result");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_outbox");
+
+                    b.HasIndex("Status", "AvailableAtUtc")
+                        .HasDatabaseName("ix_audit_outbox_status_available_at")
+                        .HasFilter("status = 'Pending'");
+
+                    b.ToTable("audit_outbox", (string)null);
+                });
+
             modelBuilder.Entity("Caisson.Domain.DesiredState.DesiredPortIntent", b =>
                 {
                     b.Property<Guid>("Id")

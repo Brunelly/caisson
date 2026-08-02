@@ -4,6 +4,7 @@ using Caisson.Correlation.Results;
 using Caisson.Domain.Enums;
 using Caisson.Domain.Topology;
 using Caisson.Infrastructure.LiveUpdates;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Drift;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
@@ -30,6 +31,7 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
     private readonly ITopologyIdGenerator _ids;
     private readonly ITopologyEventPublisher _events;
     private readonly IDriftRecomputeSignal _driftSignal;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
     private readonly ILogger<TopologySnapshotIngestionService> _logger;
 
     public TopologySnapshotIngestionService(
@@ -37,12 +39,14 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
         ITopologyIdGenerator ids,
         ITopologyEventPublisher events,
         IDriftRecomputeSignal driftSignal,
+        IMandatoryAuditOutbox auditOutbox,
         ILogger<TopologySnapshotIngestionService> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _ids = ids ?? throw new ArgumentNullException(nameof(ids));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _driftSignal = driftSignal ?? throw new ArgumentNullException(nameof(driftSignal));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -109,24 +113,20 @@ public sealed class TopologySnapshotIngestionService : ITopologySnapshotIngestio
                 request.RackId, mapped.Snapshot.Id, diagnostic);
         }
 
-        var audit = new TopologyAuditEvent(
-            _ids.NewId(),
-            request.CompletedAtUtc,
-            request.ActorType,
-            request.TriggeredBy,
-            action: "discovery.persisted",
-            targetType: "snapshot",
-            correlationId: request.CorrelationId,
-            result: "success",
-            rackId: request.RackId,
-            snapshotId: mapped.Snapshot.Id,
-            targetId: mapped.Snapshot.Id.ToString(),
-            detailsJson: BuildAuditDetails(diffResult.ChangeCountsJson, allDiagnostics));
-
         _context.Snapshots.Add(mapped.Snapshot);
         _context.MacAddresses.AddRange(mapped.MacAddresses);
         _context.EntityDiffs.AddRange(diffResult.Diffs);
-        _context.AuditEvents.Add(audit);
+
+        // Tier 1 (mandatory-durable, story #308 ADR 0064): staged in the SAME transaction as the snapshot
+        // insert below.
+        _auditOutbox.Add(
+            _context,
+            new AuditEventEnvelope(
+                request.ActorType, request.TriggeredBy, "discovery.persisted", "snapshot",
+                mapped.Snapshot.Id.ToString(), request.CorrelationId, "success", RackId: request.RackId,
+                SnapshotId: mapped.Snapshot.Id,
+                DetailsJson: BuildAuditDetails(diffResult.ChangeCountsJson, allDiagnostics)),
+            request.CompletedAtUtc);
 
         // Single implicit transaction → all-or-nothing (NFR3).
         await _context.SaveChangesAsync(cancellationToken);

@@ -153,7 +153,142 @@ public sealed class RbacTests
         details.RootElement.GetProperty("driftItemId").GetGuid().Should().Be(driftItemId);
     }
 
-    /// <summary>Polls for the off-request-path (ChannelAuditEventWriter) audit row, bounded to 10s.</summary>
+    // ---- Tier 2 durable-first-N + bounded overflow (story #308, ADR 0064) ---------------------------------
+
+    /// <summary>AC3: a burst from one principal is bounded — first N verbatim, the rest one flushed aggregate.</summary>
+    [SkippableFact]
+    public async Task A_denial_flood_from_one_principal_yields_exactly_N_verbatim_rows_plus_a_bounded_aggregate()
+    {
+        Skip.IfNot(_factory.Available, SkipReason);
+
+        var actor = "flood-actor-" + Guid.NewGuid().ToString("N")[..8];
+        const int burstSize = 30; // >> the default DenialFirstN of 5
+        const int expectedFirstN = 5;
+
+        var client = _factory.CreateClient();
+        var responses = await Task.WhenAll(Enumerable.Range(0, burstSize).Select(_ => SendForbiddenRequestAsync(client, actor)));
+        responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Forbidden);
+
+        // The first N are durable and queryable immediately — no polling needed for these.
+        await using (var context = _factory.CreateDbContext())
+        {
+            var verbatim = await context.AuditEvents
+                .Where(a => a.Action == "authorization.forbidden" && a.ActorId == actor)
+                .ToListAsync();
+            verbatim.Should().HaveCount(expectedFirstN);
+            verbatim.Should().OnlyContain(a => a.Result == "403");
+        }
+
+        // The overflow is flushed asynchronously (bounded by the sped-up DenialFlushIntervalSeconds).
+        var aggregateCount = await PollForOverflowCountAsync(actor, burstSize - expectedFirstN);
+        aggregateCount.Should().Be(burstSize - expectedFirstN);
+    }
+
+    /// <summary>NFR2: a flood from one principal must never evict another principal's records (Tier 1 or Tier 2).</summary>
+    [SkippableFact]
+    public async Task One_principals_denial_flood_does_not_evict_another_principals_first_n_records()
+    {
+        Skip.IfNot(_factory.Available, SkipReason);
+
+        var floodActor = "flood-actor-" + Guid.NewGuid().ToString("N")[..8];
+        var quietActor = "quiet-actor-" + Guid.NewGuid().ToString("N")[..8];
+        var client = _factory.CreateClient();
+
+        // The quiet principal is denied exactly once, BEFORE the flood.
+        var quietResponse = await SendForbiddenRequestAsync(client, quietActor);
+        quietResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var floodResponses = await Task.WhenAll(Enumerable.Range(0, 30).Select(_ => SendForbiddenRequestAsync(client, floodActor)));
+        floodResponses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Forbidden);
+
+        await using var context = _factory.CreateDbContext();
+        (await context.AuditEvents.CountAsync(a => a.Action == "authorization.forbidden" && a.ActorId == quietActor))
+            .Should().Be(1, "the quiet principal's own durable denial must survive another principal's flood");
+    }
+
+    /// <summary>Bucket key + denial details must never carry the raw path, query string, or any secret/token.</summary>
+    [SkippableFact]
+    public async Task Denial_records_contain_no_raw_query_string_or_secrets()
+    {
+        Skip.IfNot(_factory.Available, SkipReason);
+
+        var actor = "secret-check-actor-" + Guid.NewGuid().ToString("N")[..8];
+        var client = _factory.CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Get, LatestPath() + "?token=super-secret-value&password=hunter2");
+        request.Headers.Add(TestAuthHandler.UserHeader, actor);
+        request.Headers.Add(TestAuthHandler.RolesHeader, "SomeUnrecognisedRole");
+        request.Headers.Add("Authorization", "Bearer fake-bearer-token-value");
+
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        await using var context = _factory.CreateDbContext();
+        var audit = await context.AuditEvents.SingleAsync(a => a.Action == "authorization.forbidden" && a.ActorId == actor);
+        audit.DetailsJson.Should().NotContain("super-secret-value");
+        audit.DetailsJson.Should().NotContain("hunter2");
+        audit.DetailsJson.Should().NotContain("fake-bearer-token-value");
+        audit.DetailsJson.Should().NotContain("?token=");
+        audit.DetailsJson.Should().Contain("GET "); // the stable "{method} {routeTemplate}" bucket key
+    }
+
+    private Task<HttpResponseMessage> SendForbiddenRequestAsync(HttpClient client, string actor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, LatestPath());
+        request.Headers.Add(TestAuthHandler.UserHeader, actor);
+        request.Headers.Add(TestAuthHandler.RolesHeader, "SomeUnrecognisedRole");
+        return client.SendAsync(request);
+    }
+
+    /// <summary>
+    /// Sums the overflow aggregates for <paramref name="actor"/>, polling until the total reaches
+    /// <paramref name="expectedTotal"/> (or the budget runs out, returning whatever it last saw so the
+    /// caller's assertion reports the real number).
+    /// <para>
+    /// It must NOT stop at the first aggregate row it sees. The flush interval is deliberately sped up to
+    /// one second here, so a flush can easily land part-way through a burst and split the overflow across
+    /// several aggregate rows — that is normal, correct behaviour (each row carries its own batch id), but
+    /// returning on the first row would read a partial total and fail intermittently for no real reason.
+    /// </para>
+    /// </summary>
+    private async Task<long> PollForOverflowCountAsync(string actor, long expectedTotal)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        long total = 0;
+        var sawAny = false;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            await using (var context = _factory.CreateDbContext())
+            {
+                var aggregates = await context.AuditEvents
+                    .Where(a => a.Action == "authorization.forbidden.overflow" && a.ActorId == actor)
+                    .ToListAsync();
+
+                if (aggregates.Count > 0)
+                {
+                    sawAny = true;
+                    total = aggregates.Sum(a =>
+                    {
+                        using var details = JsonDocument.Parse(a.DetailsJson!);
+                        return details.RootElement.GetProperty("count").GetInt64();
+                    });
+
+                    if (total >= expectedTotal)
+                    {
+                        return total;
+                    }
+                }
+            }
+
+            await Task.Delay(200);
+        }
+
+        return sawAny
+            ? total
+            : throw new TimeoutException($"No authorization.forbidden.overflow aggregate for actorId={actor} appeared within the test budget.");
+    }
+
+    /// <summary>Polls for the off-request-path (BestEffortAuditEventWriter) audit row, bounded to 10s.</summary>
     private async Task<TopologyAuditEvent> PollForAuditEventAsync(string action, Guid correlationId)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -174,4 +309,6 @@ public sealed class RbacTests
 
     private string LatestPath()
         => $"/api/racks/{_factory.Seed.RackId}/topology/snapshots/latest";
+
+    private const string SkipReason = "Requires Postgres (CAISSON_TEST_DB or Docker); skipped when unavailable.";
 }

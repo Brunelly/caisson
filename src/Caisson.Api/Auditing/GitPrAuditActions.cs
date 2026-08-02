@@ -5,7 +5,7 @@ namespace Caisson.Api.Auditing;
 /// <c>GIT_PR_CREATED</c>/<c>GIT_PR_REUSED</c>/<c>GIT_PR_REFUSED_PR_ONLY</c>/<c>GIT_PR_FAILED</c>). Uses the
 /// repository's lowercase-dotted audit-action convention (e.g. <c>desired-state.pr-created</c>), one constant
 /// per durable create/reuse/refuse/fail event, and exposes the story's UPPER_SNAKE event-type names for docs
-/// and cross-referencing. Written through <c>IAuditEventWriter.WriteActionAsync</c>.
+/// and cross-referencing. Written through <c>IBestEffortAuditEventWriter.WriteActionAsync</c>.
 /// </summary>
 public static class GitPrAuditActions
 {

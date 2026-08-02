@@ -1,8 +1,10 @@
 using Caisson.Api.Auditing;
 using Caisson.Api.Contracts;
+using Caisson.Api.Middleware;
 using Caisson.Api.Security;
 using Caisson.Domain.Discovery;
 using Caisson.Infrastructure.Persistence;
+using Caisson.Infrastructure.Persistence.Auditing;
 using Caisson.Infrastructure.Persistence.Queries;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,14 +22,19 @@ namespace Caisson.Api.Controllers;
 public sealed class RackDiscoveryScheduleController : DiscoveryControllerBase
 {
     private readonly CaissonDbContext _context;
-    private readonly IAuditEventWriter _audit;
+    private readonly IBestEffortAuditEventWriter _audit;
+    private readonly IMandatoryAuditOutbox _auditOutbox;
+    private readonly ICorrelationContext _correlation;
     private readonly TimeProvider _time;
 
     public RackDiscoveryScheduleController(
-        CaissonDbContext context, IAuditEventWriter audit, TimeProvider time)
+        CaissonDbContext context, IBestEffortAuditEventWriter audit, IMandatoryAuditOutbox auditOutbox,
+        ICorrelationContext correlation, TimeProvider time)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _auditOutbox = auditOutbox ?? throw new ArgumentNullException(nameof(auditOutbox));
+        _correlation = correlation ?? throw new ArgumentNullException(nameof(correlation));
         _time = time ?? throw new ArgumentNullException(nameof(time));
     }
 
@@ -96,10 +103,13 @@ public sealed class RackDiscoveryScheduleController : DiscoveryControllerBase
             schedule.Configure(request.Enabled, request.IntervalSeconds, request.JitterSeconds, nextRun);
         }
 
+        var (actorType, actorId) = AuditActorResolver.Resolve(User);
+        var envelope = new AuditEventEnvelope(
+            actorType, actorId, "discovery.schedule.updated", "rack", rackId.ToString(),
+            _correlation.CorrelationId, request.Enabled ? "enabled" : "disabled", RackId: rackId);
+        _auditOutbox.Add(_context, envelope, now);
+
         await _context.SaveChangesAsync(cancellationToken);
-        await _audit.WriteActionAsync(
-            User, rackId, "discovery.schedule.updated", "rack", rackId.ToString(),
-            request.Enabled ? "enabled" : "disabled", cancellationToken);
         return Ok(DiscoveryContractMappers.ToSchedule(schedule));
     }
 }
