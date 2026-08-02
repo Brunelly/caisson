@@ -67,7 +67,8 @@ public sealed class AuditDenialBucketFirstNTests : IClassFixture<PostgresFixture
         {
             await using var context = _fixture.CreateContext();
             var writer = new AuthorizationDenialAuditWriter(
-                context, accumulators[i % 2], TimeProvider.System, options, NullLogger<AuthorizationDenialAuditWriter>.Instance);
+                context, accumulators[i % 2], TimeProvider.System, options, new AuthorizationDenialAuditMetrics(),
+                NullLogger<AuthorizationDenialAuditWriter>.Instance);
             await writer.RecordDenialAsync(
                 ActorType.User, actorId, "GET /api/test", "403", rackId: null, Guid.NewGuid(), detailsJson: null, default);
         }

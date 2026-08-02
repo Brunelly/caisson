@@ -54,8 +54,8 @@ public sealed class AuditDenialFlushIdempotencyTests : IClassFixture<PostgresFix
         var now = DateTime.UtcNow;
 
         accumulator.MarkSaturated(key, ActorType.User, rackId: null, windowEndAtUtc: now.AddMinutes(5), now);
-        accumulator.Increment(key, now);
-        accumulator.Increment(key, now);
+        accumulator.TryIncrementIfSaturated(key, now);
+        accumulator.TryIncrementIfSaturated(key, now);
 
         var service = new AuditDenialFlushService(
             new FakeScopeFactory(_fixture), accumulator, TimeProvider.System, options, NullLogger<AuditDenialFlushService>.Instance);

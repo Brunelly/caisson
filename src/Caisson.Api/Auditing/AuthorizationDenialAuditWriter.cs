@@ -61,10 +61,9 @@ public sealed class AuthorizationDenialAuditWriter : IAuthorizationDenialAuditWr
             var windowEnd = windowStart.AddSeconds(options.DenialWindowSeconds);
             var key = new DenialBucketKey(actorId, endpoint, outcome, windowStart);
 
-            if (_accumulator.IsKnownSaturated(key))
+            if (_accumulator.TryIncrementIfSaturated(key, nowUtc))
             {
                 // The hot flood path: no DB round trip at all, bounded purely by (buckets × windows).
-                _accumulator.Increment(key, nowUtc);
                 return;
             }
 

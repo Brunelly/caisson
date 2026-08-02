@@ -17,11 +17,20 @@ public readonly record struct DenialBucketKey(string ActorId, string Endpoint, s
 /// The in-memory, bounded overflow counter for denials beyond a bucket's first N (story #308, ADR 0064).
 /// Once <see cref="AuthorizationDenialAuditWriter"/> discovers (via the durable bucket row) that a bucket
 /// has reached <c>DenialFirstN</c>, it calls <see cref="MarkSaturated"/> ONCE to cache that fact here —
-/// every subsequent denial in the same window increments lock-free via <see cref="Increment"/> with NO
-/// further database round trip, which is what bounds write volume by (buckets × windows) rather than by
-/// request volume. <see cref="AuditDenialFlushService"/> periodically calls <see cref="DetachGeneration"/>
-/// to atomically swap in a fresh, empty dictionary — requests racing the swap keep incrementing whichever
-/// generation they observe, so no increment is ever lost mid-flush.
+/// every subsequent denial in the same window increments lock-free via
+/// <see cref="TryIncrementIfSaturated"/> with NO further database round trip, which is what bounds write
+/// volume by (buckets × windows) rather than by request volume. <see cref="AuditDenialFlushService"/>
+/// periodically calls <see cref="DetachGeneration"/> to atomically swap in a fresh, empty dictionary.
+/// <para>
+/// A request racing that swap keeps incrementing whichever generation IT observed — but only because
+/// <see cref="TryIncrementIfSaturated"/> reads <see cref="_active"/> exactly once per call. Splitting the
+/// hot path into a separate saturation check and a separate increment (each with its own read of the
+/// field) does NOT have that property: the swap can land between them and the increment then misses in
+/// the new, empty dictionary while the caller has already committed to the no-DB path — a denial counted
+/// nowhere at all. That is why the hot path is a single operation that reports whether it landed, and why
+/// a <see langword="false"/> result must send the caller back to the durable path rather than being
+/// treated as counted.
+/// </para>
 /// </summary>
 public sealed class DenialOverflowAccumulator
 {
@@ -48,8 +57,11 @@ public sealed class DenialOverflowAccumulator
     public int ActiveCount => _active.Count;
 
     /// <summary>
-    /// True once this bucket/window is known-saturated on THIS instance — the caller should skip the DB
-    /// entirely and just call <see cref="Increment"/>.
+    /// True if this bucket/window is known-saturated on THIS instance right now (diagnostics only).
+    /// Deliberately NOT a gate for the hot path: the answer can be stale the instant it is returned (a
+    /// <see cref="DetachGeneration"/> may land immediately after), so acting on it as a separate step from
+    /// the increment is exactly the race <see cref="TryIncrementIfSaturated"/> exists to close. Callers on
+    /// the denial path must use <see cref="TryIncrementIfSaturated"/> instead.
     /// </summary>
     public bool IsKnownSaturated(DenialBucketKey key) => _active.ContainsKey(key);
 
@@ -74,13 +86,31 @@ public sealed class DenialOverflowAccumulator
             });
     }
 
-    /// <summary>Increments an already-known-saturated bucket — the hot, lock-free path under a flood.</summary>
-    public void Increment(DenialBucketKey key, DateTime nowUtc)
+    /// <summary>
+    /// The hot, lock-free flood path: increments <paramref name="key"/> if — and only if — this instance
+    /// already knows the bucket is saturated, returning whether the increment actually landed. A
+    /// <see langword="false"/> result means the caller must fall back to the durable path (which will
+    /// re-establish saturation); it must NEVER be treated as "counted".
+    /// <para>
+    /// Deliberately ONE operation rather than a separate "is it saturated?" check followed by an
+    /// increment. <see cref="_active"/> is captured into a local exactly once here, so a
+    /// <see cref="DetachGeneration"/> landing mid-call cannot make the two disagree: the lookup and the
+    /// increment always address the SAME dictionary instance, and the entry found in it is therefore
+    /// either in the generation being flushed (still persisted) or in the new active one. Reading the
+    /// field twice would let the check observe the old generation and the increment then miss in the new,
+    /// empty one — reporting "counted" for a denial that was recorded nowhere.
+    /// </para>
+    /// </summary>
+    public bool TryIncrementIfSaturated(DenialBucketKey key, DateTime nowUtc)
     {
-        if (_active.TryGetValue(key, out var entry))
+        var generation = _active;
+        if (!generation.TryGetValue(key, out var entry))
         {
-            entry.Record(nowUtc);
+            return false;
         }
+
+        entry.Record(nowUtc);
+        return true;
     }
 
     /// <summary>

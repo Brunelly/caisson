@@ -38,25 +38,42 @@ public sealed class DenialOverflowAccumulatorTests
     }
 
     [Fact]
-    public void Increment_is_lock_free_and_accumulates_concurrently()
+    public void TryIncrementIfSaturated_is_lock_free_and_accumulates_concurrently()
     {
         var accumulator = New();
         var now = DateTime.UtcNow;
         accumulator.MarkSaturated(Key, ActorType.User, rackId: null, windowEndAtUtc: now.AddMinutes(5), now);
 
-        Parallel.For(0, 1000, _ => accumulator.Increment(Key, now));
+        Parallel.For(0, 1000, _ => accumulator.TryIncrementIfSaturated(Key, now).Should().BeTrue());
 
         var generation = accumulator.DetachGeneration();
         generation[Key].Count.Should().Be(1001); // the initial MarkSaturated count + 1000 increments
     }
 
     [Fact]
-    public void Increment_on_an_unknown_bucket_is_a_safe_no_op()
+    public void TryIncrementIfSaturated_reports_false_for_an_unknown_bucket_so_the_caller_takes_the_durable_path()
     {
         var accumulator = New();
-        accumulator.Increment(Key, DateTime.UtcNow); // no MarkSaturated call first
+
+        // No MarkSaturated call first: the caller MUST be told the increment did not land, or the denial
+        // would be counted nowhere at all.
+        accumulator.TryIncrementIfSaturated(Key, DateTime.UtcNow).Should().BeFalse();
 
         accumulator.DetachGeneration().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryIncrementIfSaturated_reports_false_after_a_generation_swap_rather_than_dropping_the_denial()
+    {
+        var accumulator = New();
+        var now = DateTime.UtcNow;
+        accumulator.MarkSaturated(Key, ActorType.User, rackId: null, windowEndAtUtc: now.AddMinutes(5), now);
+
+        accumulator.DetachGeneration();
+
+        // The bucket is no longer in the active generation, so the hot path must decline it (sending the
+        // caller back to the durable path) rather than claim an increment that went nowhere.
+        accumulator.TryIncrementIfSaturated(Key, now).Should().BeFalse();
     }
 
     [Fact]
@@ -85,7 +102,7 @@ public sealed class DenialOverflowAccumulatorTests
 
         // A racing increment lands on the fresh (post-detach) generation.
         accumulator.MarkSaturated(Key, ActorType.User, rackId: null, windowEndAtUtc: t0.AddMinutes(5), t1);
-        accumulator.Increment(Key, t1);
+        accumulator.TryIncrementIfSaturated(Key, t1);
 
         accumulator.MergeBack(detached);
 
